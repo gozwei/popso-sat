@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.1 — 2026-11-03
+
+- Fix the build with gcc 13 on Linux (Ubuntu 24.04, the SAT Competition platform): a header
+  relied on `<cstdint>` being included transitively, which is only the case with clang on
+  macOS. Every header now compiles on its own with gcc, and releases are built and tested
+  with gcc 13 on Linux before they are tagged.
+
 ## v0.1.0 — 2026-11-03
 
 First version: a correct, complete CDCL solver with the SAT Competition interface. On the

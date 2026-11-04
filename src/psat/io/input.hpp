@@ -3,6 +3,7 @@
 // the magic bytes, whatever the file name). The path "-" reads standard input.
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <stdexcept>
 #include <string>
