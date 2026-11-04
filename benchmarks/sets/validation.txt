@@ -1,0 +1,36 @@
+# validation set: 32 GBD main-track instances (2022-2025) from dev_candidates.txt that are NOT
+# in the 36 downloaded dev instances, one per family (31 of the 32 families are absent from the
+# dev set), 16 sat / 16 unsat, small files. Used to check releases and tuning decisions on
+# instances the defaults were not tuned on. Download: benchmarks/gbd.py download --set validation
+gbd/files/47f5872181a581dff34eb33123fe3242-b17.cnf.xz                                                                        unsat    # family=belpyramid-puzzle year=2025 unfiltered xz=0.46MB cnf=2.6MB
+gbd/files/705f6075b27775e03daf6e8d781cb953-shift1add.28943.cnf.xz                                                            unsat    # family=bitvector year=2023 filtered kissat-3.1.0=34s xz=2.0MB cnf=20.5MB
+gbd/files/30e680ded3b9be6be0b5baac273f2646-asconhashv12_opt64_H5_M2-A8qZX_m0_3_U23.c.cnf.xz                                  unsat    # family=cryptography-ascon year=2023 filtered kissat-3.1.0=182s xz=0.47MB cnf=5.8MB
+gbd/files/036b541db9d0839b0591d408ff4f77ae-aes_decry_2_rounds.debugged.cnf.xz                                                unsat    # family=cryptography-cbmc year=2023 filtered kissat-3.1.0=186s xz=2.68MB cnf=32.3MB
+gbd/files/a7aac5c83f236fd8b3de3275e3f5499d-edit_distance041_183.cnf.xz                                                       unsat    # family=edit-distance year=2022 filtered kissat-sc2022-bulky=153s xz=0.47MB cnf=8.2MB
+gbd/files/d6402b482a5dc102a5b09360689e2be8-jkkk-one-one-11-32-unsat.cnf.xz                                                   unsat    # family=ensemble-computation year=2023 filtered kissat-3.1.0=159s xz=0.07MB cnf=0.8MB
+gbd/files/d5928883c1e1f70764a31a83aa419eaf-oski15a01b42s_opt.cnf.xz                                                          unsat    # family=equivalence-checking year=2025 unfiltered xz=4.06MB cnf=29.6MB
+gbd/files/43687a48fb119ca61b47c2fc69a71e7d-manthey_single-ordered-initialized-w42-b8.cnf.xz                                  unsat    # family=gray_codes year=2022 filtered kissat-sc2022-bulky=212s xz=0.09MB cnf=1.1MB
+gbd/files/20cae5fe475d571da703f89d5da4bb8f-grs-96-32.cnf.xz                                                                  unsat    # family=grs-fp-comm year=2023 filtered kissat-3.1.0=132s xz=0.43MB cnf=4.0MB
+gbd/files/0dc468413b65339fad7e4f981bf2fb1e-reconf20_61_myciel4_2.cnf.xz                                                      unsat    # family=independent-set-reconfiguration year=2022 filtered kissat-sc2022-bulky=23s xz=0.31MB cnf=3.7MB
+gbd/files/4513c58c16e72a34f9f8518db7baeb9e-ktf_TF-3.tf_3_0.02_24.cnf.xz                                                      unsat    # family=ktf year=2022 filtered kissat-sc2022-bulky=234s xz=0.14MB cnf=1.9MB
+gbd/files/e12874b16df577b301608d03731595d8-rphp5_085_shuffled.cnf.xz                                                         unsat    # family=relativized-pigeon-hole year=2025 unfiltered xz=0.09MB cnf=0.3MB
+gbd/files/6f0e236c999de0a5e3c46fd3463b1d0d-rook-56-1-1.cnf.xz                                                                unsat    # family=rooks year=2024 unfiltered xz=1.15MB cnf=13.1MB
+gbd/files/920bbe559da4ea37fd636605316a791c-SCPC-500-19.cnf.xz                                                                unsat    # family=set-covering year=2022 filtered kissat-sc2022-bulky=36s xz=0.09MB cnf=0.4MB
+gbd/files/65138afdf7eb054be5131f2b0de84369-satch2ways12u.cnf.xz                                                              unsat    # family=test-configuration year=2022 filtered kissat-sc2022-bulky=30s xz=0.05MB cnf=0.6MB
+gbd/files/61069e0e3339af80000b774a041b7d96-constraints_18_0.3_2.sanitized.cnf.xz                                             unsat    # family=quantum-kochen-specker year=2024 unfiltered xz=0.44MB cnf=32.5MB
+gbd/files/96e01064ac3b644143278c21859e201f-brent_51_0.29.cnf.xz                                                              sat      # family=brent-equations year=2023 filtered kissat-3.1.0=59s xz=0.57MB cnf=5.3MB
+gbd/files/f02379d63678798e38dcc52b043cc51d-asconhashv12_opt64_H13_M2-axxJh7DAq767y_m4_5.c.cnf.xz                             sat      # family=cryptography-ascon year=2023 filtered kissat-3.1.0=101s xz=0.6MB cnf=7.5MB
+gbd/files/0ae917c2e0c1d39cbe411c29b2f5ff08-dislog_a14_x14_n24.cnf.xz                                                         sat      # family=discrete-logarithm year=2025 unfiltered xz=0.24MB cnf=2.5MB
+gbd/files/72c0d81e16d91bcaed808efcde2e5069-Folkman-175-1251868.sanitized.cnf.xz                                              sat      # family=heule-folkman year=2024 unfiltered xz=0.06MB cnf=0.3MB
+gbd/files/0a27eb7c16c1e69ff4d087d217ac89cb-noL-11-0.sanitized.cnf.xz                                                         sat      # family=heule-nol year=2024 unfiltered xz=0.02MB cnf=0.1MB
+gbd/files/f32bb347996c351bc3e9a91c58e8601d-DLTM_twitter774_83_17.cnf.xz                                                      sat      # family=influence-maximization year=2024 unfiltered xz=0.21MB cnf=2.1MB
+gbd/files/7acf6cf25ddaf2ab98106e0bb3b9ddb1-af-synthesis_stb_50_140_3_sat.cnf.xz                                              sat      # family=maxsat-optimum year=2022 filtered kissat-sc2022-bulky=50s xz=1.66MB cnf=6.8MB
+gbd/files/0336f81b60baac5b8f481dd3c32861a5-mod4block_2vars_10gates_u2_autoenc-sc2009.cnf.xz                                  sat      # family=modcircuits year=2023 filtered kissat-3.1.0=138s xz=0.46MB cnf=3.4MB
+gbd/files/ddd3b43476c18cf483aac233d4dc1c68-PRP_20_40.cnf.xz                                                                  sat      # family=profitable-robust-production year=2023 filtered kissat-3.1.0=35s xz=2.07MB cnf=24.1MB
+gbd/files/c2bfe541b7cff948fa3193e9ca0eddee-frb45-21-2.used-as.sat04-884.cnf.xz                                               sat      # family=random-csp year=2024 unfiltered xz=0.1MB cnf=0.7MB
+gbd/files/e99e266b422513a2898c13898a1de501-rbsat-v760c43649gyes9.cnf.xz                                                      sat      # family=rbsat year=2024 unfiltered xz=0.07MB cnf=0.5MB
+gbd/files/b5cede38496a803dcfa155a5f4295c47-SC23_Timetable_C_476_E_50_Cl_32_D_6_T_50.cnf.xz                                   sat      # family=school-timetabling year=2023 filtered kissat-3.1.0=100s xz=1.29MB cnf=15.8MB
+gbd/files/a811388cc92def6ef2d639dc062d456c-ContextModel_output_6_3_8.bul_.dimacs.cnf.xz                                      sat      # family=social-golfer year=2023 filtered kissat-3.1.0=206s xz=0.07MB cnf=0.8MB
+gbd/files/b51583e32432c5778c7e3e996c3bfeba-sqrt_ineq_3.c.cnf.xz                                                              sat      # family=software-verification year=2022 filtered kissat-sc2022-bulky=25s xz=1.11MB cnf=13.1MB
+gbd/files/608941b989227d93c62b3a9b4280011b-summle_X8639_steps8_I1-2-2-4-4-8-25-100.cnf.xz                                    sat      # family=summle year=2022 filtered kissat-sc2022-bulky=50s xz=0.43MB cnf=4.5MB
+gbd/files/86173292a2c6a506acf27a81db853bb5-ktf_TF-7.tf_3_0.06_113.cnf.xz                                                     sat      # family=ktf year=2025 unfiltered xz=0.33MB cnf=5.3MB

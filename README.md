@@ -8,8 +8,9 @@ Optimization Solver) but shares no code with popso.
 This is a side project by [Marcin Polkowski](https://marcinpolkowski.com), built with heavy
 use of AI coding agents. The goal is a fully open-source solver that holds its own against the
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
-first milestone. It is at an early stage: on 36 instances from recent SAT Competitions it solves
-21 within 120 s, where Kissat solves 22 (see [BENCHMARKS.md](BENCHMARKS.md)).
+first milestone. It is at an early stage: on 32 instances from recent SAT Competitions that were
+not used for tuning it solves 17 within 120 s, where Kissat solves 23 (see
+[BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -64,7 +65,10 @@ Kissat needed 10 to 300 s in the competition), 120 s limit, one Linux machine, e
 | Kissat 4.0.4 | 22 | 113.8 |
 
 The defaults of 0.3 were chosen with A/B runs on these instances, so this is not an independent
-test; single runs, and satisfiable instances vary a lot from run to run.
+test; single runs, and satisfiable instances vary a lot from run to run. On 32 other competition
+instances (one from each of 32 families, not used for tuning; same machine and limit) popso-sat
+0.3 solves 17 (PAR-2 138.1 s) and Kissat 23 (107.5 s): the gap is in unsatisfiable instances
+(7 against 12).
 
 On 25 generated formulas (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier
 equivalence, ...) popso-sat 0.3 solves all 25 in 60 s (PAR-2 7.5 s), Kissat 25 (8.5 s),

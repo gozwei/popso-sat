@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.1 — 2026-11-04
+
+- Documentation only: BENCHMARKS.md and the README add a held-out validation set (32 competition
+  instances from 32 families, not used for tuning, [benchmarks/sets/validation.txt](benchmarks/sets/validation.txt)).
+  On it popso-sat 0.3 solves 17 and Kissat 4.0.4 23 (120 s), so the near-parity on the 36
+  tuning instances overstated where popso-sat stands. The solver is unchanged from v0.3.0.
+
 ## v0.3.0 — 2026-11-04
 
 Sweeping and definition mining are on by default, with search and scheduling changes measured

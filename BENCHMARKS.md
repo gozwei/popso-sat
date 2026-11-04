@@ -92,6 +92,70 @@ compressed; every model checked.
 
 </details>
 
+### Held-out validation set
+
+32 other instances from the same pool (main tracks 2022 to 2025), one from each of 32 families,
+31 of which have no instance in the set above; 16 satisfiable, 16 unsatisfiable
+([benchmarks/sets/validation.txt](benchmarks/sets/validation.txt)). They were chosen after the
+0.3 defaults were fixed and are not used for tuning, so this is the independent check the
+section above is not. Same machine and setup, 120 s.
+
+| solver | solved (SAT / UNSAT) of 32 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3 | 17 (10 / 7) | 138.1 | 65.45 |
+| Kissat 4.0.4 | 23 (11 / 12) | 107.5 | 58.73 |
+
+**What this shows.** On instances it was not tuned on, popso-sat 0.3 is clearly behind Kissat:
+6 fewer solved, nearly all of them unsatisfiable (7 against 12). Kissat alone solves aes
+decryption, two Ascon hash instances, grs-96-32, ktf_TF-3, jkkk-one-one (ensemble computation)
+and Folkman; popso-sat alone solves rbsat. Where both solve, popso-sat is faster on 8 of 16. The
+near-parity on the 36 instances above owes much to tuning on them. Two more measurements of how
+much those 36 say: a change that only reorders ties in the decision heap moved the result there
+by 2 solved and 17 s PAR-2; and on jkkk-one-one (measured separately on an Apple M4 Pro, both
+solvers there) Kissat needs under a million conflicts (on 2 of 3 renamed and reordered copies as
+well) where popso-sat has not finished after two million, at about 60% of Kissat's conflict
+rate. Closing the unsatisfiable gap is the main work for 0.4.
+
+<details>
+<summary>Per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+| instance | expected | popso-sat 0.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| b17 | unsat | **14.28** | 29.71 |
+| shift1add.28943 | unsat | **23.55** | 116.03 |
+| asconhashv12_opt64_H5_M2-A8qZX_m0_3_U23.c | unsat | TL | **108.46** |
+| aes_decry_2_rounds.debugged | unsat | TL | **103.69** |
+| edit_distance041_183 | unsat | 97.69 | **91.38** |
+| jkkk-one-one-11-32-unsat | unsat | TL | **36.86** |
+| oski15a01b42s_opt | unsat | TL | TL |
+| manthey_single-ordered-initialized-w42-b8 | unsat | **87.09** | 105.36 |
+| grs-96-32 | unsat | TL | **55.72** |
+| reconf20_61_myciel4_2 | unsat | **17.50** | 39.03 |
+| ktf_TF-3.tf_3_0.02_24 | unsat | TL | **93.28** |
+| rphp5_085_shuffled | unsat | TL | TL |
+| rook-56-1-1 | unsat | TL | TL |
+| SCPC-500-19 | unsat | **18.22** | 22.47 |
+| satch2ways12u | unsat | 21.86 | **3.86** |
+| constraints_18_0.3_2.sanitized | unsat | TL | TL |
+| brent_51_0.29 | sat | 77.13 | **26.83** |
+| asconhashv12_opt64_H13_M2-axxJh7DAq767y_m4_5.c | sat | TL | **72.69** |
+| dislog_a14_x14_n24 | sat | TL | TL |
+| Folkman-175-1251868.sanitized | sat | TL | **68.40** |
+| noL-11-0.sanitized | sat | TL | TL |
+| DLTM_twitter774_83_17 | sat | TL | TL |
+| af-synthesis_stb_50_140_3_sat | sat | 26.39 | **10.48** |
+| mod4block_2vars_10gates_u2_autoenc-sc2009 | sat | 84.05 | **22.40** |
+| PRP_20_40 | sat | 41.01 | **9.03** |
+| frb45-21-2.used-as.sat04-884 | sat | **2.64** | 108.84 |
+| rbsat-v760c43649gyes9 | sat | **115.20** | TL |
+| SC23_Timetable_C_476_E_50_Cl_32_D_6_T_50 | sat | 80.91 | **68.64** |
+| ContextModel_output_6_3_8.bul_.dimacs | sat | TL | TL |
+| sqrt_ineq_3.c | sat | 81.99 | **4.73** |
+| summle_X8639_steps8_I1-2-2-4-4-8-25-100 | sat | **24.25** | 52.38 |
+| ktf_TF-7.tf_3_0.06_113 | sat | **6.37** | 30.47 |
+
+</details>
+
 ### Medium set (generated formulas)
 
 The 25 generated formulas (60 s limit, same machine). The reference solvers' results are the
