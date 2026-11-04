@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.2.1 — 2026-11-04
+
+- Documentation: BENCHMARKS.md credited a fix of the elimination schedule for faster times on
+  two competition instances; that compared times from two different machines and is withdrawn.
+  The solver is unchanged from v0.2.0.
+
 ## v0.2.0 — 2026-11-04
 
 Pre- and inprocessing: the formula is simplified before and periodically during search. On 36

@@ -30,12 +30,13 @@ candidates are downloaded so far). Time limit 120 s, one instance at a time.
 the 14 instances both popso-sat 0.2 and Kissat solve, popso-sat is faster on 5 (velev, the
 division miter, BubbleVsPancakeSort, mchess16 35%, the crypto instance), and it solves 4 that
 Kissat does not within the limit (abio, cfi-rigid, mdp-28-12, spg_420_280); Kissat solves 8 that
-popso-sat does not. Where Kissat is far ahead, the reasons found so far are: equivalence
-sweeping, which is implemented but not yet on by default (6s158_Iter2: Kissat 3.8 s here,
-popso-sat with sweeping at a higher effort 3.3 s on an Apple M4 Pro); an
-elimination bound that never grew on formulas no other pass changed (AProVE07-21, sgen1; fixed
-after v0.2.0); and satisfiable instances whose time depends heavily on luck (popso-sat 0.1.1
-solved abix in 45 s, 0.2 not within 120 s). These are single runs per instance: on satisfiable
+popso-sat does not. Where Kissat is far ahead, one reason found so far is equivalence
+sweeping, which is implemented but not yet on by default (on an Apple M4 Pro, sweeping at a
+higher effort takes 6s158_Iter2 from a time-out to 3.9 s and AProVE07-21 from 11 s to 2.3 s,
+but slows down the largest formulas); another is satisfiable instances whose time depends
+heavily on luck (popso-sat 0.1.1 solved abix in 45 s, 0.2 not within 120 s). (An earlier
+version of this text credited a fix of the elimination schedule for AProVE07-21 and sgen1; that
+compared times from two different machines and is withdrawn.) These are single runs per instance: on satisfiable
 formulas, differences of a few instances are within the noise.
 
 **Setup.**
