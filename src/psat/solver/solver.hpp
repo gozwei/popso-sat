@@ -24,6 +24,7 @@
 #include "psat/core/word_arena.hpp"
 #include "psat/solver/heap.hpp"
 #include "psat/solver/kitten.hpp"
+#include "psat/solver/occs.hpp"
 
 namespace psat {
 
@@ -116,6 +117,7 @@ struct Reluctant {
 
 struct Stats {
   uint64_t conflicts = 0, decisions = 0, propagations = 0, ticks = 0;
+  uint64_t reused_levels = 0;
   uint64_t restarts = 0, reductions = 0, rephased = 0, switched = 0, collections = 0;
   uint64_t collections_full = 0, collected_words = 0;  // words scanned and moved from the start on
   uint64_t learned = 0, learned_units = 0, learned_binary = 0, learned_literals = 0, minimized_literals = 0;
@@ -124,7 +126,7 @@ struct Stats {
   uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0;
   uint64_t vivifications = 0, vivify_ticks = 0, vivify_checked = 0, vivified = 0, vivified_literals = 0;
   uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0;
-  uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
+  uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0;
   uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
@@ -230,6 +232,7 @@ class Solver {
   // --- schedules ------------------------------------------------------------------------------
   bool restarting() const;
   void restart();
+  uint32_t reuse_trail_level();
   bool rephasing() const { return opts_.rephase && stats_.conflicts >= rephase_limit_; }
   void rephase();
   bool reducing() const { return stats_.conflicts >= reduce_limit_; }
@@ -260,7 +263,7 @@ class Solver {
   uint32_t congruent_ites(uint64_t& budget);
   void prove_by_cases(std::vector<Lit>& clause, const std::vector<Var>& cases, size_t depth);
   void bva_round(uint64_t& budget, uint64_t limit);
-  size_t bva_count(Lit l);
+  size_t bva_count(Lit l, uint64_t& budget);
   bool try_eliminate(Var v, uint32_t bound, uint64_t& budget);
   void gather_occurrences(Lit l, std::vector<uint32_t>& out, uint64_t& budget);
   void delete_irredundant(uint32_t ref);
@@ -279,6 +282,7 @@ class Solver {
   void probe_failed_literals(uint64_t ticks_limit);
   void sweep(uint64_t min_budget = 100000);
   bool sweep_initial_done_ = false;
+  uint32_t sweep_delay_ = 0, sweep_skip_ = 0;  // back-off after unproductive sweeps
   bool sweep_variable(Var v, const std::vector<uint32_t>& start, const std::vector<uint32_t>& occ, uint64_t& ticks);
   void sweep_emit_learned();
   bool sweep_add(const Lit* lits, uint32_t size);
@@ -376,10 +380,10 @@ class Solver {
   // Simplification state.
   std::vector<uint8_t> eliminated_;  // per variable
   uint32_t inactive_ = 0;           // eliminated variables (never assigned)
-  std::vector<Lit> extension_;      // [witness, clause literals..., kNoLit]* for model reconstruction
+  WordArena extension_;             // [witness, clause literals..., kNoLit]* for model reconstruction
   std::vector<int8_t> model_;       // per variable, filled after kSat
   bool model_valid_ = false;
-  std::vector<std::vector<uint32_t>> occs_;  // per literal: irredundant long clauses (rounds only)
+  OccLists occs_;  // per literal: irredundant long clauses (rounds only)
   std::vector<uint8_t> touched_;    // per variable: occurrences changed since the last round
   std::vector<int8_t> marks_;       // per literal scratch marks
   struct OccClause {
@@ -387,7 +391,8 @@ class Solver {
     Lit other;
   };
   std::vector<OccClause> elim_side_[2];  // scratch of try_eliminate
-  bool find_xor_gate(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate, uint64_t& budget);
+  uint32_t find_xor_gate(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate,
+                         const std::vector<uint8_t>* skip, uint64_t& budget);
   bool find_ite_gate(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate, uint64_t& budget);
   bool find_definition(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate, uint64_t& budget);
   std::vector<uint32_t> elim_refs_;
@@ -407,6 +412,8 @@ class Solver {
   std::vector<uint32_t> viv_count_;
   uint64_t eliminate_limit_ = 0, eliminate_rounds_ = 0, eliminate_last_ticks_ = 0;
   uint64_t eliminate_last_fixed_ = UINT64_MAX, eliminate_last_irredundant_ = 0;
+  uint32_t eliminate_delay_ = 0;     // unproductive rounds in a row (back-off exponent)
+  uint32_t eliminate_last_bound_ = 0;
 
   // Input.
   std::vector<int> adding_;

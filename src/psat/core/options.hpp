@@ -18,8 +18,10 @@ namespace psat {
   X(stable, 1, 0, 2, "search mode: 0 = focused only, 1 = switch focused/stable, 2 = stable only") \
   X(modeinit, 1000, 10, INT32_MAX, "conflicts before the first mode switch")                      \
   X(modegrowth, 200, 100, 1000, "growth of the mode length in ticks per focused+stable pair (%)") \
+  X(modeschedule, 1, 0, 1, "mode lengths: 0 = geometric (modegrowth), 1 = quadratic in the pair count") \
   X(restartint, 1, 1, 10000, "minimum conflicts between focused-mode restarts")                   \
   X(restartmargin, 10, 0, 100, "fast glue average above slow one by this much restarts (%)")      \
+  X(reusetrail, 1, 0, 1, "restarts keep the decisions that would be taken again")               \
   X(emafast, 33, 1, 1000, "window of the fast glue moving average (conflicts)")                   \
   X(emaslow, 100000, 100, 10000000, "window of the slow glue moving average (conflicts)")         \
   X(reluctant, 1, 0, 1, "reluctant doubling (Luby) restarts in stable mode")                      \
@@ -52,7 +54,8 @@ namespace psat {
   X(eliminatebound, 16, 0, 1024, "largest clause-count increase allowed per eliminated variable") \
   X(eliminateclslim, 100, 2, 100000, "largest resolvent size")                                   \
   X(eliminategates, 1, 0, 1, "AND-gate / equivalence definitions in elimination")                 \
-  X(definitions, 0, 0, 1, "semantic definitions in elimination (unsat cores by Kitten)")        \
+  X(eliminatexorlim, 3, 0, 1000, "largest XOR merged by elimination (0 = no limit)")              \
+  X(definitions, 1, 0, 1, "semantic definitions in elimination (unsat cores by Kitten)")        \
   X(definitionticks, 2000, 10, 1000000, "Kitten ticks per definition attempt")                  \
   X(eliminateocclim, 1000, 1, 1000000, "skip variables with more occurrences in one polarity")    \
   X(eliminateeffort, 100, 1, 100000, "elimination effort relative to search ticks (per mille)")   \
@@ -61,14 +64,15 @@ namespace psat {
   X(eagersubsume, 20, 0, 100, "learned clauses checked for subsumption by each new learned clause") \
   X(substitute, 1, 0, 1, "equivalent literal substitution (SCCs of binary implications)")         \
   X(bva, 0, 0, 1, "bounded variable addition in elimination rounds")                             \
+  X(bvavars, 1000, 1, 1000000, "BVA adds at most max(bvavars, variables / 10) variables per round")  \
   X(congruence, 1, 0, 1, "congruence closure on AND gates in elimination rounds")                 \
   X(vivify, 1, 0, 1, "vivification of learned and irredundant clauses")                         \
   X(vivifyint, 2000, 10, INT32_MAX, "base interval between vivification rounds (conflicts)")      \
   X(vivifyeffort, 100, 1, 100000, "vivification effort relative to search ticks (per mille)")     \
   X(vivifyirred, 1, 0, 1, "also vivify irredundant clauses")                                      \
   X(probe, 1, 0, 1, "failed literal probing on binary implication graph roots (vivify rounds)")  \
-  X(sweep, 0, 0, 1, "sweeping: backbones and equivalences in variable environments (Kitten)")    \
-  X(sweepeffort, 100, 1, 100000, "sweeping effort in per mille of search ticks")                \
+  X(sweep, 1, 0, 1, "sweeping: backbones and equivalences in variable environments (Kitten)")    \
+  X(sweepeffort, 1000, 1, 100000, "sweeping effort in per mille of search ticks")                \
   X(sweepdepth, 2, 0, 8, "environment depth (clause steps from the swept variable)")            \
   X(sweepvars, 128, 2, 8192, "most variables in an environment")                                \
   X(sweepclauses, 1024, 2, 65536, "most clauses in an environment")                             \

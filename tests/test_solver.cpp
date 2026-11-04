@@ -122,12 +122,15 @@ std::vector<Options> option_variants() {
   d.restartmargin = 0;
   d.minimizedepth = 1;
   d.shrink = 1;
+  d.reusetrail = 0;  // the pre-0.3 search defaults
+  d.modeschedule = 0;
   v.push_back(d);
   Options e;  // frequent elimination rounds with growing bounds, between restarts and reductions
   e.eliminateinit = 3;
   e.eliminateint = 10;
   e.reduceint = 10;
   e.eliminateclslim = 5;
+  e.eliminatexorlim = 0;  // XOR merges allowed (limited by the default otherwise)
   v.push_back(e);
   e.vivifyint = 10;  // the same with frequent vivification, BVA, shrinking and sweeping
   e.bva = 1;
@@ -147,6 +150,7 @@ std::vector<Options> option_variants() {
   Options f;  // no simplification at all
   f.eliminate = 0;
   f.vivify = 0;
+  f.sweep = 0;
   v.push_back(f);
   Options g;  // elimination without subsumption, large bound from the start
   g.subsume = 0;
@@ -157,6 +161,9 @@ std::vector<Options> option_variants() {
   g.vivifyint = 15;
   g.vivifyirred = 0;
   v.push_back(g);
+  g.definitions = 0;
+  g.sweep = 0;
+  v.push_back(g);  // the same without definitions and sweeping
   Options h;  // semantic definitions only (no syntactic gates), frequent rounds
   h.eliminategates = 0;
   h.definitions = 1;

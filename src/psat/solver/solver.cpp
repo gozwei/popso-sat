@@ -414,9 +414,26 @@ bool Solver::restarting() const {
 void Solver::restart() {
   ++stats_.restarts;
   update_target_and_best(static_cast<uint32_t>(trail_.size()));
-  backtrack(0);
+  const uint32_t keep = reuse_trail_level();
+  stats_.reused_levels += keep;
+  backtrack(keep);
   reluctant_.trigger = false;
   restart_limit_ = stats_.conflicts + static_cast<uint64_t>(opts_.restartint);
+}
+
+// Trail reuse (van der Tak, Ramos & Heule 2011): the decisions of levels 1..k whose variables rank
+// above the next decision variable (EVSIDS score, or VMTF enqueue time) would be taken again in
+// the same order, so the restart keeps them instead of propagating them again.
+uint32_t Solver::reuse_trail_level() {
+  if (!opts_.reusetrail || level() == 0) return 0;
+  const Var next = stable_ ? next_stable() : next_focused();
+  uint32_t keep = 0;
+  while (keep < level()) {
+    const Var d = var_of(trail_[control_[keep]]);  // the decision of level keep + 1
+    if (stable_ ? !(score_[d] > score_[next]) : !(bumped_[d] > bumped_[next])) break;
+    ++keep;
+  }
+  return keep;
 }
 
 void Solver::update_conflict_statistics(uint32_t glue) {
@@ -441,10 +458,17 @@ void Solver::switch_mode() {
   update_target_and_best(static_cast<uint32_t>(trail_.size()));
   backtrack(0);
   stable_ = !stable_;
-  // Focused and stable phases of a pair get the same ticks; each pair is longer by modegrowth.
+  // Focused and stable phases of a pair get the same ticks; each pair is longer by modegrowth
+  // (geometric), or the length is the base times the square of the pair number (quadratic, closer
+  // to Kissat: over long runs the modes keep alternating instead of one phase taking most time).
   double length = static_cast<double>(mode_ticks_base_);
-  const double growth = static_cast<double>(opts_.modegrowth) / 100.0;
-  for (uint64_t pair = mode_count_ / 2; pair > 0; --pair) length *= growth;
+  if (opts_.modeschedule == 1) {
+    const double pair = static_cast<double>(mode_count_ / 2 + 1);
+    length *= pair * pair;
+  } else {
+    const double growth = static_cast<double>(opts_.modegrowth) / 100.0;
+    for (uint64_t pair = mode_count_ / 2; pair > 0; --pair) length *= growth;
+  }
   mode_limit_ticks_ = stats_.ticks + static_cast<uint64_t>(std::min(length, 1e18));
   mode_start_ticks_ = stats_.ticks;
   target_assigned_ = 0;
@@ -524,8 +548,8 @@ void Solver::print_statistics(std::FILE* out) const {
   std::fprintf(out, "c decisions      %14llu  %10.0f /s\n", ull(stats_.decisions), rate(stats_.decisions));
   std::fprintf(out, "c propagations   %14llu  %10.0f /s\n", ull(stats_.propagations), rate(stats_.propagations));
   std::fprintf(out, "c ticks          %14llu\n", ull(stats_.ticks));
-  std::fprintf(out, "c restarts       %14llu  rephased %llu  mode switches %llu\n", ull(stats_.restarts),
-               ull(stats_.rephased), ull(stats_.switched));
+  std::fprintf(out, "c restarts       %14llu  reused levels %llu  rephased %llu  mode switches %llu\n",
+               ull(stats_.restarts), ull(stats_.reused_levels), ull(stats_.rephased), ull(stats_.switched));
   std::fprintf(out, "c reductions     %14llu  reduced %llu  root simplifications %llu\n", ull(stats_.reductions),
                ull(stats_.reduced_clauses), ull(stats_.simplified_root));
   std::fprintf(out, "c collections    %14llu  full %llu  arena %.1f MB, collected %.1f MB\n", ull(stats_.collections),
@@ -548,9 +572,9 @@ void Solver::print_statistics(std::FILE* out) const {
   std::fprintf(out, "c sweeping       %14llu  variables %llu  units %llu  equivalences %llu  ticks %llu\n",
                ull(stats_.sweeps), ull(stats_.swept_vars), ull(stats_.sweep_units), ull(stats_.sweep_equivalences),
                ull(stats_.sweep_ticks));
-  std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
-               ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions), ull(stats_.congruent),
-               ull(stats_.congruent_xors), ull(stats_.congruent_ites));
+  std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu; xor merges skipped %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
+               ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions),
+               ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites));
   std::fprintf(out, "c lucky          %14llu\n", ull(stats_.lucky));
   std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu\n", ull(stats_.walks), ull(stats_.walk_flips),
                ull(stats_.walk_ticks));

@@ -9,7 +9,7 @@ This is a side project by [Marcin Polkowski](https://marcinpolkowski.com), built
 use of AI coding agents. The goal is a fully open-source solver that holds its own against the
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
 first milestone. It is at an early stage: on 36 instances from recent SAT Competitions it solves
-18 within 120 s, where Kissat solves 22 (see [BENCHMARKS.md](BENCHMARKS.md)).
+21 within 120 s, where Kissat solves 22 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -58,12 +58,17 @@ Kissat needed 10 to 300 s in the competition), 120 s limit, one Linux machine, e
 
 | solver | solved of 36 | PAR-2 (s) |
 |---|---|---|
+| popso-sat 0.3 | 21 | 110.9 |
 | popso-sat 0.2 | 18 | 134.2 |
 | popso-sat 0.1.1 | 15 | 152.6 |
 | Kissat 4.0.4 | 22 | 113.8 |
 
+The defaults of 0.3 were chosen with A/B runs on these instances, so this is not an independent
+test; single runs, and satisfiable instances vary a lot from run to run.
+
 On 25 generated formulas (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier
-equivalence, ...) popso-sat 0.2 solves 24 in 60 s, Kissat 25, CaDiCaL 23, Glucose 21, MiniSat 17.
+equivalence, ...) popso-sat 0.3 solves all 25 in 60 s (PAR-2 7.5 s), Kissat 25 (8.5 s),
+CaDiCaL 23, Glucose 21, MiniSat 17.
 Setup, caveats (the reference solvers run through PySAT), per-instance times and plots are in
 [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -74,19 +79,22 @@ Setup, caveats (the reference solvers run through PySAT), per-instance times and
   lists only; long clauses in one compact arena with a compacting garbage collector.
 - First-UIP conflict analysis with recursive clause minimization, glue (LBD) computation and
   glue updates of learned clauses used in later conflicts, reason-side variable bumping.
-- Two search modes, switched on a deterministic effort measure: *focused* (VMTF decision queue,
-  restarts on glue moving averages) and *stable* (EVSIDS scores, reluctant-doubling restarts,
-  target phases), as in Kissat.
+- Two search modes, switched on a deterministic effort measure with phases growing
+  quadratically: *focused* (VMTF decision queue, restarts on glue moving averages) and *stable*
+  (EVSIDS scores, reluctant-doubling restarts, target phases), as in Kissat. Restarts keep the
+  decisions that would be taken again (trail reuse).
 - Phase saving, target and best phases, periodic rephasing.
 - Learned clauses in three tiers by glue, with usage-based aging.
 - Pre- and inprocessing in rounds scheduled by search effort: subsumption and strengthening,
-  bounded variable elimination with gate definitions (AND, XOR, if-then-else) and model
-  reconstruction, equivalent literal substitution, congruence closure on AND, XOR and
+  bounded variable elimination with gate definitions (AND, XOR, if-then-else, and semantic
+  definitions found by Kitten) and model reconstruction (XOR constraints are not merged into
+  longer ones, which hurts parity formulas), equivalent literal substitution, congruence closure on AND, XOR and
   if-then-else gates, vivification with conflict analysis, failed literal probing, eager
   subsumption of learned clauses.
 - Kitten, a small CDCL sub-solver for local sub-formulas, used for sweeping (backbones and
-  equivalences) and for definition mining in elimination (both off by default for now).
-- Local search (ProbSAT) for rephasing, and lucky assignments tried before search.
+  equivalences in the environment of a variable) and for definition mining in elimination.
+- Local search (ProbSAT with incrementally maintained break values) for rephasing, and lucky
+  assignments tried before search.
 - DRAT proof output; every UNSAT answer in the test suite and the benchmark runner is checked.
 
 ## Correctness
@@ -99,8 +107,9 @@ solvers on random and structured formulas and shrink failures with delta debuggi
 
 ## Current limitations
 
-- Sweeping and definition mining exist but are not tuned yet (off by default); no transitive
-  reduction or symmetry handling.
+- Bounded variable addition is implemented but off by default (on the test set it costs more
+  than it gains); no chronological backtracking yet (in development), no transitive reduction or
+  symmetry handling.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
 - Memory per variable is larger than in Kissat; very large formulas need more memory.
 

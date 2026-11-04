@@ -7,6 +7,145 @@ off for the timing runs; UNSAT proofs are verified separately by the correctness
 ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines are
 never mixed.
 
+## v0.3.0 (Intel i7-7700K, Linux)
+
+### SAT Competition instances
+
+The 36 instances of the v0.2.0 section below (main tracks 2022 to 2025, from the
+[Global Benchmark Database](https://benchmark-database.de); the list is
+[benchmarks/sets/dev_candidates.txt](benchmarks/sets/dev_candidates.txt)), same machine and
+setup, 120 s limit, one instance at a time.
+
+![SAT Competition instances: solved vs. time](docs/benchmarks/v0.3-competition.svg)
+
+| solver | solved (SAT / UNSAT) of 36 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3 | 21 (9 / 12) | 110.9 | 38.69 |
+| popso-sat 0.2 | 18 (7 / 11) | 134.2 | 54.18 |
+| Kissat 4.0.4 | 22 (10 / 12) | 113.8 | 44.15 |
+
+**What this shows.** popso-sat 0.3 solves 21 of the 36 instances (0.2: 18; Kissat: 22), with a
+lower PAR-2 and shifted geometric mean than Kissat. Of the 18 instances both solve, popso-sat is
+faster on 10; it solves 3 that Kissat does not within the limit (abio, cfi-rigid, spg_420_280),
+Kissat solves 4 that popso-sat does not (ncc, stb_588_138 DS-ST, case9, battleship-13-13). The
+largest changes come from: the local search keeping break values up to date (both DivS
+instances, dense random-like 11-SAT formulas: time-out to 3 to 4 s); sweeping on by default
+(6s158_Iter2: time-out to 22 s, about 6 s without the XOR limit below, which costs time on this
+instance; AProVE07-21: 22 to 5 s); not merging XOR constraints in elimination (urquhart3: 8 to
+4.7 s, and the parity formulas of the medium set).
+
+Caveats. These are single runs, and the defaults of 0.3 were chosen with A/B runs on these same
+instances, so this is not an independent test. Satisfiable instances depend heavily on luck: in
+the A/B runs, the same configuration with the previous local search solved 23 (case9, case10 and
+cfi-rigid quickly, the DivS instances not at all), and Kissat's 1.9 s on stb_588_138 DS-ST is not
+reproducible either: on 5 randomly renamed and reordered copies of that formula Kissat finds no
+model within 300,000 conflicts. The measured binary is the release candidate b2ca997 run with
+the options that became the 0.3.0 defaults; later commits change no code path used by the
+defaults.
+
+**Setup.** As for v0.2.0 below: Intel Core i7-7700K, Ubuntu 24.04, gcc 13 (`-O3`), shared with
+other long jobs (load around 4 to 5), every run at `nice 10`; Kissat through its PySAT bindings
+(times include reading the formula in Python, substantial on the largest files); instances read
+compressed; every model checked.
+
+<details>
+<summary>Per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+| instance | popso-sat 0.3 | popso-sat 0.2 | Kissat 4.0.4 |
+|---|---|---|---|
+| mp1-squ_ali_s10x10_c39_abio_SAT | **25.84** | 36.55 | TL |
+| mp1-squ_ali_s10x10_c39_abix_SAT | **2.05** | TL | 8.33 |
+| ncc_none_3001_7_3_3_1_31_435991723 | TL | TL | **80.10** |
+| cfi-rigid-r2-0072-01-or_3 | 94.20 | **21.06** | TL |
+| velev-vliw-sat-4.0-b8 | 20.09 | **14.60** | 64.20 |
+| mdp-28-10-sat | TL | TL | TL |
+| mdp-28-12-sat | TL | **0.43** | TL |
+| stb_588_138.apx_2_DS-ST | TL | 105.63 | **1.89** |
+| DivS_862_11.cnf.sanitized | **3.17** | TL | 34.58 |
+| DivS_942_11.cnf.sanitized | **4.45** | TL | 38.59 |
+| battleship-14-26-sat | **4.27** | 68.47 | 9.08 |
+| combined-crypto1-wff-seed-102-wffvars-500-cryptocplx-31-overlap-2 | **4.04** | 20.12 | 92.72 |
+| mp1-Nb5T15 | **23.57** | TL | 107.53 |
+| case10 | TL | TL | TL |
+| case9 | TL | TL | **110.88** |
+| BubbleVsPancakeSort_6_6 | **29.64** | 34.19 | 39.53 |
+| spg_420_280 | **27.32** | 53.11 | TL |
+| div-mitern174 | 20.34 | **16.93** | 21.56 |
+| sqrt-mitern172 | 45.06 | 44.70 | **38.51** |
+| 6s158_Iter2 | 21.91 | TL | **3.82** |
+| urquhart3_25bis.shuffled | 4.65 | 7.90 | **0.59** |
+| WS_500_16_90_70.apx_2_DC-ST | TL | TL | TL |
+| stb_588_138.apx_2_DC-ST | TL | TL | TL |
+| mchess16-mixed-35percent-blocked | **25.22** | 29.14 | 50.69 |
+| mchess16-mixed-45percent-blocked | 10.58 | 14.86 | **4.13** |
+| php-010-009.shuffled-as.sat05-1185 | 3.20 | 2.91 | **2.27** |
+| mrpp_4x4_12_12 | 6.43 | 6.13 | **5.84** |
+| sgen1-unsat-97-100.cnf.mis-72.debugged | 13.23 | 11.73 | **1.56** |
+| lec_mult_CvK_11x10.sanitized | TL | TL | TL |
+| pcmax-scheduling-m13-1655-9604-UNSAT.sanitized | TL | TL | TL |
+| battleship-13-13-unsat | TL | TL | **20.22** |
+| myciel6-cn.used-as.sat04-319 | TL | TL | TL |
+| bivium-39-200-0s0-0xdcfb6ab71951500b8e460045bd45afee15c87e08b0072eb174-43 | TL | TL | TL |
+| lockchart-group3-L11-K23-p4d3j1.normalised | TL | TL | TL |
+| AProVE07-21 | 4.91 | 21.63 | **1.46** |
+| tseitin_grid_n12_m12 | TL | TL | TL |
+
+</details>
+
+### Medium set (generated formulas)
+
+The 25 generated formulas (60 s limit, same machine). The reference solvers' results are the
+runs of the v0.2.0 section.
+
+![medium set: solved vs. time](docs/benchmarks/v0.3-medium.svg)
+
+| solver | solved (SAT / UNSAT) of 25 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3 | 25 (11 / 14) | 7.5 | 5.57 |
+| popso-sat 0.2 | 24 (11 / 13) | 14.9 | 7.79 |
+| Kissat 4.0.4 | 25 (11 / 14) | 8.5 | 6.48 |
+| CaDiCaL 1.9.5 | 23 (11 / 12) | 22.6 | 11.96 |
+| Glucose 4 | 21 (10 / 11) | 28.0 | 12.82 |
+| MiniSat 2.2 | 17 (10 / 7) | 45.2 | 17.37 |
+
+popso-sat 0.3 solves all 25 with the lowest PAR-2. The parity regression of 0.2 is gone (XOR
+chains: time-out and 58 s to 5 and 10 s; Kissat 9 and 46 s); coloring n2000 is slower than with
+0.2 (19 vs 10 s; a satisfiable instance). The PySAT solvers' times include reading the formula
+in Python.
+
+<details>
+<summary>Per-instance times (s); TL = not solved in 60 s; bold = fastest</summary>
+
+| instance | popso-sat 0.3 | popso-sat 0.2 | Kissat 4.0.4 | CaDiCaL 1.9.5 | Glucose 4 | MiniSat 2.2 |
+|---|---|---|---|---|---|---|
+| coloring_medium_n2000-k3-deg4p4 | 19.17 | 9.83 | **5.94** | 14.38 | TL | TL |
+| coloring_medium_n500-k3-deg4p65-s0 | 0.28 | **0.21** | 1.57 | 1.02 | 6.38 | 2.71 |
+| coloring_medium_n500-k3-deg4p65-s1 | **29.49** | 56.77 | 32.26 | 43.13 | TL | TL |
+| counter_medium_steps1000-target1001 | **7.63** | 10.19 | 10.77 | 13.74 | 9.39 | 24.10 |
+| counter_medium_steps1000-target990 | **0.11** | 0.13 | 0.29 | 0.47 | 10.28 | 22.49 |
+| multeq_medium_n24-bug | **0.01** | 0.01 | 0.16 | 0.16 | 0.16 | 0.16 |
+| multeq_medium_n8-ok | **3.62** | 4.46 | 3.90 | 3.92 | 5.47 | 17.75 |
+| multeq_medium_n9-ok | 33.35 | 31.67 | **19.10** | 26.42 | 27.44 | TL |
+| php_medium_n10 | 1.66 | **1.46** | 2.19 | 34.02 | TL | TL |
+| queens_medium_n100 | 1.41 | **0.72** | 10.62 | 7.01 | 19.38 | 3.05 |
+| rand3sat_medium_n275-k3-ratio4p26-s0 | **0.22** | 0.96 | 0.92 | 0.79 | 7.76 | 3.20 |
+| rand3sat_medium_n275-k3-ratio4p26-s1 | **0.06** | 1.01 | 0.16 | 0.58 | 4.10 | 0.66 |
+| rand3sat_medium_n275-k3-ratio4p26-s3 | 9.34 | 6.29 | 7.11 | 8.61 | **5.35** | 8.31 |
+| rand3sat_medium_n275-k3-ratio4p26-s5 | 12.56 | 15.35 | 13.80 | 25.01 | **11.60** | 16.42 |
+| rand5sat_medium_n60-k5-ratio21p1-s0 | 5.66 | 5.66 | 6.71 | 5.45 | **3.89** | 5.90 |
+| rand5sat_medium_n60-k5-ratio21p1-s1 | 0.29 | 0.33 | **0.16** | 0.46 | 3.37 | 1.28 |
+| sudoku_medium_N6-holes0p7 | **0.43** | 0.77 | 7.22 | 12.41 | 6.39 | 5.92 |
+| tseitin_medium_n40-d4-odd | 11.54 | **6.30** | 7.29 | 58.25 | 20.48 | TL |
+| tseitin_medium_n44-d4-odd | 23.31 | 24.15 | **12.92** | TL | TL | TL |
+| tseitin_medium_n80-d3-even | **0.00** | 0.00 | 0.10 | 0.16 | 0.16 | 0.12 |
+| tseitin_medium_n80-d3-odd | **1.38** | 3.69 | 2.56 | 13.80 | 3.57 | 13.58 |
+| xorchain_medium_n40 | **5.17** | TL | 8.59 | 44.39 | 5.90 | 42.16 |
+| xorchain_medium_n48 | **9.82** | 57.84 | 45.56 | TL | 46.69 | TL |
+| xorsat_medium_n500-m460-s0 | 0.26 | 4.75 | **0.23** | 1.96 | 1.71 | 1.82 |
+| xorsat_medium_n500-m460-s2 | 10.42 | 8.93 | 12.15 | **7.92** | 20.24 | TL |
+
+</details>
+
 ## v0.2.0 (Intel i7-7700K, Linux)
 
 ### SAT Competition instances

@@ -101,8 +101,7 @@ void Solver::subsume_round(uint64_t& budget) {
         proof_->del(lits, c.size);
       }
       touch_clause(lits, c.size);
-      std::vector<uint32_t>& os = occs_[remove];
-      os.erase(std::remove(os.begin(), os.end(), ref), os.end());
+      occs_.erase_value(remove, ref);
       if (clause_buf_.size() == 2) {
         add_binary(clause_buf_[0], clause_buf_[1], false);
         c.garbage = 1;

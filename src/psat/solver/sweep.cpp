@@ -31,8 +31,17 @@ void Solver::sweep(uint64_t min_budget) {
   // The occurrence lists cost about a quarter of the arena: wait until the budget covers twice
   // that (search effort accumulates meanwhile), so that huge formulas are not scanned for nothing.
   if (budget < arena_.size() / 2) return;
+  // Sweeps that find nothing double the number of later sweeps skipped (whose search effort is
+  // forfeited, so the next sweep is not inflated): on DivS (855k clauses of 11 literals) sweeping
+  // found nothing but took as many ticks as the search.
+  if (sweep_skip_) {
+    --sweep_skip_;
+    sweep_last_ticks_ = stats_.ticks;
+    return;
+  }
   ++stats_.sweeps;
   sweep_last_ticks_ = stats_.ticks;
+  const uint64_t found_before = stats_.sweep_units + stats_.sweep_equivalences;
   if (level() > 0) backtrack(0);
   if (sweep_local_.size() < num_vars_) sweep_local_.resize(num_vars_, kNotLocal);
   // Occurrence lists (CSR) of the live irredundant long clauses.
@@ -65,6 +74,9 @@ void Solver::sweep(uint64_t min_budget) {
     if (!sweep_variable(v, start, occ, ticks)) break;
   }
   stats_.sweep_ticks += ticks;
+  const bool productive = stats_.sweep_units + stats_.sweep_equivalences != found_before;
+  sweep_delay_ = productive ? 0 : std::min<uint32_t>(2 * sweep_delay_ + 1, 64);
+  sweep_skip_ = sweep_delay_;
 }
 
 // Emits Kitten's new learned clauses to the proof.

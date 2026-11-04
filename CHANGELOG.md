@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.3.0 — 2026-11-04
+
+Sweeping and definition mining are on by default, with search and scheduling changes measured
+on SAT Competition instances. On 36 SAT Competition instances (120 s) popso-sat now solves 21
+instead of 18 (Kissat 4.0.4: 22), with PAR-2 111 s instead of 134 s (Kissat 114 s); on the
+generated medium set it solves all 25 (PAR-2 7.5 s; Kissat 25, 8.5 s). See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **On by default:** sweeping (backbones and equivalences with Kitten) at a higher effort, with a
+  back-off after sweeps that find nothing; semantic definitions (unsat cores) in elimination;
+  trail reuse on restarts (decisions that would be taken again are kept); a mode schedule whose
+  focused / stable phases grow quadratically.
+- **Parity formulas:** elimination no longer merges two XOR constraints into a longer one
+  (`--eliminatexorlim`, default 3). On Tseitin, Urquhart and XOR-chain formulas CDCL needs many
+  times the conflicts on the merged XORs; the v0.2 regression on XOR chains is gone.
+- **Local search:** the ProbSAT walk keeps break values up to date instead of recomputing them
+  for every flip (a flip now visits the flipped variable's occurrences once). On dense
+  formulas this gives several times more flips for the same effort; two random-like 11-SAT
+  competition instances that timed out are now solved in 3 to 4 s (on another machine the
+  first walk finds the model).
+- **Elimination scheduling:** rounds back off when they eliminate nothing, keep candidates they
+  did not get to, and continue while the bound can still grow.
+- **Bounded variable addition** (still off by default): at least 1000 new variables per round
+  instead of a tenth of the variables (small at-most-one-heavy formulas such as
+  battleship-13-13 are solved in seconds), and its matching is charged to its effort budget.
+- **Memory:** occurrence lists for elimination in one pool instead of one vector per literal;
+  the extension stack grows like the clause arena.
+
 ## v0.2.1 — 2026-11-04
 
 - Documentation: BENCHMARKS.md credited a fix of the elimination schedule for faster times on

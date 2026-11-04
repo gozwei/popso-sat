@@ -43,11 +43,25 @@ class WordArena {
     size_ = n;
   }
   void clear() { size_ = 0; }
+  // Appending grows the capacity by a quarter at a time (with realloc, see above).
+  void push_back(uint32_t x) {
+    if (size_ == capacity_) grow(size_ + 1);
+    data_[size_++] = x;
+  }
+  void append(const uint32_t* p, size_t n) {
+    if (size_ + n > capacity_) grow(size_ + n);
+    std::memcpy(data_ + size_, p, n * sizeof(uint32_t));
+    size_ += n;
+  }
   void shrink_to_fit() {
     if (capacity_ > size_) set_capacity(size_);
   }
 
  private:
+  void grow(size_t need) {
+    size_t cap = capacity_ + capacity_ / 4 + 1024;
+    set_capacity(cap > need ? cap : need);
+  }
   void set_capacity(size_t n) {
     if (n == 0) {
       std::free(data_);

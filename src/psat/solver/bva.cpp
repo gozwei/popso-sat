@@ -33,26 +33,30 @@ struct BClause {
 
 }  // namespace
 
-size_t Solver::bva_count(Lit l) {
-  size_t n = occs_[l].size();
+size_t Solver::bva_count(Lit l, uint64_t& budget) {
+  size_t n = occs_.size(l);
   for (const Watch& w : watches_[l]) n += w.binary() && !w.redundant_binary();
+  budget += watches_[l].size() / 8 + 1;
   return n;
 }
 
 void Solver::bva_round(uint64_t& budget, uint64_t limit) {
-  const uint32_t max_new = std::max<uint32_t>(10, num_vars_ / 10);
+  // New variables per round: a tenth of the variables, but at least --bvavars (small crafted
+  // formulas, such as at-most-one cliques over a few hundred variables, need several per clique).
+  const uint32_t max_new = std::max<uint32_t>(static_cast<uint32_t>(opts_.bvavars), num_vars_ / 10);
   uint32_t added = 0;
 
   auto occurrences = [&](Lit l, std::vector<BClause>& out) {
     out.clear();
-    std::vector<uint32_t>& os = occs_[l];
-    size_t j = 0;
-    for (size_t i = 0; i < os.size(); ++i) {
+    uint32_t* os = occs_.begin(l);
+    const uint32_t n = occs_.size(l);
+    uint32_t j = 0;
+    for (uint32_t i = 0; i < n; ++i) {
       if (clause(os[i]).garbage) continue;
       os[j++] = os[i];
       out.push_back(BClause{os[i], kNoLit, kNoLit});
     }
-    os.resize(j);
+    occs_.truncate(l, j);
     for (const Watch& w : watches_[l]) {
       if (w.binary() && !w.redundant_binary()) out.push_back(BClause{kNoReason, l, w.blit});
     }
@@ -73,7 +77,7 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
   std::vector<std::pair<size_t, Lit>> queue;
   for (Lit l = 0; l < 2 * num_vars_; ++l) {
     if (vals_[l] != 0 || eliminated_[var_of(l)]) continue;
-    const size_t n = bva_count(l);
+    const size_t n = bva_count(l, budget);
     if (n >= 3) queue.emplace_back(n, l);
   }
   std::sort(queue.begin(), queue.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
@@ -101,17 +105,22 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
     m_lit.assign(1, l);
     matched.assign(m_cls.size(), {});
     for (size_t i = 0; i < m_cls.size(); ++i) matched[i].push_back(m_cls[i]);
+    // Each step extends the last complete matching; when the budget runs out the matching found
+    // so far is used (the inner loops are charged: on large formulas one literal's matching
+    // can otherwise take seconds).
     for (;;) {
+      if (budget > limit) break;
       pairs.clear();
       for (uint32_t ci = 0; ci < m_cls.size(); ++ci) {
         lits_of(m_cls[ci], cl);
+        budget += cl.size() / 4 + 1;
         // Mark C - {l} and pick its literal with the fewest occurrences.
         Lit lmin = kNoLit;
         size_t best = SIZE_MAX;
         for (const Lit y : cl) {
           if (y == l) continue;
           marks_[y] = 1;
-          const size_t n = bva_count(y);
+          const size_t n = bva_count(y, budget);
           if (n < best) {
             best = n;
             lmin = y;
@@ -121,6 +130,7 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
           occurrences(lmin, occ);
           for (const BClause& d : occ) {
             lits_of(d, dl);
+            budget += dl.size() / 4 + 1;
             if (dl.size() != cl.size()) continue;
             Lit extra = kNoLit;
             bool ok = true;
@@ -177,7 +187,7 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
     // Replace with a fresh variable x.
     const Var xv = num_vars_;
     grow_vars(num_vars_ + 1);
-    occs_.resize(2 * size_t{num_vars_});
+    occs_.grow(2 * size_t{num_vars_});
     lit_count.resize(2 * size_t{num_vars_}, 0);
     touched_[xv] = 1;
     ++added;
@@ -195,7 +205,7 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
         add_binary(rest[0], rest[1], false);
       } else {
         const uint32_t ref = new_clause(rest.data(), static_cast<uint32_t>(rest.size()), false, 0, false);
-        for (const Lit y : rest) occs_[y].push_back(ref);
+        for (const Lit y : rest) occs_.push(y, ref);
       }
     }
     for (const Lit k : m_lit) {

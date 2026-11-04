@@ -6,9 +6,17 @@
 // ProbSAT: pick a random unsatisfied clause, flip one of its variables chosen with probability
 // proportional to cb^-break, where break is the number of clauses that would become unsatisfied
 // and cb depends on the average clause length (2.06 for 3-SAT, larger for longer clauses).
+//
+// Break values are cached: every clause keeps its number of true literals and the XOR of them,
+// so when one true literal is left it is known without a scan, and break[v] (the clauses in which
+// v's literal is the only true one) is updated during the flip. A flip then visits the
+// occurrences of the flipped variable once; computing breaks on demand visited the occurrences
+// of every literal of the picked clause as well (11 x 5000 on dense 11-SAT formulas).
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 #include "psat/solver/solver.hpp"
 
@@ -82,12 +90,20 @@ void Solver::walk() {
     value[make_lit(v, false)] = pos;
     value[make_lit(v, true)] = !pos;
   }
-  std::vector<uint32_t> sat(nclauses, 0), unsat, unsat_pos(nclauses, UINT32_MAX);
+  std::vector<uint32_t> sat(nclauses, 0), true_xor(nclauses, 0), unsat, unsat_pos(nclauses, UINT32_MAX);
+  std::vector<uint32_t> breaks(num_vars_, 0);
   for (uint32_t c = 0; c < nclauses; ++c) {
-    for (uint32_t k = start[c]; k < start[c + 1]; ++k) sat[c] += value[lits[k]];
+    for (uint32_t k = start[c]; k < start[c + 1]; ++k) {
+      if (value[lits[k]]) {
+        ++sat[c];
+        true_xor[c] ^= lits[k];
+      }
+    }
     if (!sat[c]) {
       unsat_pos[c] = static_cast<uint32_t>(unsat.size());
       unsat.push_back(c);
+    } else if (sat[c] == 1) {
+      ++breaks[var_of(true_xor[c])];
     }
   }
   double avg = static_cast<double>(lits.size()) / nclauses;
@@ -109,13 +125,10 @@ void Solver::walk() {
     cand.clear();
     prob.clear();
     double sum = 0;
+    effort += (start[c + 1] - start[c]) / 4 + 1;
     for (uint32_t k = start[c]; k < start[c + 1]; ++k) {
       const Lit l = lits[k];  // false now; flipping makes it true and its negation false
-      const Lit t = negate(l);
-      uint32_t brk = 0;
-      for (uint32_t o = occ_start[t]; o < occ_start[t + 1]; ++o) brk += sat[occ[o]] == 1;
-      effort += (occ_start[t + 1] - occ_start[t]) / 4 + 1;
-      const double p = table[std::min<size_t>(brk, table.size() - 1)];
+      const double p = table[std::min<size_t>(breaks[var_of(l)], table.size() - 1)];
       cand.push_back(l);
       prob.push_back(p);
       sum += p;
@@ -126,21 +139,32 @@ void Solver::walk() {
     const Lit f = cand[pick], t = negate(f);
     value[f] = 1;
     value[t] = 0;
+    const Var fv = var_of(f);
     for (uint32_t o = occ_start[f]; o < occ_start[f + 1]; ++o) {
       const uint32_t d = occ[o];
-      if (sat[d]++ == 0) {
+      const uint32_t before = sat[d]++;
+      if (before == 0) {
+        ++breaks[fv];  // f is the only true literal of d now
         const uint32_t pos = unsat_pos[d], last = unsat.back();
         unsat[pos] = last;
         unsat_pos[last] = pos;
         unsat.pop_back();
         unsat_pos[d] = UINT32_MAX;
+      } else if (before == 1) {
+        --breaks[var_of(true_xor[d])];  // its single true literal is no longer critical
       }
+      true_xor[d] ^= f;
     }
     for (uint32_t o = occ_start[t]; o < occ_start[t + 1]; ++o) {
       const uint32_t d = occ[o];
-      if (--sat[d] == 0) {
+      true_xor[d] ^= t;
+      const uint32_t after = --sat[d];
+      if (after == 0) {
+        --breaks[fv];  // t was the only true literal
         unsat_pos[d] = static_cast<uint32_t>(unsat.size());
         unsat.push_back(d);
+      } else if (after == 1) {
+        ++breaks[var_of(true_xor[d])];  // the remaining true literal is critical now
       }
     }
     effort += (occ_start[f + 1] - occ_start[f] + occ_start[t + 1] - occ_start[t]) / 4 + 1;
@@ -149,6 +173,27 @@ void Solver::walk() {
       best = unsat.size();
       best_value = value;
       effort += num_vars_ / 16;
+    }
+  }
+  if (opts_.invariants) {  // the cached counters agree with a recomputation
+    std::vector<uint32_t> check(num_vars_, 0);
+    for (uint32_t c = 0; c < nclauses; ++c) {
+      uint32_t n = 0, x = 0;
+      for (uint32_t k = start[c]; k < start[c + 1]; ++k) {
+        if (value[lits[k]]) {
+          ++n;
+          x ^= lits[k];
+        }
+      }
+      if (n != sat[c] || (n == 1 && x != true_xor[c]) || ((n == 0) != (unsat_pos[c] != UINT32_MAX))) {
+        std::fprintf(stderr, "c DEBUG walk: clause %u counters wrong\n", c);
+        std::abort();
+      }
+      if (n == 1) ++check[var_of(x)];
+    }
+    if (check != breaks) {
+      std::fprintf(stderr, "c DEBUG walk: break values wrong\n");
+      std::abort();
     }
   }
   for (Var v = 0; v < num_vars_; ++v) {
