@@ -1,0 +1,342 @@
+// Clause vivification (Piette, Hamadi & Sais 2008; Li et al. 2020; as in Kissat and CaDiCaL).
+//
+// For a clause C = (l1 ... lk), assign the negations of its literals one by one and propagate
+// without C. If a literal li is already false it is dropped (implied by the earlier ones); if it
+// is already true, C can be replaced by the decided literals plus li; if propagation conflicts, C
+// can be replaced by the decided literals alone. Any such clause is RUP and a subset of C.
+//
+// Rounds run at the root after the root formula has been cleaned. Learned clauses of tier1 and
+// tier2 (best glue first) get two thirds of the effort, irredundant clauses the rest. Phases
+// are saved and restored around a round so that vivification decisions do not leak into search.
+
+#include <algorithm>
+#include <cmath>
+
+#include "psat/io/proof.hpp"
+#include "psat/solver/solver.hpp"
+
+namespace psat {
+
+void Solver::vivify() {
+  ++stats_.vivifications;
+  ++vivify_rounds_;
+  backtrack(0);
+  if (fixed_ > last_simplify_fixed_) simplify_root();
+  maybe_collect_garbage();
+  const std::vector<int8_t> saved = saved_;
+  const uint64_t search = stats_.ticks - vivify_last_ticks_;
+  const uint64_t effort =
+      std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.vivifyeffort / 1000.0), 20000);
+  const uint64_t start = stats_.vivify_ticks;
+  if (opts_.probe) probe_failed_literals(start + effort / 5);
+  if (inconsistent_) return;
+  if (opts_.sweep) {
+    sweep();
+    if (inconsistent_) return;
+  }
+  vivify_clauses(true, stats_.vivify_ticks + (opts_.vivifyirred ? 2 * effort / 3 : effort));
+  if (opts_.vivifyirred && !inconsistent_) vivify_clauses(false, start + effort);
+  backtrack(0);
+  saved_ = saved;
+  maybe_collect_garbage();
+  vivify_last_ticks_ = stats_.ticks;
+  vivify_limit_ = stats_.conflicts + static_cast<uint64_t>(static_cast<double>(opts_.vivifyint) *
+                                                           std::sqrt(static_cast<double>(vivify_rounds_ + 1)));
+}
+
+void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
+  // Candidates packed as (glue 20 bits, size 12 bits, ref 32 bits) in one word, reserved up front:
+  // on formulas with millions of clauses a growing vector of pairs cost hundreds of MB.
+  std::vector<uint64_t>& cands = viv_cands_;
+  cands.clear();
+  cands.reserve(redundant ? redundant_ : irredundant_);
+  size_t done = 0;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || c.redundant != redundant) continue;
+    if (redundant && c.glue > tier2_) continue;
+    if (c.vivified) {
+      ++done;
+      continue;
+    }
+    const uint64_t key = (uint64_t{std::min<uint32_t>(c.glue, (1u << 20) - 1)} << 12) | std::min<uint32_t>(c.size, 4095);
+    cands.push_back((key << 32) | ref);
+  }
+  // Every clause had its turn: start the next pass.
+  if (cands.empty() && done) {
+    for (const uint32_t ref : clauses_) {
+      Clause& c = clause(ref);
+      if (!c.garbage && c.redundant == redundant) c.vivified = 0;
+    }
+    return;
+  }
+  // Learned clauses: lowest glue (most useful) first; irredundant: shortest first. Only the
+  // clauses this round can afford (estimated from the ticks per clause of earlier rounds, with a
+  // margin) are selected and ordered: on large formulas sorting every irredundant clause each
+  // round cost more than vivifying. The others keep their turn for later rounds. Taken in chunks
+  // in that order; within a chunk the literals of each clause are sorted by their number of
+  // occurrences among the selected candidates and the clauses lexicographically, so that
+  // consecutive clauses share decision prefixes, which are kept instead of being propagated again.
+  constexpr size_t kChunk = 1000;
+  {
+    const uint64_t budget = ticks_limit > stats_.vivify_ticks ? ticks_limit - stats_.vivify_ticks : 0;
+    const uint64_t afford = 2 * budget / std::max<uint64_t>(vivify_ticks_per_clause_, 1);
+    const size_t take = std::min(cands.size(), std::max<size_t>(kChunk, static_cast<size_t>(afford)));
+    if (take < cands.size()) {
+      std::nth_element(cands.begin(), cands.begin() + static_cast<std::ptrdiff_t>(take), cands.end());
+      cands.resize(take);
+    }
+  }
+  std::sort(cands.begin(), cands.end());
+  std::vector<uint32_t>& count = viv_count_;
+  count.assign(2 * size_t{num_vars_}, 0);
+  for (const uint64_t cand : cands) {
+    const Clause& c = clause(static_cast<uint32_t>(cand));
+    for (uint32_t k = 0; k < c.size; ++k) ++count[c.lits()[k]];
+  }
+  auto before = [&](Lit a, Lit b) { return count[a] != count[b] ? count[a] > count[b] : a < b; };
+  std::vector<Lit> flat;
+  std::vector<std::pair<uint32_t, uint32_t>> spans;  // offset into flat, size
+  std::vector<uint32_t> order;
+  backtrack(0);
+  const uint64_t ticks_before = stats_.vivify_ticks;
+  uint64_t processed = 0;
+  for (size_t first = 0; first < cands.size(); first += kChunk) {
+    if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
+    const size_t last = std::min(cands.size(), first + kChunk);
+    flat.clear();
+    spans.clear();
+    for (size_t i = first; i < last; ++i) {
+      const Clause& c = clause(static_cast<uint32_t>(cands[i]));
+      const uint32_t off = static_cast<uint32_t>(flat.size());
+      flat.insert(flat.end(), c.lits(), c.lits() + c.size);
+      std::sort(flat.begin() + off, flat.end(), before);
+      spans.emplace_back(off, c.size);
+    }
+    order.resize(last - first);
+    for (uint32_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+      return std::lexicographical_compare(flat.begin() + spans[a].first, flat.begin() + spans[a].first + spans[a].second,
+                                          flat.begin() + spans[b].first, flat.begin() + spans[b].first + spans[b].second,
+                                          before);
+    });
+    for (const uint32_t i : order) {
+      if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
+      vivify_clause(static_cast<uint32_t>(cands[first + i]), flat.data() + spans[i].first, spans[i].second);
+      ++processed;
+    }
+  }
+  backtrack(0);
+  if (processed >= 100) {
+    const uint64_t per = (stats_.vivify_ticks - ticks_before) / processed + 1;
+    vivify_ticks_per_clause_ = (vivify_ticks_per_clause_ + per) / 2;
+  }
+}
+
+// Failed literal probing on the roots of the binary implication graph (literals that occur in no
+// binary clause, so nothing implies them through binaries, but that imply others): a root whose
+// propagation conflicts is false, giving the unit -root (RUP). Probes run at level 1 and book
+// their ticks with vivification.
+void Solver::probe_failed_literals(uint64_t ticks_limit) {
+  std::vector<Lit> roots;
+  for (Lit l = 0; l < 2 * num_vars_; ++l) {
+    if (vals_[l] != 0 || eliminated_[var_of(l)]) continue;
+    bool implies = false, implied = false;
+    for (const Watch& w : watches_[negate(l)]) implies = implies || w.binary();
+    for (const Watch& w : watches_[l]) implied = implied || w.binary();
+    if (implies && !implied) roots.push_back(l);
+  }
+  for (const Lit r : roots) {
+    if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
+    if (vals_[r] != 0) continue;
+    ++stats_.probes;
+    control_.push_back(static_cast<uint32_t>(trail_.size()));
+    assign(r, kNoReason);
+    const bool ok = propagate_vivify(kNoReason);
+    backtrack(0);
+    if (ok) continue;
+    ++stats_.failed_literals;
+    const Lit unit = negate(r);
+    if (proof_) proof_->add_unit(unit);
+    assign(unit, kNoReason);
+    if (!propagate_vivify(kNoReason)) {
+      inconsistent_ = true;
+      if (proof_) proof_->add_empty();
+    }
+  }
+}
+
+bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
+  {
+    Clause& c = clause(ref);
+    if (c.garbage) return false;
+    c.vivified = 1;
+  }
+  ++stats_.vivify_checked;
+  // Satisfied at the root: just remove it.
+  for (uint32_t i = 0; i < n; ++i) {
+    const Lit l = lits[i];
+    if (vals_[l] > 0 && vdata_[var_of(l)].level == 0) {
+      Clause& c = clause(ref);
+      delete_clause_proof(c);
+      c.garbage = 1;
+      note_garbage(c);
+      garbage_words_ += kHeaderWords + c.size;
+      if (c.redundant) {
+        --redundant_;
+      } else {
+        --irredundant_;
+      }
+      return false;
+    }
+  }
+  // Keep the decisions of the previous clause that are negations of this clause's first
+  // literals (skipping literals already false below them).
+  uint32_t keep = 0;
+  for (uint32_t i = 0; i < n; ++i) {
+    const Lit x = lits[i];
+    if (keep < level() && trail_[control_[keep]] == negate(x)) {
+      ++keep;
+      continue;
+    }
+    if (vals_[x] < 0 && vdata_[var_of(x)].level <= keep) continue;
+    break;
+  }
+  backtrack(keep);
+  // Implications through this very clause must not be kept (it is ignored while vivifying it).
+  if (level() > 0) {
+    for (size_t t = control_[0]; t < trail_.size(); ++t) {
+      const VarData& d = vdata_[var_of(trail_[t])];
+      if (d.reason == ref) {
+        backtrack(d.level - 1);
+        break;
+      }
+    }
+  }
+  viv_decided_.clear();
+  Lit implied = kNoLit;
+  bool conflict = false;
+  for (uint32_t i = 0; i < n; ++i) {
+    const Lit x = lits[i];
+    const int8_t v = vals_[x];
+    if (v < 0) {
+      // False: either one of the decisions (the negation of a literal of this clause, kept from
+      // the previous clause), or implied false by the earlier literals and dropped.
+      const VarData& d = vdata_[var_of(x)];
+      if (d.level > 0 && d.reason == kNoReason) viv_decided_.push_back(x);
+      continue;
+    }
+    if (v > 0) {
+      implied = x;
+      break;
+    }
+    control_.push_back(static_cast<uint32_t>(trail_.size()));
+    assign(negate(x), kNoReason);
+    viv_decided_.push_back(x);
+    if (!propagate_vivify(ref)) {
+      conflict = true;
+      break;
+    }
+  }
+  // Keep only the decisions the conflict (or the implication of the true literal) depends on.
+  if (conflict || implied != kNoLit) vivify_analyze(conflict ? kNoLit : implied);
+  if (conflict) backtrack(level() - 1);  // back to a consistent state
+  const uint32_t old_size = n;
+  if (viv_decided_.size() >= old_size) return false;
+  backtrack(0);  // the replacement is added at the root
+  viv_lits_.assign(lits, lits + n);
+
+  // Replace C by the shorter clause.
+  ++stats_.vivified;
+  stats_.vivified_literals += old_size - viv_decided_.size();
+  const bool red = clause(ref).redundant;
+  const uint32_t glue = clause(ref).glue;
+  if (proof_) proof_->add(viv_decided_.data(), viv_decided_.size());
+  {
+    Clause& c = clause(ref);
+    delete_clause_proof(c);
+    c.garbage = 1;
+    note_garbage(c);
+    garbage_words_ += kHeaderWords + c.size;
+    if (red) {
+      --redundant_;
+    } else {
+      --irredundant_;
+    }
+  }
+  if (!red) touch_clause(viv_lits_.data(), old_size);
+  if (viv_decided_.empty()) {  // cannot happen at a consistent root, but stay safe
+    inconsistent_ = true;
+    if (proof_) proof_->add_empty();
+    return true;
+  }
+  if (viv_decided_.size() == 1) {
+    assign(viv_decided_[0], kNoReason);
+    // Garbage clauses are still watched until the round ends: skip them (they are deleted in the
+    // proof, so they must not justify the root units found here).
+    if (!propagate_vivify(kNoReason)) {
+      inconsistent_ = true;
+      if (proof_) proof_->add_empty();
+    }
+    return true;
+  }
+  if (viv_decided_.size() == 2) {
+    add_binary(viv_decided_[0], viv_decided_[1], red);
+    return true;
+  }
+  const uint32_t size = static_cast<uint32_t>(viv_decided_.size());
+  const uint32_t nref = new_clause(viv_decided_.data(), size, red, std::min(glue, size - 1));
+  clause(nref).vivified = 1;
+  return true;
+}
+
+// Conflict analysis for vivification: walks the implication graph from the conflict (or from the
+// implied true literal) back to the decisions, which are negations of literals of the clause
+// being vivified. viv_decided_ becomes the clause literals of the involved decisions (plus the
+// implied literal): assigning their negations propagates to the same conflict, so the clause is
+// RUP, and it is often much shorter than all decisions taken (as in CaDiCaL and Kissat).
+void Solver::vivify_analyze(Lit implied) {
+  viv_decided_.clear();
+  auto mark = [&](Lit l) {
+    const Var v = var_of(l);
+    if ((flags_[v] & kSeen) || vdata_[v].level == 0) return;
+    flags_[v] |= kSeen;
+    viv_marked_.push_back(v);
+  };
+  if (implied != kNoLit) {
+    mark(implied);
+  } else if (conflict_ref_ == kNoReason) {
+    mark(conflict_bin_[0]);
+    mark(conflict_bin_[1]);
+  } else {
+    const Clause& c = clause(conflict_ref_);
+    for (uint32_t k = 0; k < c.size; ++k) mark(c.lits()[k]);
+  }
+  size_t open = viv_marked_.size();
+  for (size_t t = trail_.size(); open > 0 && t-- > 0;) {
+    const Lit l = trail_[t];
+    const Var v = var_of(l);
+    if (!(flags_[v] & kSeen)) continue;
+    --open;
+    const uint32_t r = vdata_[v].reason;
+    if (r == kNoReason) {  // a decision: the negation of a literal of the clause
+      viv_decided_.push_back(negate(l));
+      continue;
+    }
+    const size_t before = viv_marked_.size();
+    if (r & kBinaryTag) {
+      mark(static_cast<Lit>(r & ~kBinaryTag));
+    } else {
+      const Clause& c = clause(r);
+      for (uint32_t k = 0; k < c.size; ++k) {
+        if (c.lits()[k] != l) mark(c.lits()[k]);
+      }
+    }
+    open += viv_marked_.size() - before;
+  }
+  for (const Var v : viv_marked_) flags_[v] &= static_cast<uint8_t>(~kSeen);
+  viv_marked_.clear();
+  if (implied != kNoLit) viv_decided_.push_back(implied);
+}
+
+}  // namespace psat

@@ -9,10 +9,6 @@
 
 namespace psat {
 
-namespace {
-constexpr uint8_t kSeen = 1, kPoison = 2, kRemovable = 4;
-}
-
 uint32_t Solver::recompute_glue(const Clause& c) {
   const uint64_t stamp = ++glue_stamp_;
   uint32_t glue = 0;
@@ -29,14 +25,15 @@ uint32_t Solver::recompute_glue(const Clause& c) {
 
 void Solver::bump_reason_clause(uint32_t ref) {
   Clause& c = clause(ref);
+  if (!stable_) ++used_glue_[std::min<uint32_t>(c.glue, kGlueBuckets - 1)];
   if (!c.keep) {
     const uint32_t glue = recompute_glue(c);
     if (glue < c.glue) {
       c.glue = glue;
-      if (glue <= static_cast<uint32_t>(opts_.tier1)) c.keep = 1;
+      if (glue <= tier1_) c.keep = 1;
     }
   }
-  c.used = c.glue <= static_cast<uint32_t>(opts_.tier2) ? 2 : 1;
+  c.used = c.glue <= tier2_ ? 2 : 1;
 }
 
 void Solver::analyze() {
@@ -105,6 +102,7 @@ void Solver::analyze() {
   learned_[0] = negate(uip);
   const size_t before = learned_.size();
   if (opts_.minimize && learned_.size() > 1) minimize_clause();
+  if (opts_.shrink && learned_.size() > 2) shrink_clause();
   stats_.minimized_literals += before - learned_.size();
 
   // Glue, backjump level, and the highest-level literal moved to position 1 (second watch).
@@ -144,6 +142,98 @@ void Solver::minimize_clause() {
   learned_.resize(j);
   for (Var v : minimized_) flags_[v] &= kSeen;
   minimized_.clear();
+}
+
+// Shrinking (Fleury & Biere, SAT 2021): the literals of one decision level in the learned clause
+// are replaced by the level's block UIP when every reason literal met while resolving within the
+// level is on that level, at the root, or in (or implied by) the learned clause. The result is
+// RUP like the minimized clause.
+void Solver::shrink_clause() {
+  // Group by level (descending), latest trail position first.
+  std::sort(learned_.begin() + 1, learned_.end(), [this](Lit a, Lit b) {
+    const VarData& x = vdata_[var_of(a)];
+    const VarData& y = vdata_[var_of(b)];
+    return x.level != y.level ? x.level > y.level : x.trail > y.trail;
+  });
+  size_t out = 1;
+  size_t i = 1;
+  while (i < learned_.size()) {
+    const uint32_t lvl = vdata_[var_of(learned_[i])].level;
+    size_t j = i + 1;
+    while (j < learned_.size() && vdata_[var_of(learned_[j])].level == lvl) ++j;
+    if (j - i < 2) {
+      learned_[out++] = learned_[i];
+      i = j;
+      continue;
+    }
+    // Resolve backwards along the trail within level lvl until one open literal is left.
+    shrunk_.clear();
+    for (size_t k = i; k < j; ++k) {
+      flags_[var_of(learned_[k])] |= kShrinkable;
+      shrunk_.push_back(var_of(learned_[k]));
+    }
+    uint32_t open = static_cast<uint32_t>(j - i);
+    size_t pos = vdata_[var_of(learned_[i])].trail;
+    const size_t bottom = control_[lvl - 1];
+    Lit uip = kNoLit;
+    bool ok = true;
+    uint64_t steps = 0;
+    for (;;) {
+      const Lit t = trail_[pos];
+      const Var v = var_of(t);
+      if (flags_[v] & kShrinkable) {
+        if (--open == 0) {
+          uip = t;
+          break;
+        }
+        const uint32_t r = vdata_[v].reason;
+        if (r == kNoReason) {
+          ok = false;
+          break;
+        }
+        auto visit = [&](Lit o) {
+          const Var u = var_of(o);
+          const VarData& d = vdata_[u];
+          if (d.level == lvl) {
+            if (!(flags_[u] & kShrinkable)) {
+              flags_[u] |= kShrinkable;
+              shrunk_.push_back(u);
+              ++open;
+            }
+          } else if (d.level != 0 && !(flags_[u] & kSeen)) {
+            ok = false;
+          }
+        };
+        if (r & kBinaryTag) {
+          visit(r & ~kBinaryTag);
+        } else {
+          const Clause& c = clause(r);
+          for (uint32_t k = 0; k < c.size && ok; ++k) {
+            if (var_of(c.lits()[k]) != v) visit(c.lits()[k]);
+          }
+          steps += c.size;
+        }
+        if (!ok || steps > 10000) {
+          ok = false;
+          break;
+        }
+      }
+      if (pos == bottom) {
+        ok = false;
+        break;
+      }
+      --pos;
+    }
+    for (const Var v : shrunk_) flags_[v] &= static_cast<uint8_t>(~kShrinkable);
+    if (ok) {
+      learned_[out++] = negate(uip);
+      stats_.shrunk_literals += (j - i) - 1;
+    } else {
+      for (size_t k = i; k < j; ++k) learned_[out++] = learned_[k];
+    }
+    i = j;
+  }
+  learned_.resize(out);
 }
 
 // lit is true on the trail (its negation is in, or implied by, the learned clause). Returns true
@@ -214,6 +304,7 @@ void Solver::learn_clause(uint32_t jump, uint32_t glue) {
     return;
   }
   if (proof_) proof_->add(learned_.data(), learned_.size());
+  if (opts_.eagersubsume) eager_subsume();
   if (learned_.size() == 2) {
     ++stats_.learned_binary;
     add_binary(learned_[0], learned_[1], true);
@@ -222,6 +313,36 @@ void Solver::learn_clause(uint32_t jump, uint32_t glue) {
   }
   const uint32_t ref = new_clause(learned_.data(), static_cast<uint32_t>(learned_.size()), true, glue);
   assign(uip, ref);
+  if (opts_.eagersubsume) {
+    if (recent_learned_.size() >= static_cast<size_t>(opts_.eagersubsume)) {
+      recent_learned_.erase(recent_learned_.begin());
+    }
+    recent_learned_.push_back(ref);
+  }
+}
+
+// Eager subsumption (as in Kissat and CaDiCaL): the new learned clause often subsumes one of the
+// last few learned clauses (it was derived from a conflict they were part of), which can then be
+// deleted. Clauses that are reasons on the trail are kept.
+void Solver::eager_subsume() {
+  const uint32_t n = static_cast<uint32_t>(learned_.size());
+  for (const Lit l : learned_) marks_[l] = 1;
+  for (const uint32_t ref : recent_learned_) {
+    Clause& c = clause(ref);
+    if (c.garbage || c.size <= n) continue;
+    const Lit first = c.lits()[0];
+    if (vals_[first] > 0 && vdata_[var_of(first)].reason == ref) continue;
+    uint32_t found = 0;
+    for (uint32_t k = 0; k < c.size && found < n; ++k) found += marks_[c.lits()[k]] ? 1u : 0u;
+    if (found < n) continue;
+    ++stats_.eager_subsumed;
+    delete_clause_proof(c);
+    c.garbage = 1;
+    note_garbage(c);
+    garbage_words_ += kHeaderWords + c.size;
+    --redundant_;
+  }
+  for (const Lit l : learned_) marks_[l] = 0;
 }
 
 void Solver::backtrack(uint32_t new_level) {

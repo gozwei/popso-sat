@@ -9,7 +9,14 @@
 
 namespace psat {
 
-bool Solver::propagate() {
+bool Solver::propagate() { return propagate_impl<false>(kNoReason); }
+
+// Vivification propagates without the clause being vivified, and books its ticks separately from
+// search. Both skip garbage clauses (deleted in the proof already) and drop their watches.
+bool Solver::propagate_vivify(uint32_t ignore) { return propagate_impl<true>(ignore); }
+
+template <bool kVivify>
+bool Solver::propagate_impl(uint32_t ignore) {
   has_conflict_ = false;
   const size_t start = propagated_;
   uint64_t ticks = 0;
@@ -39,6 +46,13 @@ bool Solver::propagate() {
       }
       ++ticks;
       Clause& c = clause(w.ref);
+      if (c.garbage) {  // deleted clause (collections are deferred): drop its watch
+        --j;
+        continue;
+      }
+      if constexpr (kVivify) {
+        if (w.ref == ignore) continue;
+      }
       Lit* lits = c.lits();
       const Lit other = lits[0] ^ lits[1] ^ not_lit;
       const int8_t ov = vals_[other];
@@ -91,7 +105,11 @@ bool Solver::propagate() {
     if (has_conflict_) break;
   }
   stats_.propagations += propagated_ - start;
-  stats_.ticks += ticks;
+  if constexpr (kVivify) {
+    stats_.vivify_ticks += ticks;
+  } else {
+    stats_.ticks += ticks;
+  }
   return !has_conflict_;
 }
 

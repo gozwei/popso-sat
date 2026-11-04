@@ -21,7 +21,9 @@
 
 #include "psat/core/options.hpp"
 #include "psat/core/types.hpp"
+#include "psat/core/word_arena.hpp"
 #include "psat/solver/heap.hpp"
+#include "psat/solver/kitten.hpp"
 
 namespace psat {
 
@@ -35,7 +37,8 @@ struct Clause {
   uint32_t reason : 1;
   uint32_t garbage : 1;
   uint32_t redundant : 1;
-  uint32_t spare : 6;
+  uint32_t vivified : 1;  // already vivified in the current pass
+  uint32_t spare : 5;
   uint32_t pos;  // where the last replacement-watch search ended; GC forwarding address
 
   Lit* lits() { return reinterpret_cast<Lit*>(this + 1); }
@@ -55,6 +58,9 @@ struct Watch {
   bool binary() const { return (ref & kBinaryTag) != 0; }
   bool redundant_binary() const { return (ref & 1u) != 0; }
 };
+
+// Per-variable analysis flags (Solver::flags_).
+constexpr uint8_t kSeen = 1, kPoison = 2, kRemovable = 4, kShrinkable = 8;
 
 struct VarData {
   uint32_t level;
@@ -111,8 +117,16 @@ struct Reluctant {
 struct Stats {
   uint64_t conflicts = 0, decisions = 0, propagations = 0, ticks = 0;
   uint64_t restarts = 0, reductions = 0, rephased = 0, switched = 0, collections = 0;
+  uint64_t collections_full = 0, collected_words = 0;  // words scanned and moved from the start on
   uint64_t learned = 0, learned_units = 0, learned_binary = 0, learned_literals = 0, minimized_literals = 0;
+  uint64_t eager_subsumed = 0;
   uint64_t reduced_clauses = 0, simplified_root = 0, fixed = 0;
+  uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0;
+  uint64_t vivifications = 0, vivify_ticks = 0, vivify_checked = 0, vivified = 0, vivified_literals = 0;
+  uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0;
+  uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
+  uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0;
+  uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
 };
@@ -150,6 +164,7 @@ class Solver {
   const char* unknown_reason() const { return unknown_reason_; }
   size_t memory_bytes() const;
   double seconds() const;
+  static double peak_rss_mb();  // of the process (getrusage), for diagnostics
   void print_statistics(std::FILE* out) const;
 
  private:
@@ -186,8 +201,12 @@ class Solver {
   // --- search ---------------------------------------------------------------------------------
   int search();
   bool propagate();
+  bool propagate_vivify(uint32_t ignore);
+  template <bool kVivify>
+  bool propagate_impl(uint32_t ignore);
   void analyze();
   void minimize_clause();
+  void shrink_clause();
   bool minimize_literal(Lit lit, uint32_t depth);
   uint32_t recompute_glue(const Clause& c);
   void bump_reason_clause(uint32_t ref);
@@ -215,10 +234,12 @@ class Solver {
   void rephase();
   bool reducing() const { return stats_.conflicts >= reduce_limit_; }
   void reduce();
+  void update_tier_limits();
   bool switching() const;
   void switch_mode();
   void update_conflict_statistics(uint32_t glue);
   bool check_limits();
+  void debug_check(const char* where);
 
   // --- clause database maintenance ------------------------------------------------------------
   void mark_reasons(bool on);
@@ -226,6 +247,53 @@ class Solver {
   void collect_garbage();
   void flush_root_binaries();
   void delete_clause_proof(const Clause& c);
+
+  // --- simplification rounds (eliminate.cpp, subsume.cpp) ----------------------------------------
+  bool eliminating() const;
+  void eliminate();
+  void disconnect_long_watches();
+  void reconnect_long_watches();
+  void subsume_round(uint64_t& budget);
+  bool substitute();
+  uint32_t congruence(uint64_t& budget);
+  uint32_t congruent_xors(uint64_t& budget);
+  uint32_t congruent_ites(uint64_t& budget);
+  void prove_by_cases(std::vector<Lit>& clause, const std::vector<Var>& cases, size_t depth);
+  void bva_round(uint64_t& budget, uint64_t limit);
+  size_t bva_count(Lit l);
+  bool try_eliminate(Var v, uint32_t bound, uint64_t& budget);
+  void gather_occurrences(Lit l, std::vector<uint32_t>& out, uint64_t& budget);
+  void delete_irredundant(uint32_t ref);
+  void delete_binary(Lit a, Lit b);  // an irredundant binary clause
+  void remove_binary_watch(Lit owner, Lit other, bool redundant);
+  void touch_clause(const Lit* lits, uint32_t size);
+  void push_extension(Lit witness, const Lit* lits, uint32_t size);
+  void extend_model();
+  void walk();
+  bool lucky();
+  bool vivifying() const { return opts_.vivify && stats_.conflicts >= vivify_limit_; }
+  void vivify();
+  void vivify_clauses(bool redundant, uint64_t ticks_limit);
+  bool vivify_clause(uint32_t ref, const Lit* lits, uint32_t n);
+  void vivify_analyze(Lit implied);
+  void probe_failed_literals(uint64_t ticks_limit);
+  void sweep(uint64_t min_budget = 100000);
+  bool sweep_initial_done_ = false;
+  bool sweep_variable(Var v, const std::vector<uint32_t>& start, const std::vector<uint32_t>& occ, uint64_t& ticks);
+  void sweep_emit_learned();
+  bool sweep_add(const Lit* lits, uint32_t size);
+  Kitten kitten_;
+  std::vector<uint32_t> sweep_local_;   // per variable: index in the environment or UINT32_MAX
+  std::vector<Var> sweep_env_;          // environment variables (local index -> variable)
+  std::vector<uint32_t> sweep_stamp_;   // per long clause (CSR index): environment stamp
+  uint32_t sweep_stamp_now_ = 0;
+  size_t sweep_emitted_ = 0;            // kitten learned clauses already in the proof
+  std::vector<Lit> sweep_emitted_lits_; // their literals (flat, size-prefixed) for deletion
+  std::vector<Lit> sweep_added_;        // binary clauses added to the formula for this variable
+  Var sweep_cursor_ = 0;
+  std::vector<Kitten::KLit> def_lits_;
+  std::vector<uint32_t> def_core_;
+  uint64_t sweep_last_ticks_ = 0;
 
   Options opts_;
   uint32_t num_vars_ = 0;
@@ -238,11 +306,18 @@ class Solver {
   size_t propagated_ = 0;
   std::vector<uint32_t> control_;  // trail size at each decision
 
-  std::vector<uint32_t> arena_;
+  WordArena arena_;
   std::vector<uint32_t> clauses_;  // live clause references in arena order
   std::vector<std::vector<Watch>> watches_;  // per literal
   uint64_t irredundant_ = 0, redundant_ = 0, binaries_irredundant_ = 0, binaries_redundant_ = 0;
   uint64_t garbage_words_ = 0;
+  uint64_t shrunk_words_ = 0;  // dead words left by clauses shortened in place (upper bound)
+  uint32_t first_garbage_ = UINT32_MAX;  // lowest arena offset of a garbage clause since the last collection
+  void note_garbage(const Clause& c) {
+    const auto ref = static_cast<uint32_t>(reinterpret_cast<const uint32_t*>(&c) - arena_.data());
+    if (ref < first_garbage_) first_garbage_ = ref;
+  }
+  void maybe_collect_garbage();
   size_t watched_clauses_ = 0;           // clauses_[0, watched_clauses_) are watched
   std::vector<Lit> pending_binaries_;    // original binary clauses not yet in the watch lists
 
@@ -255,6 +330,7 @@ class Solver {
   std::vector<uint8_t> flags_;  // per variable: kSeen | kPoison | kRemovable
   std::vector<Var> analyzed_;
   std::vector<Var> minimized_;
+  std::vector<Var> shrunk_;
   std::vector<Lit> learned_;
   struct LevelInfo {
     uint32_t seen = 0;          // learned-clause literals on this level
@@ -289,8 +365,48 @@ class Solver {
   uint32_t target_assigned_ = 0, best_assigned_ = 0;
   uint64_t rephase_limit_ = 0, rephase_count_ = 0;
   uint64_t reduce_limit_ = 0;
+  // Tier limits: static (options) or dynamic (glue quantiles of learned clauses used in focused-mode
+  // conflict analysis, as in Kissat 4).
+  static constexpr uint32_t kGlueBuckets = 64;
+  uint32_t tier1_ = 2, tier2_ = 6;
+  uint64_t used_glue_[kGlueBuckets] = {};
   uint64_t last_simplify_fixed_ = 0, simplify_ticks_limit_ = 0;
   uint64_t fixed_ = 0;
+
+  // Simplification state.
+  std::vector<uint8_t> eliminated_;  // per variable
+  uint32_t inactive_ = 0;           // eliminated variables (never assigned)
+  std::vector<Lit> extension_;      // [witness, clause literals..., kNoLit]* for model reconstruction
+  std::vector<int8_t> model_;       // per variable, filled after kSat
+  bool model_valid_ = false;
+  std::vector<std::vector<uint32_t>> occs_;  // per literal: irredundant long clauses (rounds only)
+  std::vector<uint8_t> touched_;    // per variable: occurrences changed since the last round
+  std::vector<int8_t> marks_;       // per literal scratch marks
+  struct OccClause {
+    uint32_t ref;  // kNoReason for a binary clause (pivot, other)
+    Lit other;
+  };
+  std::vector<OccClause> elim_side_[2];  // scratch of try_eliminate
+  bool find_xor_gate(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate, uint64_t& budget);
+  bool find_ite_gate(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate, uint64_t& budget);
+  bool find_definition(Var v, std::vector<OccClause>* side, std::vector<uint8_t>* gate, uint64_t& budget);
+  std::vector<uint32_t> elim_refs_;
+  std::vector<uint8_t> elim_gate_[2];
+  std::vector<Lit> elim_res_;
+  uint64_t vivify_limit_ = 0, vivify_rounds_ = 0, vivify_last_ticks_ = 0;
+  uint64_t vivify_ticks_per_clause_ = 200;  // running estimate, to order only what a round can afford
+  uint32_t congruence_delay_ = 0, congruence_skip_ = 0;  // back-off after unproductive rounds
+  uint64_t walk_last_ticks_ = 0;
+  uint64_t lucky_limit_ = 0;
+  bool lucky_tried_ = false;
+  std::vector<Lit> viv_lits_, viv_decided_;
+  std::vector<Var> viv_marked_;
+  std::vector<uint64_t> viv_cands_;
+  std::vector<uint32_t> recent_learned_;  // newest last; cleared by collections (refs move)
+  void eager_subsume();
+  std::vector<uint32_t> viv_count_;
+  uint64_t eliminate_limit_ = 0, eliminate_rounds_ = 0, eliminate_last_ticks_ = 0;
+  uint64_t eliminate_last_fixed_ = UINT64_MAX, eliminate_last_irredundant_ = 0;
 
   // Input.
   std::vector<int> adding_;

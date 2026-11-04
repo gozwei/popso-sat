@@ -9,6 +9,8 @@
 #include <new>
 #include <stdexcept>
 
+#include <sys/resource.h>
+
 #include "psat/io/proof.hpp"
 
 namespace psat {
@@ -23,6 +25,10 @@ Solver::Solver(const Options& opts) : opts_(opts) {
   rephase_limit_ = static_cast<uint64_t>(opts_.rephaseint);
   reduce_limit_ = static_cast<uint64_t>(opts_.reduceint);
   restart_limit_ = static_cast<uint64_t>(opts_.restartint);
+  eliminate_limit_ = static_cast<uint64_t>(opts_.eliminateinit);
+  tier1_ = static_cast<uint32_t>(opts_.tier1);
+  tier2_ = std::max(tier1_, static_cast<uint32_t>(opts_.tier2));
+  vivify_limit_ = static_cast<uint64_t>(opts_.vivifyint);
   if (stable_) reluctant_.init(static_cast<uint64_t>(opts_.reluctantint), static_cast<uint64_t>(opts_.reluctantlim));
 }
 
@@ -60,6 +66,9 @@ void Solver::grow_vars(uint32_t n) {
   heap_.resize(n);
   levels_.resize(size_t{n} + 1);
   level_stamp_.resize(size_t{n} + 1, 0);
+  eliminated_.resize(n, 0);
+  touched_.resize(n, 1);
+  marks_.resize(2 * size_t{n}, 0);
   trail_.reserve(n);
   num_vars_ = n;
   // New variables join the decision queue / heap; a nonzero seed shuffles their order.
@@ -104,16 +113,23 @@ void Solver::add_clause(const int* lits, size_t n) {
 void Solver::on_root_fixed(Lit l) {
   ++fixed_;
   ++stats_.fixed;
+  touched_[var_of(l)] = 1;
   if (proof_) proof_->add_unit(l);
 }
 
 void Solver::add_original_clause() {
   ++stats_.original_clauses;
   if (level() > 0) backtrack(0);
+  model_valid_ = false;
   if (inconsistent_) return;
   int max_v = 0;
   for (int d : adding_) max_v = std::max(max_v, std::abs(d));
   if (max_v > static_cast<int>(num_vars_)) grow_vars(static_cast<uint32_t>(max_v));
+  for (int d : adding_) {
+    if (eliminated_[static_cast<size_t>(std::abs(d) - 1)]) {
+      throw std::logic_error("adding a clause on an eliminated variable is not supported yet (use --no-eliminate)");
+    }
+  }
   clause_buf_.clear();
   for (int d : adding_) clause_buf_.push_back(from_dimacs(d));
   std::sort(clause_buf_.begin(), clause_buf_.end());
@@ -180,15 +196,22 @@ void Solver::connect_pending() {
 uint32_t Solver::new_clause(const Lit* lits, uint32_t size, bool redundant, uint32_t glue, bool watch) {
   const size_t ref = arena_.size();
   if (ref + kHeaderWords + size > kMaxArenaWords) throw std::bad_alloc();
+  if (ref + kHeaderWords + size > arena_.capacity()) {
+    // Grow by a quarter (not doubled by the vector): the old and new blocks coexist while the
+    // arena is copied, and the arena is the largest structure on big formulas.
+    const size_t want = std::max(ref + kHeaderWords + size, arena_.capacity() + arena_.capacity() / 4 + 1024);
+    arena_.reserve(std::min<size_t>(want, kMaxArenaWords));
+  }
   arena_.resize(ref + kHeaderWords + size);
   Clause& c = clause(static_cast<uint32_t>(ref));
   c.size = size;
   c.glue = std::min<uint32_t>(glue, (1u << 20) - 1);
-  c.used = redundant ? (glue <= static_cast<uint32_t>(opts_.tier2) ? 2 : 1) : 0;
-  c.keep = redundant && glue <= static_cast<uint32_t>(opts_.tier1);
+  c.used = redundant ? (glue <= tier2_ ? 2 : 1) : 0;
+  c.keep = redundant && glue <= tier1_;
   c.reason = 0;
   c.garbage = 0;
   c.redundant = redundant;
+  c.vivified = 0;
   c.spare = 0;
   c.pos = 2;
   std::copy(lits, lits + size, c.lits());
@@ -225,7 +248,7 @@ void Solver::add_binary(Lit a, Lit b, bool redundant) {
 int Solver::val(int lit) const {
   const int v = std::abs(lit);
   if (v == 0 || v > static_cast<int>(num_vars_)) return -lit;
-  const int8_t x = vals_[2 * static_cast<size_t>(v - 1)];
+  const int8_t x = model_valid_ ? model_[static_cast<size_t>(v - 1)] : vals_[2 * static_cast<size_t>(v - 1)];
   const bool truth = (x > 0) == (lit > 0);
   return truth ? lit : -lit;
 }
@@ -235,6 +258,16 @@ int Solver::solve() {
   if (!adding_.empty()) throw std::logic_error("solve() called with an unterminated clause");
   if (inconsistent_) return kUnsat;
   connect_pending();
+  if (opts_.lucky && !lucky_tried_) {
+    lucky_tried_ = true;
+    lucky_limit_ = stats_.vivify_ticks + 8 * (arena_.size() / 8 + num_vars_) + 100000;
+    if (lucky()) {
+      extend_model();
+      if (opts_.verbose) std::printf("c lucky assignment found\n");
+      if (proof_) proof_->flush();
+      return kSat;
+    }
+  }
   const int res = search();
   if (proof_) proof_->flush();
   return res;
@@ -249,7 +282,8 @@ int Solver::search() {
         return kUnsat;
       }
       analyze();
-    } else if (trail_.size() == num_vars_) {
+    } else if (trail_.size() + inactive_ == num_vars_) {
+      extend_model();
       return kSat;
     } else if (check_limits()) {
       return kUnknown;
@@ -261,11 +295,67 @@ int Solver::search() {
       reduce();
     } else if (switching()) {
       switch_mode();
+    } else if (eliminating()) {
+      eliminate();
+      if (inconsistent_) return kUnsat;
+      if (propagate()) debug_check("eliminate");
+    } else if (opts_.sweep && !sweep_initial_done_ && level() == 0) {
+      // One sweep before the first decision (after the first elimination round), as Kissat's
+      // preprocessing does: miters give up many equivalences early.
+      sweep_initial_done_ = true;
+      sweep(1'000'000 + arena_.size() / 2);
+      if (inconsistent_) return kUnsat;
+    } else if (vivifying()) {
+      vivify();
+      if (inconsistent_) return kUnsat;
+      debug_check("vivify");
     } else if (level() == 0 && fixed_ > last_simplify_fixed_ &&
                stats_.ticks >= simplify_ticks_limit_) {
       simplify_root();
     } else {
       decide();
+    }
+  }
+}
+
+// Debugging aid (PSAT_DEBUG set in the environment): watch invariants at a fully propagated root.
+void Solver::debug_check(const char* where) {
+  if (!opts_.invariants || level() != 0 || propagated_ != trail_.size()) return;
+  auto fail = [&](const char* what, uint32_t ref) {
+    std::fprintf(stderr, "c DEBUG after %s: %s (clause %u, conflicts %llu)\n", where, what, ref,
+                 static_cast<unsigned long long>(stats_.conflicts));
+    std::abort();
+  };
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage) continue;
+    const Lit* l = c.lits();
+    for (int w = 0; w < 2; ++w) {
+      bool found = false;
+      for (const Watch& x : watches_[l[w]]) found = found || (!x.binary() && x.ref == ref);
+      if (!found) fail("watched literal without watch", ref);
+    }
+    bool sat = false, unassigned = false;
+    for (uint32_t k = 0; k < c.size; ++k) {
+      sat = sat || vals_[l[k]] > 0;
+      unassigned = unassigned || vals_[l[k]] == 0;
+    }
+    if (!sat && (vals_[l[0]] < 0 || vals_[l[1]] < 0)) fail("false watched literal in unsatisfied clause", ref);
+    if (!sat && !unassigned) fail("falsified clause", ref);
+    for (uint32_t k = 0; k < c.size; ++k) {
+      if (eliminated_[var_of(l[k])]) {
+        std::fprintf(stderr, "c DEBUG clause %u size %u redundant %u glue %u vivified %u:", ref, c.size, c.redundant,
+                     c.glue, c.vivified);
+        for (uint32_t m = 0; m < c.size; ++m) std::fprintf(stderr, " %d%s", to_dimacs(l[m]), eliminated_[var_of(l[m])] ? "*" : "");
+        std::fprintf(stderr, "\n");
+        fail("eliminated variable in clause", ref);
+      }
+    }
+  }
+  for (Lit a = 0; a < 2 * num_vars_; ++a) {
+    for (const Watch& w : watches_[a]) {
+      if (!w.binary()) continue;
+      if (vals_[a] < 0 && vals_[w.blit] <= 0) fail("binary clause not propagated", a);
     }
   }
 }
@@ -289,6 +379,16 @@ bool Solver::check_limits() {
     return true;
   }
   return false;
+}
+
+double Solver::peak_rss_mb() {
+  struct rusage u {};
+  if (getrusage(RUSAGE_SELF, &u) != 0) return 0;
+#ifdef __APPLE__
+  return static_cast<double>(u.ru_maxrss) / (1 << 20);  // bytes
+#else
+  return static_cast<double>(u.ru_maxrss) / 1024;  // kilobytes
+#endif
 }
 
 size_t Solver::memory_bytes() const {
@@ -367,15 +467,20 @@ void Solver::rephase() {
   ++stats_.rephased;
   ++rephase_count_;
   const int8_t initial = opts_.phase ? 1 : -1;
-  // Cycle: best, original, best, inverted.
-  switch ((rephase_count_ - 1) % 4) {
-    case 0:
-    case 2:
+  // Cycle: best, walk, original, best, walk, inverted (without walk: best, original, best, inverted).
+  static const char kWithWalk[] = "BWOBWI";
+  static const char kWithoutWalk[] = "BOBI";
+  const char kind = opts_.walk ? kWithWalk[(rephase_count_ - 1) % 6] : kWithoutWalk[(rephase_count_ - 1) % 4];
+  switch (kind) {
+    case 'B':
       for (Var v = 0; v < num_vars_; ++v) {
         if (best_[v]) saved_[v] = best_[v];
       }
       break;
-    case 1:
+    case 'W':
+      walk();
+      break;
+    case 'O':
       std::fill(saved_.begin(), saved_.end(), initial);
       break;
     default:
@@ -421,14 +526,41 @@ void Solver::print_statistics(std::FILE* out) const {
   std::fprintf(out, "c ticks          %14llu\n", ull(stats_.ticks));
   std::fprintf(out, "c restarts       %14llu  rephased %llu  mode switches %llu\n", ull(stats_.restarts),
                ull(stats_.rephased), ull(stats_.switched));
-  std::fprintf(out, "c reductions     %14llu  reduced %llu  collections %llu  root simplifications %llu\n",
-               ull(stats_.reductions), ull(stats_.reduced_clauses), ull(stats_.collections), ull(stats_.simplified_root));
-  std::fprintf(out, "c learned        %14llu  units %llu  binary %llu  avg size %.1f  minimized %.1f%%\n",
+  std::fprintf(out, "c reductions     %14llu  reduced %llu  root simplifications %llu\n", ull(stats_.reductions),
+               ull(stats_.reduced_clauses), ull(stats_.simplified_root));
+  std::fprintf(out, "c collections    %14llu  full %llu  arena %.1f MB, collected %.1f MB\n", ull(stats_.collections),
+               ull(stats_.collections_full), static_cast<double>(arena_.size()) * 4 / 1e6,
+               static_cast<double>(stats_.collected_words) * 4 / 1e6);
+  std::fprintf(out, "c learned        %14llu  units %llu  binary %llu  avg size %.1f  minimized %.1f%%  eager subsumed %llu\n",
                ull(stats_.learned), ull(stats_.learned_units), ull(stats_.learned_binary),
                stats_.learned ? static_cast<double>(stats_.learned_literals) / static_cast<double>(stats_.learned) : 0.0,
-               pct(stats_.minimized_literals, stats_.learned_literals + stats_.minimized_literals));
+               pct(stats_.minimized_literals, stats_.learned_literals + stats_.minimized_literals),
+               ull(stats_.eager_subsumed));
+  std::fprintf(out,
+               "c eliminations   %14llu  eliminated %llu  substituted %llu  resolvents %llu  subsumed %llu  "
+               "strengthened %llu\n",
+               ull(stats_.eliminations), ull(stats_.eliminated), ull(stats_.substituted), ull(stats_.resolvents),
+               ull(stats_.subsumed), ull(stats_.strengthened));
+  std::fprintf(out, "c vivifications  %14llu  checked %llu  vivified %llu  removed literals %llu  ticks %llu\n",
+               ull(stats_.vivifications), ull(stats_.vivify_checked), ull(stats_.vivified),
+               ull(stats_.vivified_literals), ull(stats_.vivify_ticks));
+  std::fprintf(out, "c probing        %14llu  failed literals %llu\n", ull(stats_.probes), ull(stats_.failed_literals));
+  std::fprintf(out, "c sweeping       %14llu  variables %llu  units %llu  equivalences %llu  ticks %llu\n",
+               ull(stats_.sweeps), ull(stats_.swept_vars), ull(stats_.sweep_units), ull(stats_.sweep_equivalences),
+               ull(stats_.sweep_ticks));
+  std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
+               ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions), ull(stats_.congruent),
+               ull(stats_.congruent_xors), ull(stats_.congruent_ites));
+  std::fprintf(out, "c lucky          %14llu\n", ull(stats_.lucky));
+  std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu\n", ull(stats_.walks), ull(stats_.walk_flips),
+               ull(stats_.walk_ticks));
+  std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu\n", ull(stats_.bva_vars),
+               ull(stats_.bva_removed), ull(stats_.bva_added));
+  std::fprintf(out, "c tiers          %14u  tier2 %u\n", tier1_, tier2_);
+  std::fprintf(out, "c shrunk         %14llu  literals\n", ull(stats_.shrunk_literals));
   std::fprintf(out, "c fixed          %14llu  of %u variables\n", ull(stats_.fixed), num_vars_);
-  std::fprintf(out, "c memory         %14.1f MB\n", static_cast<double>(memory_bytes()) / (1 << 20));
+  std::fprintf(out, "c memory         %14.1f MB  (peak resident %.1f MB)\n", static_cast<double>(memory_bytes()) / (1 << 20),
+               peak_rss_mb());
   std::fprintf(out, "c time           %14.2f s\n", t);
 }
 

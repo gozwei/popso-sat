@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(popso-sat LANGUAGES CXX VERSION 0.1.1)
+project(popso-sat LANGUAGES CXX VERSION 0.2.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,4 +63,9 @@ if(PSAT_BUILD_TESTS)
   target_compile_options(psat_tests PRIVATE ${PSAT_WARNINGS})
   target_compile_definitions(psat_tests PRIVATE PSAT_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
   add_test(NAME unit COMMAND psat_tests)
+
+  # Small DRAT checker (RUP + RAT) for fuzzing; uses the test-only checker.
+  add_executable(psat_dratcheck tools/dratcheck.cpp)
+  target_link_libraries(psat_dratcheck PRIVATE psat_lib)
+  target_compile_options(psat_dratcheck PRIVATE ${PSAT_WARNINGS})
 endif()

@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.2.0 — 2026-11-04
+
+Pre- and inprocessing: the formula is simplified before and periodically during search. On 36
+SAT Competition instances (120 s) popso-sat now solves 18 instead of 15 (Kissat 4.0.4: 22), with
+PAR-2 134 s instead of 153 s; on the generated medium set it is about as fast as v0.1.1 (better
+on coloring, counters and pigeonhole, worse on XOR chains). See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Elimination rounds** (in a dense mode without long watches): forward subsumption and
+  strengthening; bounded variable elimination with AND, equivalence, XOR and if-then-else gate
+  definitions, a growing bound (0, 1, 2, 4, ... 16) and model reconstruction; equivalent
+  literal substitution (strongly connected components of the binary implication graph);
+  congruence closure on AND, XOR and if-then-else gates (equal gates give equivalences; XOR and
+  if-then-else equivalences are proved by case splits in the DRAT proof).
+- **Vivification** of learned (tier 1 and 2) and irredundant clauses, with sorted literals so
+  that consecutive clauses share decisions, and conflict analysis that keeps only the decisions
+  involved; failed literal probing; eager subsumption of recently learned clauses.
+- **Phases:** ProbSAT local search on rephasing (walk), lucky assignments tried before search.
+- **Kitten**, a small CDCL sub-solver for local sub-formulas (assumptions, unsat cores, learned
+  clauses emitted to the DRAT proof), used by *sweeping* (backbones and equivalences in the
+  environment of a variable) and *definition mining* for elimination (unsat cores as semantic
+  gates). Both are off by default until they are tuned.
+- **Off by default** until they show a benefit: bounded variable addition, learned clause
+  shrinking, dynamic tier limits.
+- **Large formulas:** effort budgets in propagation ticks for every inprocessing pass; garbage
+  collection compacts only from the first deleted clause and is deferred until it pays, with
+  propagation dropping watches of deleted clauses; lower peak memory (the clause arena grows
+  with realloc, vivification and congruence closure use compact temporary structures, the
+  model-check copy of the input is stored in chunks); peak resident memory in the statistics.
+- **Testing:** a circuit family in the fuzzer (miters of AND/OR/XOR/ITE circuits in varied gate
+  forms), a test for Kitten against brute force (models, RUP-checked proofs, unsat cores),
+  regression tests for an elimination bug found on a competition instance and for the
+  semantic-definition resolvent rule (found by mutation testing).
+
 ## v0.1.1 — 2026-11-03
 
 - Fix the build with gcc 13 on Linux (Ubuntu 24.04, the SAT Competition platform): a header

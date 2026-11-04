@@ -52,20 +52,34 @@ void usage(std::FILE* out) {
   psat::Options::print_help(out);
 }
 
+// The input formula for the final model check: flat clauses with 0 terminators in fixed-size
+// chunks (a growing vector would briefly hold two copies when it reallocates: hundreds of MB on
+// the largest competition formulas).
+struct Original {
+  static constexpr size_t kChunk = size_t{1} << 20;
+  std::vector<std::vector<int>> chunks;
+  void push(int x) {
+    if (chunks.empty() || chunks.back().size() == kChunk) {
+      chunks.emplace_back();
+      chunks.back().reserve(kChunk);
+    }
+    chunks.back().push_back(x);
+  }
+};
+
 struct Loader : psat::DimacsHandler {
   psat::Solver& solver;
-  std::vector<int>* original;  // flat clauses with 0 terminators, or null
-  explicit Loader(psat::Solver& s, std::vector<int>* orig) : solver(s), original(orig) {}
+  Original* original;  // or null
+  explicit Loader(psat::Solver& s, Original* orig) : solver(s), original(orig) {}
   void header(int vars, int64_t clauses) override {
     solver.reserve(vars);
     solver.reserve_clauses(clauses);
-    if (original && clauses > 0 && clauses < (int64_t{1} << 26)) original->reserve(static_cast<size_t>(clauses) * 4);
   }
   void clause(const int* lits, size_t n) override {
     solver.add_clause(lits, n);
     if (original) {
-      original->insert(original->end(), lits, lits + n);
-      original->push_back(0);
+      for (size_t i = 0; i < n; ++i) original->push(lits[i]);
+      original->push(0);
     }
   }
 };
@@ -91,16 +105,18 @@ void print_model(const psat::Solver& solver, int max_var) {
 }
 
 // Index of the first clause the model falsifies, or -1.
-long long check_model(const psat::Solver& solver, const std::vector<int>& original) {
+long long check_model(const psat::Solver& solver, const Original& original) {
   long long idx = 0;
   bool sat = false;
-  for (const int lit : original) {
-    if (lit == 0) {
-      if (!sat) return idx;
-      ++idx;
-      sat = false;
-    } else if (!sat && solver.val(lit) == lit) {
-      sat = true;
+  for (const auto& chunk : original.chunks) {
+    for (const int lit : chunk) {
+      if (lit == 0) {
+        if (!sat) return idx;
+        ++idx;
+        sat = false;
+      } else if (!sat && solver.val(lit) == lit) {
+        sat = true;
+      }
     }
   }
   return -1;
@@ -217,7 +233,7 @@ int main(int argc, char** argv) {
     solver.set_proof(proof.get());
   }
 
-  std::vector<int> original;
+  Original original;
   int max_var = 0;
   try {
     Loader loader(solver, opts.check ? &original : nullptr);

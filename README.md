@@ -8,9 +8,8 @@ Optimization Solver) but shares no code with popso.
 This is a side project by [Marcin Polkowski](https://marcinpolkowski.com), built with heavy
 use of AI coding agents. The goal is a fully open-source solver that holds its own against the
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
-first milestone. It is at an early stage. On a set of generated benchmark formulas it is
-already close to Kissat, but it has no pre- or inprocessing yet, which matters most on the
-application instances of the SAT Competition (see [BENCHMARKS.md](BENCHMARKS.md)).
+first milestone. It is at an early stage: on 36 instances from recent SAT Competitions it solves
+18 within 120 s, where Kissat solves 22 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -54,19 +53,19 @@ default every model is checked against the original formula before it is printed
 
 ## Performance
 
-25 generated formulas from 11 families (coloring, Tseitin, pigeonhole, random 3- and 5-SAT,
-xor chains, multiplier equivalence, ...), 60 s limit, every model checked:
+36 instances from the main tracks of the SAT Competitions 2022 to 2025 (mostly ones on which
+Kissat needed 10 to 300 s in the competition), 120 s limit, one Linux machine, every model checked:
 
-| solver | solved of 25 | PAR-2 (s) |
+| solver | solved of 36 | PAR-2 (s) |
 |---|---|---|
-| popso-sat 0.1 | 25 | 5.6 |
-| Kissat 4.0.4 | 25 | 4.4 |
-| CaDiCaL 1.9.5 | 23 | 16.4 |
-| Glucose 4 | 23 | 18.7 |
-| MiniSat 2.2 | 20 | 34.1 |
+| popso-sat 0.2 | 18 | 134.2 |
+| popso-sat 0.1.1 | 15 | 152.6 |
+| Kissat 4.0.4 | 22 | 113.8 |
 
-These are crafted formulas, not competition instances; setup, caveats, the per-instance times
-and a plot are in [BENCHMARKS.md](BENCHMARKS.md).
+On 25 generated formulas (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier
+equivalence, ...) popso-sat 0.2 solves 24 in 60 s, Kissat 25, CaDiCaL 23, Glucose 21, MiniSat 17.
+Setup, caveats (the reference solvers run through PySAT), per-instance times and plots are in
+[BENCHMARKS.md](BENCHMARKS.md).
 
 ## What's inside
 
@@ -80,6 +79,14 @@ and a plot are in [BENCHMARKS.md](BENCHMARKS.md).
   target phases), as in Kissat.
 - Phase saving, target and best phases, periodic rephasing.
 - Learned clauses in three tiers by glue, with usage-based aging.
+- Pre- and inprocessing in rounds scheduled by search effort: subsumption and strengthening,
+  bounded variable elimination with gate definitions (AND, XOR, if-then-else) and model
+  reconstruction, equivalent literal substitution, congruence closure on AND, XOR and
+  if-then-else gates, vivification with conflict analysis, failed literal probing, eager
+  subsumption of learned clauses.
+- Kitten, a small CDCL sub-solver for local sub-formulas, used for sweeping (backbones and
+  equivalences) and for definition mining in elimination (both off by default for now).
+- Local search (ProbSAT) for rephasing, and lucky assignments tried before search.
 - DRAT proof output; every UNSAT answer in the test suite and the benchmark runner is checked.
 
 ## Correctness
@@ -92,8 +99,8 @@ solvers on random and structured formulas and shrink failures with delta debuggi
 
 ## Current limitations
 
-- No pre- or inprocessing yet (variable elimination, subsumption, vivification, ...): planned
-  for the next version, and the main reason for the gap to state-of-the-art solvers.
+- Sweeping and definition mining exist but are not tuned yet (off by default); no transitive
+  reduction or symmetry handling.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
 - Memory per variable is larger than in Kissat; very large formulas need more memory.
 

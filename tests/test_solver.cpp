@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+#include "psat/io/dimacs.hpp"
+#include "psat/io/input.hpp"
 #include "psat/io/proof.hpp"
 #include "psat/solver/solver.hpp"
 #include "rup_checker.hpp"
@@ -110,6 +112,7 @@ std::vector<Options> option_variants() {
   c.reduceint = 10;
   c.tier1 = 1;
   c.tier2 = 1;
+  c.dynamictiers = 1;
   v.push_back(c);
   Options d;
   d.seed = 12345;
@@ -118,7 +121,50 @@ std::vector<Options> option_variants() {
   d.modegrowth = 100;
   d.restartmargin = 0;
   d.minimizedepth = 1;
+  d.shrink = 1;
   v.push_back(d);
+  Options e;  // frequent elimination rounds with growing bounds, between restarts and reductions
+  e.eliminateinit = 3;
+  e.eliminateint = 10;
+  e.reduceint = 10;
+  e.eliminateclslim = 5;
+  v.push_back(e);
+  e.vivifyint = 10;  // the same with frequent vivification, BVA, shrinking and sweeping
+  e.bva = 1;
+  e.shrink = 1;
+  e.vivifyeffort = 10000;
+  e.sweep = 1;
+  e.sweepeffort = 10000;
+  e.definitions = 1;
+  v.push_back(e);
+  Options s;  // sweeping with small environments
+  s.sweep = 1;
+  s.sweepdepth = 1;
+  s.sweepvars = 8;
+  s.sweepclauses = 16;
+  s.vivifyint = 20;
+  v.push_back(s);
+  Options f;  // no simplification at all
+  f.eliminate = 0;
+  f.vivify = 0;
+  v.push_back(f);
+  Options g;  // elimination without subsumption, large bound from the start
+  g.subsume = 0;
+  g.eliminategates = 0;
+  g.bva = 1;
+  g.eliminatebound = 1024;
+  g.eliminateint = 20;
+  g.vivifyint = 15;
+  g.vivifyirred = 0;
+  v.push_back(g);
+  Options h;  // semantic definitions only (no syntactic gates), frequent rounds
+  h.eliminategates = 0;
+  h.definitions = 1;
+  h.definitionticks = 100000;
+  h.eliminateinit = 2;
+  h.eliminateint = 10;
+  h.eliminatebound = 8;
+  v.push_back(h);
   return v;
 }
 
@@ -164,6 +210,15 @@ TEST(solver_random_vs_brute_force) {
     const Options& o = variants[static_cast<size_t>(it) % variants.size()];
     Outcome r = run(n, cl, o);
     CHECK_EQ(r.result, expected ? kSat : kUnsat);
+    if (r.result != (expected ? kSat : kUnsat) || (r.result == kSat && !r.model_ok)) {
+      std::fprintf(stderr, "  variant %zu formula: p cnf %d %zu\n", static_cast<size_t>(it) % variants.size(), n,
+                   cl.size());
+      for (const auto& c : cl) {
+        std::fprintf(stderr, "   ");
+        for (int l : c) std::fprintf(stderr, " %d", l);
+        std::fprintf(stderr, " 0\n");
+      }
+    }
     if (r.result == kSat) {
       ++sat;
       CHECK(r.model_ok);
@@ -198,8 +253,185 @@ TEST(solver_random_3sat_medium) {
   }
 }
 
+namespace {
+
+// Circuit builder for structured regression formulas (Tseitin encoding).
+struct Circuit {
+  int n = 0;
+  ClauseList cl;
+  int var() { return ++n; }
+  int AND(int a, int b) {
+    const int o = var();
+    cl.push_back({-o, a});
+    cl.push_back({-o, b});
+    cl.push_back({o, -a, -b});
+    return o;
+  }
+  int OR(int a, int b) { return -AND(-a, -b); }
+  int XOR(int a, int b) {
+    const int o = var();
+    cl.push_back({-o, a, b});
+    cl.push_back({-o, -a, -b});
+    cl.push_back({o, -a, b});
+    cl.push_back({o, a, -b});
+    return o;
+  }
+};
+
+// Miter of a ripple-carry adder (xor / majority) and a generate-propagate adder with swapped
+// operands: unsatisfiable, rich in AND/XOR gates, equivalences and duplicate binaries.
+std::pair<int, ClauseList> adder_miter(int bits) {
+  Circuit c;
+  std::vector<int> a, b;
+  for (int i = 0; i < bits; ++i) a.push_back(c.var());
+  for (int i = 0; i < bits; ++i) b.push_back(c.var());
+  std::vector<int> s1, s2;
+  int c1 = 0, c2 = 0;
+  for (int i = 0; i < bits; ++i) {
+    const int t = c.XOR(a[i], b[i]);
+    if (i == 0) {
+      s1.push_back(t);
+      c1 = c.AND(a[i], b[i]);
+    } else {
+      s1.push_back(c.XOR(t, c1));
+      c1 = c.OR(c.AND(a[i], b[i]), c.AND(t, c1));
+    }
+    const int g = c.AND(b[i], a[i]), p = c.OR(b[i], a[i]), h = c.XOR(b[i], a[i]);
+    if (i == 0) {
+      s2.push_back(h);
+      c2 = g;
+    } else {
+      s2.push_back(c.XOR(c2, h));
+      c2 = c.OR(g, c.AND(p, c2));
+    }
+  }
+  std::vector<int> diff;
+  for (int i = 0; i < bits; ++i) diff.push_back(c.XOR(s1[i], s2[i]));
+  diff.push_back(c.XOR(c1, c2));
+  c.cl.push_back(diff);
+  return {c.n, c.cl};
+}
+
+}  // namespace
+
+TEST(solver_structured_miters_with_invariants) {
+  // Regression: removing the wrong copy of a duplicated binary clause during elimination left an
+  // original clause on an eliminated variable (wrong SAT model on an adder miter).
+  for (int bits : {4, 8, 16, 32}) {
+    const auto f = adder_miter(bits);
+    std::vector<Options> vs = option_variants();
+    for (size_t i = 0; i < vs.size(); ++i) {
+      Options o = vs[i];
+      o.invariants = 1;
+      Outcome r = run(f.first, f.second, o);
+      CHECK_EQ(r.result, kUnsat);
+      CHECK(r.proof_ok);
+      if (!r.proof_ok || r.result != kUnsat) {
+        std::fprintf(stderr, "  adder miter %d bits, variant %zu: result %d %s\n", bits, i, r.result,
+                     r.proof_error.c_str());
+      }
+    }
+  }
+}
+
+TEST(solver_regression_adder_miter_256) {
+  // The formula that exposed the duplicate-binary bug: a 256-bit ripple-carry vs. generate/
+  // propagate adder miter (tests/data/adder_miter_256.cnf.gz). With the bug, the second
+  // elimination round (2000 conflicts) left a clause on an eliminated variable and the solver
+  // reported a wrong model. Default options plus the invariant checks, proof checked.
+  struct Collect : DimacsHandler {
+    int vars = 0;
+    ClauseList cl;
+    void header(int v, int64_t) override { vars = v; }
+    void clause(const int* lits, size_t k) override { cl.emplace_back(lits, lits + k); }
+  } f;
+  DimacsParser parser(f);
+  stream_input(std::string(PSAT_SOURCE_DIR) + "/tests/data/adder_miter_256.cnf.gz",
+               [&](const char* d, size_t k) { parser.feed(d, k); });
+  parser.finish();
+  Options o;
+  o.invariants = 1;
+  Outcome r = run(f.vars, f.cl, o);
+  CHECK_EQ(r.result, kUnsat);
+  CHECK(r.proof_ok);
+}
+
+TEST(solver_congruent_ite_gates) {
+  // o4 = ITE(1,2,3); o5 = ITE(-1,3,2) (the same gate, condition negated); -o6 = ITE(1,-2,-3) (the
+  // same gate, output negated). Congruence closure finds o4 = o5 = o6 (proved by case splits on
+  // the condition); with o4 != o5 the formula is unsatisfiable, and every model has o4 = o5 = o6.
+  auto ite = [](int o, int c, int t, int e) {
+    return ClauseList{{-c, -t, o}, {-c, t, -o}, {c, -e, o}, {c, e, -o}};
+  };
+  ClauseList base;
+  for (const auto& g : {ite(4, 1, 2, 3), ite(5, -1, 3, 2), ite(-6, 1, -2, -3)}) {
+    base.insert(base.end(), g.begin(), g.end());
+  }
+  for (int variant = 0; variant < 2; ++variant) {
+    ClauseList f = base;
+    if (variant == 0) {
+      f.push_back({4, 5});
+      f.push_back({-4, -5});
+    } else {
+      f.push_back({4, 6});
+      f.push_back({-5, 1});
+    }
+    std::string proof_text;
+    ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+    Options o;
+    o.lucky = 0;
+    o.walk = 0;
+    Solver s(o);
+    s.set_proof(&proof);
+    s.reserve(6);
+    for (const auto& c : f) {
+      for (int l : c) s.add(l);
+      s.add(0);
+    }
+    const int result = s.solve();
+    proof.flush();
+    CHECK(s.stats().congruent_ites >= 2);
+    if (variant == 0) {
+      CHECK_EQ(result, kUnsat);
+      psat_test::RupChecker checker(6);
+      for (const auto& c : f) checker.add_original(c);
+      const auto r = checker.check_text_proof(proof_text);
+      CHECK(r.ok && r.has_empty);
+      if (!r.ok) std::fprintf(stderr, "  ite congruence proof: %s\n", r.error.c_str());
+    } else {
+      CHECK_EQ(result, kSat);
+      for (const auto& c : f) {
+        bool sat = false;
+        for (int l : c) sat = sat || s.val(l) == l;
+        CHECK(sat);
+      }
+      CHECK((s.val(4) > 0) == (s.val(5) > 0));
+      CHECK((s.val(4) > 0) == (s.val(6) > 0));
+    }
+  }
+}
+
+TEST(solver_semantic_definition_keeps_gate_pairs) {
+  // Regression guard (found by mutation testing, delta-debugged): with a semantic definition
+  // (an unsat core), gate x gate resolvents are not tautologies and must be added; skipping them
+  // as for syntactic gates gives a wrong model here.
+  const ClauseList f = {{7, 5, 9},    {16, -17},     {11, 14},   {13, 2},   {5, -10},  {-2, 7, 15}, {8, 18},
+                        {-12, -2},    {12, 5, -15},  {-1, 3},    {-5, -16}, {-7, -11}, {-3, -13},   {-18, 4},
+                        {-15, 17, 7}, {15, -7, -5},  {2, 1},     {-14, -6}, {-8, 4}};
+  for (const Options& base : option_variants()) {
+    Options o = base;
+    o.definitions = 1;
+    o.eliminategates = 0;
+    Outcome r = run(18, f, o);
+    CHECK_EQ(r.result, kSat);
+    CHECK(r.model_ok);
+  }
+}
+
 TEST(solver_incremental_add_after_solve) {
-  Solver s;
+  Options o;
+  o.eliminate = 0;  // incremental use needs frozen variables (not yet)
+  Solver s(o);
   s.add(1);
   s.add(2);
   s.add(0);

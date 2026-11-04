@@ -15,6 +15,8 @@ small formulas fast:
              single-clause formulas
   php        pigeonhole (3..6 holes), mostly UNSAT
   parity     two XOR chains over the same variables, SAT or UNSAT
+  circuit    miters of two copies of a random AND/OR/XOR/ITE circuit written in
+             different equivalent gate forms (sometimes with one gate changed)
 
 Besides the edge-* families, low-probability mutators sprinkle duplicate
 literals, tautologies, duplicate clauses, units and unused variables into the
@@ -216,6 +218,99 @@ def gen_parity(rng: random.Random, max_vars: int) -> Formula:
 # ----- edge cases
 
 
+def _encode_gate(kind: str, out: int, ins: list[int], clauses: list[list[int]], rng: random.Random) -> None:
+    """Tseitin clauses of out = kind(ins); `out` may be a negative literal."""
+    if kind == "and":
+        clauses.extend([-out, a] for a in ins)
+        clauses.append([out] + [-a for a in ins])
+    elif kind == "or":
+        clauses.extend([out, -a] for a in ins)
+        clauses.append([-out] + list(ins))
+    elif kind == "xor":
+        a, b = ins
+        clauses += [[-out, a, b], [-out, -a, -b], [out, -a, b], [out, a, -b]]
+    else:  # ite: out = c ? t : e
+        c, t, e = ins
+        clauses += [[-c, -t, out], [-c, t, -out], [c, -e, out], [c, e, -out]]
+        if rng.random() < 0.3:  # the redundant blocking clauses, sometimes
+            clauses += [[-t, -e, out], [t, e, -out]]
+
+
+def gen_circuit(rng: random.Random, max_vars: int) -> Formula:
+    """Random AND / OR / XOR / ITE circuits (Tseitin encoded), mostly as a miter of two copies of
+    the same circuit over shared inputs. The second copy writes gates in varied equivalent forms
+    (permuted inputs, ITE(-c, e, t), negated outputs via De Morgan) so that congruence closure,
+    gate-based elimination and substitution have work to do. Sometimes one gate of the second
+    copy is changed (the miter is then usually SAT), or the outputs get random units instead."""
+    n_in = rng.randint(2, 8)
+    n_gates = rng.randint(3, max(3, min(max(40, max_vars // 5), (max_vars - n_in - 2) // 2)))
+    specs = []
+    for g in range(n_gates):
+        kind = rng.choice(["and", "or", "xor", "ite"])
+        k = {"xor": 2, "ite": 3}.get(kind, rng.randint(2, 3))
+        avail = n_in + g
+        if avail < k:
+            kind, k = "and", 2
+        picks = rng.sample(range(avail), k)
+        specs.append((kind, [(i, rng.random() < 0.3) for i in picks]))
+    mutate = rng.random() < 0.3
+    bad = rng.randrange(n_gates) if mutate else -1
+    clauses: list[list[int]] = []
+    next_var = n_in + 1
+
+    def build(variant: bool) -> list[int]:
+        nonlocal next_var
+        sig = list(range(1, n_in + 1))
+        for g, (kind, ins) in enumerate(specs):
+            lits = [-sig[i] if neg else sig[i] for i, neg in ins]
+            if variant and g == bad:
+                kind = {"and": "or", "or": "and", "xor": "and", "ite": "xor"}[kind]
+                lits = lits[:2]
+            out = next_var
+            next_var += 1
+            if variant and rng.random() < 0.5:
+                if kind == "ite":
+                    c, t, e = lits
+                    lits = [-c, e, t]  # ITE(-c, e, t) = ITE(c, t, e)
+                else:
+                    rng.shuffle(lits)
+            r = rng.random() if variant else 1.0
+            if kind in ("and", "or") and r < 0.25:
+                # De Morgan: out = AND(x) <=> -out = OR(-x) (and dually).
+                _encode_gate("or" if kind == "and" else "and", -out, [-a for a in lits], clauses, rng)
+                sig.append(out)
+            elif kind == "xor" and r < 0.25:
+                a, b = lits
+                _encode_gate("xor", -out, [a, -b], clauses, rng)  # -out = XOR(a, -b) = -XOR(a, b)
+                sig.append(out)
+            elif r < 0.45:
+                _encode_gate(kind, -out, lits, clauses, rng)  # the variable carries the negated signal
+                sig.append(-out)
+            else:
+                _encode_gate(kind, out, lits, clauses, rng)
+                sig.append(out)
+        return sig
+
+    s1 = build(False)
+    s2 = build(True)
+    notes = [f"inputs {n_in}, gates {n_gates}" + (f", gate {bad} changed in copy 2" if mutate else "")]
+    if rng.random() < 0.8:
+        # Miter on the last gate (and sometimes a few more outputs): some output pair differs.
+        outs = [n_gates - 1] + rng.sample(range(n_gates - 1), min(n_gates - 1, rng.randint(0, 2)))
+        diff = []
+        for g in outs:
+            d = next_var
+            next_var += 1
+            _encode_gate("xor", d, [s1[n_in + g], s2[n_in + g]], clauses, rng)
+            diff.append(d)
+        clauses.append(diff)
+    else:
+        for g in rng.sample(range(n_gates), min(n_gates, rng.randint(1, 3))):
+            x = s1[n_in + g] if rng.random() < 0.5 else s2[n_in + g]
+            clauses.append([x if rng.random() < 0.5 else -x])
+    return Formula(next_var - 1, clauses, "circuit", notes=notes)
+
+
 def edge_empty(rng, max_vars):
     return Formula(rng.choice([0, 0, 1, 5, 17]), [], "edge-empty", expected="SAT")
 
@@ -344,7 +439,8 @@ EDGE = {
 
 # Family -> (generator, weight in the default mix)
 FAMILIES = {
-    "ksat": (gen_ksat, 0.38),
+    "ksat": (gen_ksat, 0.30),
+    "circuit": (gen_circuit, 0.08),
     "mixed": (gen_mixed, 0.10),
     "layered": (gen_layered, 0.32),
     "php": (gen_php, 0.03),

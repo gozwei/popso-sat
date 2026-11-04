@@ -67,7 +67,7 @@ void Solver::heap_bump(Var v) {
 void Solver::rebuild_heap() {
   heap_.clear();
   for (Var v = 0; v < num_vars_; ++v) {
-    if (vals_[make_lit(v, false)] == 0) heap_.push(v);
+    if (vals_[make_lit(v, false)] == 0 && !eliminated_[v]) heap_.push(v);
   }
 }
 

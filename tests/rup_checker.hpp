@@ -1,10 +1,11 @@
 #pragma once
-// Test-only forward RUP (DRUP) proof checker and brute-force SAT oracle for small formulas.
+// Test-only forward DRAT proof checker and brute-force SAT oracle for small formulas.
 //
 // The checker keeps the clause database (original clauses plus proof additions minus deletions)
-// and checks every added clause by unit propagation from its negation. It does not check RAT
-// (popso-sat only emits RUP steps so far). Propagation uses occurrence lists with false-literal
-// counters, rebuilt per check: fine for the small formulas used in unit tests.
+// and checks every added clause by unit propagation from its negation (RUP); failing that, by RAT
+// on its first literal p: for every clause D with -p, C v (D - {-p}) must be RUP. Propagation uses
+// occurrence lists with false-literal counters, rebuilt per check: fine for the small formulas
+// used in unit tests.
 
 #include <algorithm>
 #include <cstdint>
@@ -69,8 +70,8 @@ class RupChecker {
         continue;
       }
       ++res.lemmas;
-      if (!rup(lits)) {
-        res.error = "lemma is not RUP: '" + line + "'";
+      if (!rup(lits) && !rat(lits)) {
+        res.error = "lemma is neither RUP nor RAT: '" + line + "'";
         return res;
       }
       insert(lits);
@@ -94,6 +95,24 @@ class RupChecker {
     auto it = db_.find(normalize(c));
     if (it == db_.end()) return false;
     if (--it->second == 0) db_.erase(it);
+    return true;
+  }
+
+  // RAT on the first literal (the DRAT convention).
+  bool rat(const std::vector<int>& c) {
+    if (c.empty()) return false;
+    const int p = c[0];
+    std::vector<std::vector<int>> candidates;
+    for (const auto& kv : db_) {
+      if (std::find(kv.first.begin(), kv.first.end(), -p) != kv.first.end()) candidates.push_back(kv.first);
+    }
+    for (const auto& d : candidates) {
+      std::vector<int> r = c;
+      for (int l : d) {
+        if (l != -p) r.push_back(l);
+      }
+      if (!rup(r)) return false;
+    }
     return true;
   }
 
