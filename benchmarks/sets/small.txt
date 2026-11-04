@@ -1,0 +1,33 @@
+# generated small instances (benchmarks/generators/generate.py --tier small)
+# path  expected-status  # family, how the status is known
+benchmarks/instances/small/addereq_small_n64-bug.cnf.gz                sat      # family=addereq construction
+benchmarks/instances/small/addereq_small_n64-ok.cnf.gz                 unsat    # family=addereq construction
+benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s0.cnf.gz     sat      # family=coloring reference
+benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s1.cnf.gz     unsat    # family=coloring reference
+benchmarks/instances/small/coloring_small_n150-k3-deg4p4.cnf.gz        sat      # family=coloring construction
+benchmarks/instances/small/coloring_small_n60-k5-deg12.cnf.gz          sat      # family=coloring construction
+benchmarks/instances/small/counter_small_steps40-target37.cnf.gz       sat      # family=counter construction
+benchmarks/instances/small/counter_small_steps40-target41.cnf.gz       unsat    # family=counter construction
+benchmarks/instances/small/multeq_small_n6-ok.cnf.gz                   unsat    # family=multeq construction
+benchmarks/instances/small/multeq_small_n7-bug.cnf.gz                  sat      # family=multeq construction
+benchmarks/instances/small/php_small_n7.cnf.gz                         unsat    # family=php construction
+benchmarks/instances/small/php_small_n8.cnf.gz                         unsat    # family=php construction
+benchmarks/instances/small/queens_small_n20.cnf.gz                     sat      # family=queens construction
+benchmarks/instances/small/queens_small_n40.cnf.gz                     sat      # family=queens construction
+benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s0.cnf.gz  unsat    # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s1.cnf.gz  sat      # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s2.cnf.gz  unsat    # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s3.cnf.gz  sat      # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s0.cnf.gz  unsat    # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s1.cnf.gz  sat      # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s2.cnf.gz  sat      # family=rand3sat reference
+benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s3.cnf.gz  unsat    # family=rand3sat reference
+benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s0.cnf.gz   unsat    # family=rand5sat reference
+benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s2.cnf.gz   sat      # family=rand5sat reference
+benchmarks/instances/small/sudoku_small_N4-holes0p6.cnf.gz             sat      # family=sudoku construction
+benchmarks/instances/small/tseitin_small_n16-d4-odd.cnf.gz             unsat    # family=tseitin construction
+benchmarks/instances/small/tseitin_small_n24-d3-odd.cnf.gz             unsat    # family=tseitin construction
+benchmarks/instances/small/tseitin_small_n40-d4-even.cnf.gz            sat      # family=tseitin construction
+benchmarks/instances/small/xorchain_small_n30.cnf.gz                   unsat    # family=xorchain construction
+benchmarks/instances/small/xorsat_small_n60-m60-s0.cnf.gz              sat      # family=xorsat gf2-elimination
+benchmarks/instances/small/xorsat_small_n60-m60-s1.cnf.gz              unsat    # family=xorsat gf2-elimination

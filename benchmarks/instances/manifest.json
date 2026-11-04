@@ -1,0 +1,1781 @@
+{
+ "generator": "benchmarks/generators/generate.py",
+ "note": "status_source: construction | gf2-elimination | published puzzle | reference (PySAT solve, see 'reference')",
+ "updated": "2026-11-03",
+ "python": "3.12.7",
+ "instances": {
+  "benchmarks/instances/small/addereq_small_n64-bug.cnf.gz": {
+   "family": "addereq",
+   "tier": "small",
+   "builder": "addereq",
+   "params": {
+    "n": 64,
+    "buggy": true
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 702,
+   "nclauses": 2228,
+   "sha256": "f5ec1d2d497aa5dc363cfd64a1f0b2753a412ef7c0933caa59105805e92cddc2",
+   "formula_sha256": "afddf0461905d121af01f2df1b859880b7a0548937a0df0336ec15d4f0796462"
+  },
+  "benchmarks/instances/small/addereq_small_n64-ok.cnf.gz": {
+   "family": "addereq",
+   "tier": "small",
+   "builder": "addereq",
+   "params": {
+    "n": 64,
+    "buggy": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 701,
+   "nclauses": 2228,
+   "sha256": "6b0a168c3b56a1323ac079e99dd9e5b0e3a6fd4cb1b31097e2dbef52c9f38636",
+   "formula_sha256": "7bdfd509ecdff646b5b5dd3505ff13774f1da60256785ee23403fa901af0fe76"
+  },
+  "benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s0.cnf.gz": {
+   "family": "coloring",
+   "tier": "small",
+   "builder": "coloring_random",
+   "params": {
+    "n": 100,
+    "k": 3,
+    "deg": 4.7
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 300,
+   "nclauses": 1105,
+   "sha256": "d80e8f458662bf80199059756c027daa6ac9d0aa657a21650b23a5c884cb3d1c",
+   "formula_sha256": "f3045ace36f3a6410f73cc3ac0f2bfe152ff274262a7eceb30acd99d29f40de5",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.205
+   }
+  },
+  "benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s1.cnf.gz": {
+   "family": "coloring",
+   "tier": "small",
+   "builder": "coloring_random",
+   "params": {
+    "n": 100,
+    "k": 3,
+    "deg": 4.7
+   },
+   "seed": 1,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 300,
+   "nclauses": 1105,
+   "sha256": "e9674b2ebbb429b027b21d3a785921641f038b041977549f13886fbe812a70a5",
+   "formula_sha256": "a07805060c0207a912e0dece039d7164e2a2575a02212dc6fce5b7648554db0a",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.179,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/coloring_small_n150-k3-deg4p4.cnf.gz": {
+   "family": "coloring",
+   "tier": "small",
+   "builder": "coloring_planted",
+   "params": {
+    "n": 150,
+    "k": 3,
+    "deg": 4.4
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 450,
+   "nclauses": 1590,
+   "sha256": "bc8128f738369651ad0416f8e2db3d4bd7d4f141ca3d07d4231ff33e606a46a6",
+   "formula_sha256": "3357afd22dfe68ec4a583047112b7ca704d6e03418d8ec7b5badaa98aef8584a"
+  },
+  "benchmarks/instances/small/coloring_small_n60-k5-deg12.cnf.gz": {
+   "family": "coloring",
+   "tier": "small",
+   "builder": "coloring_planted",
+   "params": {
+    "n": 60,
+    "k": 5,
+    "deg": 12.0
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 300,
+   "nclauses": 2460,
+   "sha256": "35bc180d0db486a77a8a08131793eb7386dcaba8cafe0bb952de10ada3b6f942",
+   "formula_sha256": "e80fb5f177509f8602ae326c59b3ace5ba80a79fa50907b01aa4b5c6838597d7"
+  },
+  "benchmarks/instances/small/counter_small_steps40-target37.cnf.gz": {
+   "family": "counter",
+   "tier": "small",
+   "builder": "counter",
+   "params": {
+    "steps": 40,
+    "target": 37
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 567,
+   "nclauses": 1854,
+   "sha256": "14aca11c848b7e71176796252b86a5e7d39dd7bbe86f0f1f09fa730ffcd8fd0b",
+   "formula_sha256": "9b9c08524810d2da12c4c7283a5ae4baaa448d6c02da2809358f0df3cfc5fb3c"
+  },
+  "benchmarks/instances/small/counter_small_steps40-target41.cnf.gz": {
+   "family": "counter",
+   "tier": "small",
+   "builder": "counter",
+   "params": {
+    "steps": 40,
+    "target": 41
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 567,
+   "nclauses": 1854,
+   "sha256": "a7f9cf5293565d683e9bb0c566cced165365c046a827b3b17972c2a53a7f5cd1",
+   "formula_sha256": "7aead42116e2a5b44310d7028422f6d24c41228aebcd14ffb473db3097501ed1"
+  },
+  "benchmarks/instances/small/multeq_small_n6-ok.cnf.gz": {
+   "family": "multeq",
+   "tier": "small",
+   "builder": "multeq",
+   "params": {
+    "n": 6,
+    "buggy": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 360,
+   "nclauses": 1165,
+   "sha256": "bb868331b651148100e718b860bf322e85634f0e31399ac8224835dccb73abd3",
+   "formula_sha256": "baab90cef2bcebf1f090f83b5674a03ef4f19cf2146c460992b28d3d923341b9"
+  },
+  "benchmarks/instances/small/multeq_small_n7-bug.cnf.gz": {
+   "family": "multeq",
+   "tier": "small",
+   "builder": "multeq",
+   "params": {
+    "n": 7,
+    "buggy": true
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 504,
+   "nclauses": 1639,
+   "sha256": "e1e166b762a8d54dcf52c2148cf448cf0e7da6be6c5487b2cb53291c24785c3d",
+   "formula_sha256": "ca716b6484d1d6e522a370d6293cb1012cb0bb9dc8ce3d0e5347b7e5f408dd64"
+  },
+  "benchmarks/instances/small/php_small_n7.cnf.gz": {
+   "family": "php",
+   "tier": "small",
+   "builder": "php",
+   "params": {
+    "n": 7
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 56,
+   "nclauses": 204,
+   "sha256": "2c559b2d6780ba5f2acac294a9254c4b9dc8b80be5ccfbbfbd76250b5bd6db42",
+   "formula_sha256": "9d3cf44ea2c5ff0475e8ace839471cd56afbe7f08c421d4a9539c0e32ac8cc1e"
+  },
+  "benchmarks/instances/small/php_small_n8.cnf.gz": {
+   "family": "php",
+   "tier": "small",
+   "builder": "php",
+   "params": {
+    "n": 8
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 72,
+   "nclauses": 297,
+   "sha256": "b5ecde2af17352b5c1c745db86b64a72ca4fe838667d7853d631241c56adb067",
+   "formula_sha256": "026f8b7061585ae8f0c983bb57c72935426775f31f4a04c03035c9af8377c052"
+  },
+  "benchmarks/instances/small/queens_small_n20.cnf.gz": {
+   "family": "queens",
+   "tier": "small",
+   "builder": "queens",
+   "params": {
+    "n": 20
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 400,
+   "nclauses": 12560,
+   "sha256": "74ae2c0c283f7b00afa49c7dad582e0892be46d63bbe12dcd18b79d38d8dda97",
+   "formula_sha256": "baef79b13461c6ff6ba68c235b728ae842daadf275145c24b9e17c3777bd9185"
+  },
+  "benchmarks/instances/small/queens_small_n40.cnf.gz": {
+   "family": "queens",
+   "tier": "small",
+   "builder": "queens",
+   "params": {
+    "n": 40
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 1600,
+   "nclauses": 103520,
+   "sha256": "7d02e64720a4d54a49b180c47376d900357c1fd9bbca460f968dc18f1770a867",
+   "formula_sha256": "31f07c07840959d2c248cc49760058af35cd5b8632249a111f723c21f4ee3215"
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s0.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 100,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 0,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 100,
+   "nclauses": 426,
+   "sha256": "2924afb8c126f58a6f6f63b8eb14de876e9f29fe881ef25a7dcc8903adca4952",
+   "formula_sha256": "b7ddb3dac080cb6b207d38fd9212276bfefead4d83e7015b9565870e1ee6b9a3",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.151,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s1.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 100,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 1,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 100,
+   "nclauses": 426,
+   "sha256": "8ba5d993570b73a39cf9cbbd30c867d53d68d3476e48326e72accdc1fd082a3b",
+   "formula_sha256": "904c297ee23f8b252f774fd76d50a8fe0d0f469933ff53dfe6d90858bf85a8a4",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.181
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s2.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 100,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 2,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 100,
+   "nclauses": 426,
+   "sha256": "dc7de80bc17fe2e431051c5854d26c5290b5c9bc6ee11aad1d9fbc404ca8c396",
+   "formula_sha256": "311fd52a7534eaa15cea16f5652fda3ecd1e32411d5e1147b252204c4ff1a6eb",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.167,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s3.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 100,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 3,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 100,
+   "nclauses": 426,
+   "sha256": "140ae8715da8c64d01882383d1a602bf96ade5ccfd18aaa1bf76bb94880db574",
+   "formula_sha256": "a9422d9110b5f552d9717d793923b0fab29d7b15cb38a1af38bd64e20248546d",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.162
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s0.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 150,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 0,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 150,
+   "nclauses": 639,
+   "sha256": "e4394bdc590cc67e1822a7f893d2ee6a2f89418645901b3abbf652c30793f48a",
+   "formula_sha256": "b3027a50c88c0bc3cf5367ac2f95b76dbce9b5c9d5e5f8b6d78cdf5577a203a1",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.156,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s1.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 150,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 1,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 150,
+   "nclauses": 639,
+   "sha256": "a18e997967433aa20c5a7d851a92e1500e3ba23e178bc49122d1f7de10b215a6",
+   "formula_sha256": "541222d71d035cf5d7202f87d333a56972b599fbba31a2dfd5ad3544ffa2f8af",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.185
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s2.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 150,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 2,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 150,
+   "nclauses": 639,
+   "sha256": "f346304aa0f57b2c3d0093818938acaa2ae2e87474ec40301d7dd31280f3cac0",
+   "formula_sha256": "551d906bf3e7b372b0b953e72cdab7353bb65604641c0cb0dc62a53f835da361",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.178
+   }
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s3.cnf.gz": {
+   "family": "rand3sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 150,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 3,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 150,
+   "nclauses": 639,
+   "sha256": "e286220acf2eecaec1c4904c2979dd70e0d23176efc5f8c3a32a9ec4b9e3f751",
+   "formula_sha256": "71fcd27bd98ed00831252093778088376de32e904dbafcea00344ebd62321e9e",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.163,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s0.cnf.gz": {
+   "family": "rand5sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 5,
+    "ratio": 21.1
+   },
+   "seed": 0,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 1055,
+   "sha256": "9e4c480185906e718847f93d81a8a66545d2b4be9c3b1ec1bd30c262d23a6ece",
+   "formula_sha256": "8ba8ceee8b22a8312a591b196cb208b70407ba6ec20da6b96d75c52798631146",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.797,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s2.cnf.gz": {
+   "family": "rand5sat",
+   "tier": "small",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 5,
+    "ratio": 21.1
+   },
+   "seed": 2,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 1055,
+   "sha256": "9aa967af824659ec195bb7a95b825b6cf7567aa2866f53540d4882bd33a947cf",
+   "formula_sha256": "fff8826a102667ad5b1b9c0fadc9ca629e7f45e1516e25ea3f9ce8db6bb46078",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.236
+   }
+  },
+  "benchmarks/instances/small/sudoku_small_N4-holes0p6.cnf.gz": {
+   "family": "sudoku",
+   "tier": "small",
+   "builder": "sudoku_planted",
+   "params": {
+    "N": 4,
+    "holes": 0.6
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 4096,
+   "nclauses": 124006,
+   "sha256": "b353bf95d96914ad1ed39925a1593b528a9a9b36d594236a6c6fda315c32f1a6",
+   "formula_sha256": "091666cd917d9760f6ebbd4bb08051e71e1f61353fe56ebb87a556ad215f2c9e"
+  },
+  "benchmarks/instances/small/tseitin_small_n16-d4-odd.cnf.gz": {
+   "family": "tseitin",
+   "tier": "small",
+   "builder": "tseitin",
+   "params": {
+    "n": 16,
+    "d": 4,
+    "odd": true
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 32,
+   "nclauses": 128,
+   "sha256": "e31069d607ba1096755246137156db560b166fe42533e8fdd2c59fe5c339c6df",
+   "formula_sha256": "ae1cc3f74c6d9e7f7a7dc7b5578b526b075f5dcb35198979c29f6b18e51b6876"
+  },
+  "benchmarks/instances/small/tseitin_small_n24-d3-odd.cnf.gz": {
+   "family": "tseitin",
+   "tier": "small",
+   "builder": "tseitin",
+   "params": {
+    "n": 24,
+    "d": 3,
+    "odd": true
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 36,
+   "nclauses": 96,
+   "sha256": "7d09eb7a86029cad5092e307ddf6d821cd5b7f6910b0e0e261b4f0a7df83d28c",
+   "formula_sha256": "05010f757b685046f081c1ab34a92d064c0d3f49117fdc21133e27b495143dc6"
+  },
+  "benchmarks/instances/small/tseitin_small_n40-d4-even.cnf.gz": {
+   "family": "tseitin",
+   "tier": "small",
+   "builder": "tseitin",
+   "params": {
+    "n": 40,
+    "d": 4,
+    "odd": false
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 80,
+   "nclauses": 320,
+   "sha256": "427138bfa86a9cb528f225e873bbce66ac8d271cf2adb58f65d29374bd303d8d",
+   "formula_sha256": "686e4fc29b11924667de8d1f97f90f89790971d345babe4e4a57db5e26bc70e9"
+  },
+  "benchmarks/instances/small/xorchain_small_n30.cnf.gz": {
+   "family": "xorchain",
+   "tier": "small",
+   "builder": "xorchain",
+   "params": {
+    "n": 30
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 88,
+   "nclauses": 234,
+   "sha256": "0969066cbcbde12930f7633cfb04ca05be4c6d70745347d476a572ae3319524f",
+   "formula_sha256": "6d3e7f2dbb530a99ac947f28562193d0eeff5404023bb125134135f39623ca0e"
+  },
+  "benchmarks/instances/small/xorsat_small_n60-m60-s0.cnf.gz": {
+   "family": "xorsat",
+   "tier": "small",
+   "builder": "xorsat",
+   "params": {
+    "n": 60,
+    "m": 60
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "gf2-elimination",
+   "nvars": 60,
+   "nclauses": 240,
+   "sha256": "e80be38987683bbdcad5cdcb50f17b4320ba6cd6e7dfcbe0b667bbe92a8db5c8",
+   "formula_sha256": "15701570f5a3b8a8dddb71eb1d06087f8dc266588a8abf0f7187ae520dc37345"
+  },
+  "benchmarks/instances/small/xorsat_small_n60-m60-s1.cnf.gz": {
+   "family": "xorsat",
+   "tier": "small",
+   "builder": "xorsat",
+   "params": {
+    "n": 60,
+    "m": 60
+   },
+   "seed": 1,
+   "status": "unsat",
+   "status_source": "gf2-elimination",
+   "nvars": 60,
+   "nclauses": 240,
+   "sha256": "631d15326f8f9c146fc442ee317195ca0c2c7949f14a7c57727f3544e68f3a0b",
+   "formula_sha256": "c07bc339b638d6d131d3ab9b9673329369df6040be1352b032ca7d1b4d664876"
+  },
+  "benchmarks/instances/tiny/addereq_tiny_n8-bug.cnf": {
+   "family": "addereq",
+   "tier": "tiny",
+   "builder": "addereq",
+   "params": {
+    "n": 8,
+    "buggy": true
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 86,
+   "nclauses": 268,
+   "sha256": "5b0c7040e0203de45675b7a7dfe7553468dadef248e01ae58b89e997b9d7359e",
+   "formula_sha256": "e042752ad940cfac8b482d52e9b7b99cf2a2b8f2b8803ccb06806dbaeba13878"
+  },
+  "benchmarks/instances/tiny/addereq_tiny_n8-ok.cnf": {
+   "family": "addereq",
+   "tier": "tiny",
+   "builder": "addereq",
+   "params": {
+    "n": 8,
+    "buggy": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 85,
+   "nclauses": 268,
+   "sha256": "2f6f63fea6f56ac83b44dd28f58252de4b8084accab886c87253e7f6c62e9507",
+   "formula_sha256": "274a23823e4407ef60e0fff4536cbf4946ca7a5e34b59ac44aa0e05fd992045a"
+  },
+  "benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4.cnf": {
+   "family": "coloring",
+   "tier": "tiny",
+   "builder": "coloring_planted",
+   "params": {
+    "n": 30,
+    "k": 3,
+    "deg": 4.0
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 90,
+   "nclauses": 300,
+   "sha256": "1c28fce656572e0b1c596ea545ac819367ce25128e59a5fad5642789d03ed2e0",
+   "formula_sha256": "76ffd117058e52b1851c351217b1dcc9e3e16d75174a44c9760b71f40e18d308"
+  },
+  "benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s0.cnf": {
+   "family": "coloring",
+   "tier": "tiny",
+   "builder": "coloring_random",
+   "params": {
+    "n": 30,
+    "k": 3,
+    "deg": 4.7
+   },
+   "seed": 0,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 90,
+   "nclauses": 330,
+   "sha256": "537ab7b7b9681f8339ab55444857c025405aae3c4f039433d531bc54f7c34130",
+   "formula_sha256": "0b6f4b99e63f35f0e845c910164fd683b00bd55a3a65f2d0ed0979f76453060c",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.095,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s14.cnf": {
+   "family": "coloring",
+   "tier": "tiny",
+   "builder": "coloring_random",
+   "params": {
+    "n": 30,
+    "k": 3,
+    "deg": 4.7
+   },
+   "seed": 14,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 90,
+   "nclauses": 330,
+   "sha256": "56e17e0ec82ba20e69ddb4ff817ff42e957243602dc25445ee563b226d0684ec",
+   "formula_sha256": "d59c6e100ded60dab53897a0ac828844d6905001246bf08fb46bfac5849acb44",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.256
+   }
+  },
+  "benchmarks/instances/tiny/counter_tiny_steps6-target6.cnf": {
+   "family": "counter",
+   "tier": "tiny",
+   "builder": "counter",
+   "params": {
+    "steps": 6,
+    "target": 6
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 52,
+   "nclauses": 158,
+   "sha256": "b95af98295ca9b70fd18cc4a609176b1248136c5e812753e33d0ffc746191854",
+   "formula_sha256": "21f18fcd654ff6023cc356c592aa2d93da210f092bae6b3bda8f154d6aeffefc"
+  },
+  "benchmarks/instances/tiny/counter_tiny_steps6-target7.cnf": {
+   "family": "counter",
+   "tier": "tiny",
+   "builder": "counter",
+   "params": {
+    "steps": 6,
+    "target": 7
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 52,
+   "nclauses": 158,
+   "sha256": "5a16246eb8e2826caaa68a25c2e261d721c4105ef8852d9492959fad9fc25b1f",
+   "formula_sha256": "facb7a15b854814615f3d7f8af3b4b235001a3e8e493d9cbd015215cf802aed2"
+  },
+  "benchmarks/instances/tiny/multeq_tiny_n4-ok.cnf": {
+   "family": "multeq",
+   "tier": "tiny",
+   "builder": "multeq",
+   "params": {
+    "n": 4,
+    "buggy": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 144,
+   "nclauses": 457,
+   "sha256": "afd1f74a39e8811aa10f48c8eaac1be34797d65fc210c4ed4b06ca1de00a3163",
+   "formula_sha256": "3b5163a8e5d62780529219cd44c3d87fef8d0a1aafa9ee80945afadac29cc40f"
+  },
+  "benchmarks/instances/tiny/php_tiny_n4.cnf": {
+   "family": "php",
+   "tier": "tiny",
+   "builder": "php",
+   "params": {
+    "n": 4
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 20,
+   "nclauses": 45,
+   "sha256": "7aa44ff546bbda89550bc51b208a1717b29132fd3035f0090e702d920559e850",
+   "formula_sha256": "c8a59526385b925866951e9ea410a123c4d8715d7144f038539eebbff2b2c222"
+  },
+  "benchmarks/instances/tiny/php_tiny_n5.cnf": {
+   "family": "php",
+   "tier": "tiny",
+   "builder": "php",
+   "params": {
+    "n": 5
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 30,
+   "nclauses": 81,
+   "sha256": "03ca299cf353773ba3963ba655d805a13f3d522355688ad94f997842f5cd1ca3",
+   "formula_sha256": "7e5d017392eaa29f07649ef4d2383bd8472e0979a3c17c46e48c7f9442fe9610"
+  },
+  "benchmarks/instances/tiny/queens_tiny_n8.cnf": {
+   "family": "queens",
+   "tier": "tiny",
+   "builder": "queens",
+   "params": {
+    "n": 8
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 64,
+   "nclauses": 736,
+   "sha256": "7c349aace3a98205ba0dfc7331070036e5fedf882e90755c41ef04e43d8f581a",
+   "formula_sha256": "b43c42b3265607272027c641f4c3b55a91b17d443e63fd68ec182d62b14a6fca"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s0.cnf": {
+   "family": "rand3sat",
+   "tier": "tiny",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 213,
+   "sha256": "7cdf36a9733269ad8a13207d6269ba6310682d27957b3cec95bc23ab21aceb34",
+   "formula_sha256": "8cee41292ee9f32906a956e9ade9e25dcc868d1a399084b8c39a7300e99344a2",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.157
+   }
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s1.cnf": {
+   "family": "rand3sat",
+   "tier": "tiny",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 1,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 213,
+   "sha256": "dded13506f350f0191dda586cd023ddaf43994552951d0e9b31670664501ec79",
+   "formula_sha256": "41b0fe3b741808f73568beb06b87f8bd458709229124c45b0e49b203e9ab0964",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.139
+   }
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s2.cnf": {
+   "family": "rand3sat",
+   "tier": "tiny",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 2,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 213,
+   "sha256": "f028dae5d74198b18255253c51474d0c00d0d05a765ec113a494e054778761da",
+   "formula_sha256": "a52fca4baea2f916e3ea7dd29405e0b3dc8238f46876365f44fba30ae46df0cc",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.16
+   }
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s3.cnf": {
+   "family": "rand3sat",
+   "tier": "tiny",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 3,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 213,
+   "sha256": "df7753387518765b296bc13bf832386425f8870ccb56d93d6861c8d0ac59699a",
+   "formula_sha256": "121d14b79908c8977a9299a2fb80c22f6a562b873451d656d1ff399157821104",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.264,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s4.cnf": {
+   "family": "rand3sat",
+   "tier": "tiny",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 4,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 213,
+   "sha256": "32669470685bf5a2fe03ebed624a359d4030eceb13bc963131eed5aad05f260f",
+   "formula_sha256": "577a53bd41adfc07678baf67fa60cb594e0c11e4a377576b1c7125b17592f589",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.153,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s5.cnf": {
+   "family": "rand3sat",
+   "tier": "tiny",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 50,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 5,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 50,
+   "nclauses": 213,
+   "sha256": "8b165aa064ee49f8e6953f7021dd15acafc578fa7744db6a4e2b577270e9fa23",
+   "formula_sha256": "14f91a01a2195c318a3379847c87edf32edf1d77cd960488b7f9f574bd15f6bd",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.192,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_escargot.cnf": {
+   "family": "sudoku",
+   "tier": "tiny",
+   "builder": "sudoku_fixed",
+   "params": {
+    "puzzle": "escargot"
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "published puzzle",
+   "nvars": 729,
+   "nclauses": 12011,
+   "sha256": "1e0ded482bcec42f14f70b888e029155010a5510cd8265d24428160ffc63070a",
+   "formula_sha256": "cb2edc8caa44af71d1dd58209d7ec7e2833987c47675a19c05bb24581fb95776"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_euler01.cnf": {
+   "family": "sudoku",
+   "tier": "tiny",
+   "builder": "sudoku_fixed",
+   "params": {
+    "puzzle": "euler01"
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "published puzzle",
+   "nvars": 729,
+   "nclauses": 12020,
+   "sha256": "4bc63ebea2b1d7e0cd315dce7e1e213859ce52513de2f26233b59c4e5415935c",
+   "formula_sha256": "b5cd86a32e7099cb6bfb047c73ac7b2e0fa178a707e9463bed2603b9d3ee15ac"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_goldennugget.cnf": {
+   "family": "sudoku",
+   "tier": "tiny",
+   "builder": "sudoku_fixed",
+   "params": {
+    "puzzle": "goldennugget"
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "published puzzle",
+   "nvars": 729,
+   "nclauses": 12009,
+   "sha256": "9112ecf6b0c40107c703bf7a4a809ef183b08fe43714808cfa1ed4add4ca965e",
+   "formula_sha256": "01e6496a31413839b0a9f4565d970d3c3b7d623d786464499c760c6db7dc0f46"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_inkala2012.cnf": {
+   "family": "sudoku",
+   "tier": "tiny",
+   "builder": "sudoku_fixed",
+   "params": {
+    "puzzle": "inkala2012"
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "published puzzle",
+   "nvars": 729,
+   "nclauses": 12009,
+   "sha256": "cc971e18aa7b417c8e8397c0214e7ae2f358c00d3a94c4f6e00fd42e5bcf3536",
+   "formula_sha256": "0aefe876de151cc55e947ab5c9bfde1b3e7dbe0c85ea9ec595073b58d4e07a3d"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_norvighard1.cnf": {
+   "family": "sudoku",
+   "tier": "tiny",
+   "builder": "sudoku_fixed",
+   "params": {
+    "puzzle": "norvighard1"
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "published puzzle",
+   "nvars": 729,
+   "nclauses": 12005,
+   "sha256": "25ea401e9f5983f42a701fc1a8cc4603d2a422b1acb4114bc240bc9508153039",
+   "formula_sha256": "8f6fb3790b88f4a320732b891dddab8d749d23ced20eab30b67711f9641e2b64"
+  },
+  "benchmarks/instances/tiny/tseitin_tiny_n10-d3-even.cnf": {
+   "family": "tseitin",
+   "tier": "tiny",
+   "builder": "tseitin",
+   "params": {
+    "n": 10,
+    "d": 3,
+    "odd": false
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 15,
+   "nclauses": 40,
+   "sha256": "05f0ef32b8a9dcdcc236b55cd8830299498dbaf55409540f52b9804963fd53ff",
+   "formula_sha256": "d50d3f2ebee27261c443cb7006576b223c9fb9487dd9ab49cb6a824167b2096b"
+  },
+  "benchmarks/instances/tiny/tseitin_tiny_n10-d3-odd.cnf": {
+   "family": "tseitin",
+   "tier": "tiny",
+   "builder": "tseitin",
+   "params": {
+    "n": 10,
+    "d": 3,
+    "odd": true
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 15,
+   "nclauses": 40,
+   "sha256": "a1506ae9b6dfab6c1dd102d3ffb5ffc4cc509bdc69944b6de0bb6fe2fe77aab1",
+   "formula_sha256": "b79e6cf98f32f187c7896e2b45fbe77f32b34923b256e5bb7a323a616d796515"
+  },
+  "benchmarks/instances/tiny/xorchain_tiny_n12.cnf": {
+   "family": "xorchain",
+   "tier": "tiny",
+   "builder": "xorchain",
+   "params": {
+    "n": 12
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 34,
+   "nclauses": 90,
+   "sha256": "7a4f8202c3a63aa50b747a43db1678aaa5641a0c3655a2ce2ba27e73082e4ac1",
+   "formula_sha256": "4f53a96b59bec578e7731ba2d79b9927f3f55eff05e8599f7821376ff8adf340"
+  },
+  "benchmarks/instances/tiny/xorsat_tiny_n20-m20-s0.cnf": {
+   "family": "xorsat",
+   "tier": "tiny",
+   "builder": "xorsat",
+   "params": {
+    "n": 20,
+    "m": 20
+   },
+   "seed": 0,
+   "status": "unsat",
+   "status_source": "gf2-elimination",
+   "nvars": 20,
+   "nclauses": 80,
+   "sha256": "37bc78555a0a4f508b3650105a33f6e9863ead0e0b322671f65c3f2146f222bc",
+   "formula_sha256": "c3781ed46ef2251e1751bb548ae9c82f72451f9ad05d36d7661e8812f73fabc4"
+  },
+  "benchmarks/instances/tiny/xorsat_tiny_n20-m20-s1.cnf": {
+   "family": "xorsat",
+   "tier": "tiny",
+   "builder": "xorsat",
+   "params": {
+    "n": 20,
+    "m": 20
+   },
+   "seed": 1,
+   "status": "sat",
+   "status_source": "gf2-elimination",
+   "nvars": 20,
+   "nclauses": 80,
+   "sha256": "d7d5ee36cb7699b9a9109ffc9ef4ed7e98fddf03e29dc848733047a70926d5a5",
+   "formula_sha256": "87be2531904ba008526a7f3b8bb573346c10f296ac29f1d8cf68a9186bcf892e"
+  },
+  "generated/medium/coloring_medium_n2000-k3-deg4p4.cnf": {
+   "family": "coloring",
+   "tier": "medium",
+   "builder": "coloring_planted",
+   "params": {
+    "n": 2000,
+    "k": 3,
+    "deg": 4.4
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 6000,
+   "nclauses": 21200,
+   "sha256": "f49b81c3ac2a39ada69e20d692ba0eef249ba19b118b6d52c9f00a50c08d3401",
+   "formula_sha256": "809823b2d75c654683d7e1c6e9abefd8bfd730bc75066a047535fcc3da950475"
+  },
+  "generated/medium/coloring_medium_n500-k3-deg4p65-s0.cnf": {
+   "family": "coloring",
+   "tier": "medium",
+   "builder": "coloring_random",
+   "params": {
+    "n": 500,
+    "k": 3,
+    "deg": 4.65
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 1500,
+   "nclauses": 5486,
+   "sha256": "28d69cdc1875bb2fca001372d28a28c43f548e26441491744f66f66ac25bb35a",
+   "formula_sha256": "0038a83f23b51dd463769ce0f29911165841752d07b9e2a767271d898c20ce76",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 0.779
+   }
+  },
+  "generated/medium/coloring_medium_n500-k3-deg4p65-s1.cnf": {
+   "family": "coloring",
+   "tier": "medium",
+   "builder": "coloring_random",
+   "params": {
+    "n": 500,
+    "k": 3,
+    "deg": 4.65
+   },
+   "seed": 1,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 1500,
+   "nclauses": 5486,
+   "sha256": "877e2ede5104e27851621326cc07ab29396d13764619679e9631a99f4cb4de24",
+   "formula_sha256": "bde44e487933d2584d2a5c1f45946d6156f9a8f8bddae12980356c9fcb89732c",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 19.465
+   }
+  },
+  "generated/medium/counter_medium_steps1000-target1001.cnf": {
+   "family": "counter",
+   "tier": "medium",
+   "builder": "counter",
+   "params": {
+    "steps": 1000,
+    "target": 1001
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 22011,
+   "nclauses": 74022,
+   "sha256": "efa0b7e236148a1feb290a14e1f2172a84927f62e4b7b367adaa8026eee7e460",
+   "formula_sha256": "9ee757efc1c597caf4a7f856775da329c3895a0aacb4eace5a12de950f275001"
+  },
+  "generated/medium/counter_medium_steps1000-target990.cnf": {
+   "family": "counter",
+   "tier": "medium",
+   "builder": "counter",
+   "params": {
+    "steps": 1000,
+    "target": 990
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 22011,
+   "nclauses": 74022,
+   "sha256": "a020697e260e964c60a488a8be61a5252787c7af02da5a46ca21485258b84cf7",
+   "formula_sha256": "6323feea2bc9d342cacb4d96283faf7d81a41437e5cd6feb7136c3a24d103151"
+  },
+  "generated/medium/multeq_medium_n24-bug.cnf": {
+   "family": "multeq",
+   "tier": "medium",
+   "builder": "multeq",
+   "params": {
+    "n": 24,
+    "buggy": true
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 6624,
+   "nclauses": 21937,
+   "sha256": "9de3e61c452ea42ee3796701a2d1cdb6b7681f436428d79f71727a7ba636dd56",
+   "formula_sha256": "ed962786dc1adbe32b1c68817df803847401cd9068a7d9d84bf516b7997ca348"
+  },
+  "generated/medium/multeq_medium_n8-ok.cnf": {
+   "family": "multeq",
+   "tier": "medium",
+   "builder": "multeq",
+   "params": {
+    "n": 8,
+    "buggy": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 672,
+   "nclauses": 2193,
+   "sha256": "4d1dff6d0c1234554feefab4ace671d663208ecd49438da1fa9543ce6cd78683",
+   "formula_sha256": "0ebbd807a46a1ee62f859a2199aa5c365495d6acc18a5ae200400d483667b5e9"
+  },
+  "generated/medium/multeq_medium_n9-ok.cnf": {
+   "family": "multeq",
+   "tier": "medium",
+   "builder": "multeq",
+   "params": {
+    "n": 9,
+    "buggy": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 864,
+   "nclauses": 2827,
+   "sha256": "6f6a6f7894b97c445bbb4163495f87a1941a73ad534efdb81142f139049bfe49",
+   "formula_sha256": "604423d5dec63a91c79a2c107f313cc716bd04ccbd719606a7981b0053aab255"
+  },
+  "generated/medium/php_medium_n10.cnf": {
+   "family": "php",
+   "tier": "medium",
+   "builder": "php",
+   "params": {
+    "n": 10
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 110,
+   "nclauses": 561,
+   "sha256": "1a65d636727a4ed0afab75589687ff8d67d4422d45290636048b7b9f73fbb622",
+   "formula_sha256": "aeeaacd781934e712420c4c49960370f2629471df750d472e83f01112625f72f"
+  },
+  "generated/medium/queens_medium_n100.cnf": {
+   "family": "queens",
+   "tier": "medium",
+   "builder": "queens",
+   "params": {
+    "n": 100
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 10000,
+   "nclauses": 1646800,
+   "sha256": "ace14a009990ab6fcc841c08921a72af854e21dc1e8f20e5ab6c6bf8b409ac2a",
+   "formula_sha256": "b907041864a10e84ad8b7d4b7497ec6c43c7c64d8c2f78eacf8b3697578671f7"
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s0.cnf": {
+   "family": "rand3sat",
+   "tier": "medium",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 275,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 275,
+   "nclauses": 1172,
+   "sha256": "45aec1eb65875e12186258ce92953f27a7b06457bd71e89bbe469cebe7537b4d",
+   "formula_sha256": "853d28c2771f8dbbc0214fed4a7f113c7c81b545cea1369f3673ea6915cb01ab",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 0.697
+   }
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s1.cnf": {
+   "family": "rand3sat",
+   "tier": "medium",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 275,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 1,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 275,
+   "nclauses": 1172,
+   "sha256": "6c13380953a9026531be388434f82d7183c5246c241142828ca255b1d1836454",
+   "formula_sha256": "53401559139dfa17702c5ee06873e02a1f89d75e031dcf88d022e9b7a32d3d9c",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 0.131
+   }
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s3.cnf": {
+   "family": "rand3sat",
+   "tier": "medium",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 275,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 3,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 275,
+   "nclauses": 1172,
+   "sha256": "6d62c7bc3b33bb4161ac4b436f8d5e535bc60485d99c1553fa9cc0f0188469d3",
+   "formula_sha256": "3101b91f757d63b4c118c4245757b2ad6063a4dc4d223267ac719fcbd2179f4c",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 4.926
+   }
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s5.cnf": {
+   "family": "rand3sat",
+   "tier": "medium",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 275,
+    "k": 3,
+    "ratio": 4.26
+   },
+   "seed": 5,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 275,
+   "nclauses": 1172,
+   "sha256": "38bf88c0c3521a7ad36229e784969be088bd5134cbe1f50b8e475d5ee88395ee",
+   "formula_sha256": "e051d8b07b5d4b255f52697e5d491d65be0b107c2e7c45b22d1bd3eb873e1dc1",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 9.783
+   }
+  },
+  "generated/medium/rand5sat_medium_n60-k5-ratio21p1-s0.cnf": {
+   "family": "rand5sat",
+   "tier": "medium",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 60,
+    "k": 5,
+    "ratio": 21.1
+   },
+   "seed": 0,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 60,
+   "nclauses": 1266,
+   "sha256": "8604dbdf296ab9de7ebd12f940d149020743bff7af783d626bc7947f9c1f2a9e",
+   "formula_sha256": "43dc7396177071e04c722e7ca3da170fc0a5bce4df015425cda47e416a32f22e",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 4.656
+   }
+  },
+  "generated/medium/rand5sat_medium_n60-k5-ratio21p1-s1.cnf": {
+   "family": "rand5sat",
+   "tier": "medium",
+   "builder": "rand_ksat",
+   "params": {
+    "n": 60,
+    "k": 5,
+    "ratio": 21.1
+   },
+   "seed": 1,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 60,
+   "nclauses": 1266,
+   "sha256": "1ab2e1d7dcc3c2ecfdf05da5ad3c6c4eff97ca024a5bf08e3a3f003a12a1a326",
+   "formula_sha256": "a0be7384b4417149b8031894335fba5cf0e31ea39cfd30e605070ad52d326481",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+    "time": 0.147
+   }
+  },
+  "generated/medium/sudoku_medium_N6-holes0p7.cnf": {
+   "family": "sudoku",
+   "tier": "medium",
+   "builder": "sudoku_planted",
+   "params": {
+    "N": 6,
+    "holes": 0.7
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 46656,
+   "nclauses": 3271493,
+   "sha256": "78e97b285e56c35acb4e9d0fd7b8ecbb93cfc13f70cfb22db68e7779c2036ca0",
+   "formula_sha256": "b3bc3c3efdc9dea90305404cc8116769364fa59fe8770e6ed9999739a169a909"
+  },
+  "generated/medium/tseitin_medium_n40-d4-odd.cnf": {
+   "family": "tseitin",
+   "tier": "medium",
+   "builder": "tseitin",
+   "params": {
+    "n": 40,
+    "d": 4,
+    "odd": true
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 80,
+   "nclauses": 320,
+   "sha256": "db1b9cbb9621ecc046e4ac1ebd3df3638ddf068d15e01f87a3b86fcbc484b80b",
+   "formula_sha256": "daf33c9d6c35d4d869d414f1fa74b9499d57222f59590eb11b028e8424dec607"
+  },
+  "generated/medium/tseitin_medium_n44-d4-odd.cnf": {
+   "family": "tseitin",
+   "tier": "medium",
+   "builder": "tseitin",
+   "params": {
+    "n": 44,
+    "d": 4,
+    "odd": true
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 88,
+   "nclauses": 352,
+   "sha256": "c6b10114ce88556b80e6536660b2183b013e64fb013693dc948c13706d2e1c85",
+   "formula_sha256": "dd0d27d10e997b63da7366aef19022f310963b55ea2509d16336d18a8d7ff16a"
+  },
+  "generated/medium/tseitin_medium_n80-d3-even.cnf": {
+   "family": "tseitin",
+   "tier": "medium",
+   "builder": "tseitin",
+   "params": {
+    "n": 80,
+    "d": 3,
+    "odd": false
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 120,
+   "nclauses": 320,
+   "sha256": "2f5da7dc79deb4d57a3813cdf78b34e272834a61d09ab3c8a862bff1c5468b75",
+   "formula_sha256": "332ab14dcf128b943bbacba909fa882e6be8948ce5e1f3df6d8f76db4a402afe"
+  },
+  "generated/medium/tseitin_medium_n80-d3-odd.cnf": {
+   "family": "tseitin",
+   "tier": "medium",
+   "builder": "tseitin",
+   "params": {
+    "n": 80,
+    "d": 3,
+    "odd": true
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 120,
+   "nclauses": 320,
+   "sha256": "085f802bd429a2960349521b81ca5b79f44b636675a5edfd4cd8f362af32662e",
+   "formula_sha256": "8f4eb704021349b097132d30da0d24d2bbdc5259dd1d7853a28b64d375cdd2f2"
+  },
+  "generated/medium/xorchain_medium_n40.cnf": {
+   "family": "xorchain",
+   "tier": "medium",
+   "builder": "xorchain",
+   "params": {
+    "n": 40
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 118,
+   "nclauses": 314,
+   "sha256": "b15e4098e094de635cb0a32308e89de3bcdae879f9d3b7b9c73ab7effa271676",
+   "formula_sha256": "a036c4992dca7e6c1654a306d41e32d402383173bb61a552522ea1fa6b67a05c"
+  },
+  "generated/medium/xorchain_medium_n48.cnf": {
+   "family": "xorchain",
+   "tier": "medium",
+   "builder": "xorchain",
+   "params": {
+    "n": 48
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 142,
+   "nclauses": 378,
+   "sha256": "02e9925f75ab4d6dd83c6a76bd1b3fb5db856a49d985c1ee1ce8ca37843062c0",
+   "formula_sha256": "e4c5d3c7a2a6e00b966f43b706c705b719b75614a20b8cd09c636ea4d2dc2f2a"
+  },
+  "generated/medium/xorsat_medium_n500-m460-s0.cnf": {
+   "family": "xorsat",
+   "tier": "medium",
+   "builder": "xorsat",
+   "params": {
+    "n": 500,
+    "m": 460
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "gf2-elimination",
+   "nvars": 500,
+   "nclauses": 1840,
+   "sha256": "ba30c03228efb2ef7f5bf3fad98001a0e15f1ffc6fa8b1efa12a4bc74017fc53",
+   "formula_sha256": "7907c86754424ba8fefe48993ed1e537a12b4028ca087d4932f88e28bbe8c582"
+  },
+  "generated/medium/xorsat_medium_n500-m460-s2.cnf": {
+   "family": "xorsat",
+   "tier": "medium",
+   "builder": "xorsat",
+   "params": {
+    "n": 500,
+    "m": 460
+   },
+   "seed": 2,
+   "status": "unsat",
+   "status_source": "gf2-elimination",
+   "nvars": 500,
+   "nclauses": 1840,
+   "sha256": "ee1c0587ff91a0de404f89da1167ef613e07d2a27a12a3748e2b26db4e4c119e",
+   "formula_sha256": "91892e3a2d2b493695973aab97784818a030ef437fb3cb350ab5baf39abc6639"
+  }
+ },
+ "status_cache": {
+  "0038a83f23b51dd463769ce0f29911165841752d07b9e2a767271d898c20ce76": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 0.779,
+   "time_limit": 60.0,
+   "formula": "coloring_medium_n500-k3-deg4p65-s0"
+  },
+  "0b6f4b99e63f35f0e845c910164fd683b00bd55a3a65f2d0ed0979f76453060c": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.095,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s0"
+  },
+  "0e4670c0de999a13c05b3b8c534f1647a1acf2579f6847dd13d2d850a2a38212": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.254,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s9"
+  },
+  "121d14b79908c8977a9299a2fb80c22f6a562b873451d656d1ff399157821104": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.264,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_tiny_n50-k3-ratio4p26-s3"
+  },
+  "14f91a01a2195c318a3379847c87edf32edf1d77cd960488b7f9f574bd15f6bd": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.192,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_tiny_n50-k3-ratio4p26-s5"
+  },
+  "1b111783b7e87007593aab9dd12dd0ad09115ac764cd88c8f45f7beb4cbc8ec0": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.223,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s7"
+  },
+  "2f157511bb0ab2a28f38b0590fee097e5dda53b2dfa80c3ab08bae74fd77a241": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 0.473,
+   "time_limit": 60.0,
+   "formula": "rand3sat_medium_n275-k3-ratio4p26-s4"
+  },
+  "2faedf8684024b5c86d0c2ed8070ac9b05e0819bf979df0bd05ed6616b3b7c51": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.182,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s11"
+  },
+  "3101b91f757d63b4c118c4245757b2ad6063a4dc4d223267ac719fcbd2179f4c": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 4.926,
+   "time_limit": 60.0,
+   "formula": "rand3sat_medium_n275-k3-ratio4p26-s3"
+  },
+  "311fd52a7534eaa15cea16f5652fda3ecd1e32411d5e1147b252204c4ff1a6eb": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.167,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_small_n100-k3-ratio4p26-s2"
+  },
+  "3df8f02bbf91836de486bf545c6bd41773241481b3f02a0a9940c9dd1f0f79af": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.166,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s2"
+  },
+  "41b0fe3b741808f73568beb06b87f8bd458709229124c45b0e49b203e9ab0964": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.139,
+   "formula": "rand3sat_tiny_n50-k3-ratio4p26-s1"
+  },
+  "43dc7396177071e04c722e7ca3da170fc0a5bce4df015425cda47e416a32f22e": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 4.656,
+   "time_limit": 60.0,
+   "formula": "rand5sat_medium_n60-k5-ratio21p1-s0"
+  },
+  "53401559139dfa17702c5ee06873e02a1f89d75e031dcf88d022e9b7a32d3d9c": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 0.131,
+   "time_limit": 60.0,
+   "formula": "rand3sat_medium_n275-k3-ratio4p26-s1"
+  },
+  "541222d71d035cf5d7202f87d333a56972b599fbba31a2dfd5ad3544ffa2f8af": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.185,
+   "formula": "rand3sat_small_n150-k3-ratio4p26-s1"
+  },
+  "551d906bf3e7b372b0b953e72cdab7353bb65604641c0cb0dc62a53f835da361": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.178,
+   "formula": "rand3sat_small_n150-k3-ratio4p26-s2"
+  },
+  "577a53bd41adfc07678baf67fa60cb594e0c11e4a377576b1c7125b17592f589": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.153,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_tiny_n50-k3-ratio4p26-s4"
+  },
+  "71fcd27bd98ed00831252093778088376de32e904dbafcea00344ebd62321e9e": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.163,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_small_n150-k3-ratio4p26-s3"
+  },
+  "7eb4997f4956d0babdd41b78fd4c1aefa343fd9ee02a902d087b3aa81fb449e9": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.09,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s1"
+  },
+  "853d28c2771f8dbbc0214fed4a7f113c7c81b545cea1369f3673ea6915cb01ab": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 0.697,
+   "time_limit": 60.0,
+   "formula": "rand3sat_medium_n275-k3-ratio4p26-s0"
+  },
+  "8ba8ceee8b22a8312a591b196cb208b70407ba6ec20da6b96d75c52798631146": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.797,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand5sat_small_n50-k5-ratio21p1-s0"
+  },
+  "8cee41292ee9f32906a956e9ade9e25dcc868d1a399084b8c39a7300e99344a2": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.157,
+   "formula": "rand3sat_tiny_n50-k3-ratio4p26-s0"
+  },
+  "8eda11177b77e5a18cb31257d539e1bd7c5be7d323ae8f1c30691a44532f000c": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.129,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s4"
+  },
+  "904c297ee23f8b252f774fd76d50a8fe0d0f469933ff53dfe6d90858bf85a8a4": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.181,
+   "formula": "rand3sat_small_n100-k3-ratio4p26-s1"
+  },
+  "9ddcf1962a5ce800a5dd8597dad6c2c892a3e346bd3fa978eb7e0ff708e0f605": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.131,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s10"
+  },
+  "9f95a0bbbde1e5f51486ac38e533f65b4f1822deedbfdaa90aeaa38fd85a854e": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.149,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s13"
+  },
+  "a07805060c0207a912e0dece039d7164e2a2575a02212dc6fce5b7648554db0a": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.179,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_small_n100-k3-deg4p7-s1"
+  },
+  "a0be7384b4417149b8031894335fba5cf0e31ea39cfd30e605070ad52d326481": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 0.147,
+   "time_limit": 60.0,
+   "formula": "rand5sat_medium_n60-k5-ratio21p1-s1"
+  },
+  "a52fca4baea2f916e3ea7dd29405e0b3dc8238f46876365f44fba30ae46df0cc": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.16,
+   "formula": "rand3sat_tiny_n50-k3-ratio4p26-s2"
+  },
+  "a9422d9110b5f552d9717d793923b0fab29d7b15cb38a1af38bd64e20248546d": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.162,
+   "formula": "rand3sat_small_n100-k3-ratio4p26-s3"
+  },
+  "abcdf91275ba59c1477e60e8af6dac364fab1f2477585fa952fed61d8b8aefb6": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.151,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s3"
+  },
+  "b3027a50c88c0bc3cf5367ac2f95b76dbce9b5c9d5e5f8b6d78cdf5577a203a1": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.156,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_small_n150-k3-ratio4p26-s0"
+  },
+  "b7ddb3dac080cb6b207d38fd9212276bfefead4d83e7015b9565870e1ee6b9a3": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.151,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand3sat_small_n100-k3-ratio4p26-s0"
+  },
+  "bde44e487933d2584d2a5c1f45946d6156f9a8f8bddae12980356c9fcb89732c": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 19.465,
+   "time_limit": 60.0,
+   "formula": "coloring_medium_n500-k3-deg4p65-s1"
+  },
+  "c1a2d59915956b631e0782bda40baeace4ba5a2da9d8e14d7d36b1d706fcdf84": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.135,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s8"
+  },
+  "c8f194616b6d49f70a82c1c7b415f26fcd7ead1f42ba099c4b1093e93b48b567": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 0.371,
+   "time_limit": 60.0,
+   "formula": "rand3sat_medium_n275-k3-ratio4p26-s2"
+  },
+  "cab01028bb05c91e36bddc57c61a6471f71ace17e764f7fed94192532ed39a03": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.157,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s12"
+  },
+  "d59c6e100ded60dab53897a0ac828844d6905001246bf08fb46bfac5849acb44": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.256,
+   "formula": "coloring_tiny_n30-k3-deg4p7-s14"
+  },
+  "d8ccd35e43d76db5ce54345aa9ea8763c3b21fe44343835784901a20baaf20ef": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.504,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "rand5sat_small_n50-k5-ratio21p1-s1"
+  },
+  "e051d8b07b5d4b255f52697e5d491d65be0b107c2e7c45b22d1bd3eb873e1dc1": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+   "time": 9.783,
+   "time_limit": 60.0,
+   "formula": "rand3sat_medium_n275-k3-ratio4p26-s5"
+  },
+  "e41cebdd0cefa4c68014b4cff29b967520f38a42968543211226124222bf492c": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.137,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s6"
+  },
+  "f3045ace36f3a6410f73cc3ac0f2bfe152ff274262a7eceb30acd99d29f40de5": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.205,
+   "formula": "coloring_small_n100-k3-deg4p7-s0"
+  },
+  "fda199c92421936a3ec2e5345c5e3bffd0f17353db46b623e466e0a40569dcc1": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.159,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "coloring_tiny_n30-k3-deg4p7-s5"
+  },
+  "fff8826a102667ad5b1b9c0fadc9ca629e7f45e1516e25ea3f9ce8db6bb46078": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.236,
+   "formula": "rand5sat_small_n50-k5-ratio21p1-s2"
+  }
+ }
+}

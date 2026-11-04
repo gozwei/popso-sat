@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 730 400" width="730" height="400" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<style>svg{--bg:#ffffff;--fg:#1f2328;--muted:#656d76;--grid:#d8dee4}@media (prefers-color-scheme: dark){svg{--bg:#0d1117;--fg:#e6edf3;--muted:#8d96a0;--grid:#30363d}}.s0{stroke:#2a78d6;fill:none}.t0{fill:#2a78d6}@media (prefers-color-scheme: dark){.s0{stroke:#3987e5}.t0{fill:#3987e5}}.s1{stroke:#eb6834;fill:none}.t1{fill:#eb6834}@media (prefers-color-scheme: dark){.s1{stroke:#d95926}.t1{fill:#d95926}}.s2{stroke:#1baf7a;fill:none}.t2{fill:#1baf7a}@media (prefers-color-scheme: dark){.s2{stroke:#199e70}.t2{fill:#199e70}}.s3{stroke:#a35bd8;fill:none}.t3{fill:#a35bd8}@media (prefers-color-scheme: dark){.s3{stroke:#b06fe0}.t3{fill:#b06fe0}}.s4{stroke:#c79a12;fill:none}.t4{fill:#c79a12}@media (prefers-color-scheme: dark){.s4{stroke:#d4a82a}.t4{fill:#d4a82a}}</style>
+<rect width="730" height="400" fill="var(--bg)"/>
+<text x="56" y="24" font-size="15" font-weight="600" fill="var(--fg)">medium set: instances solved vs. time</text>
+<text x="56" y="42" font-size="12" fill="var(--muted)">25 instances, time limit 60 s</text>
+<line x1="56.0" y1="58" x2="56.0" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="56.0" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">0.01</text>
+<line x1="200.5" y1="58" x2="200.5" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="200.5" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">0.1</text>
+<line x1="345.0" y1="58" x2="345.0" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="345.0" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">1</text>
+<line x1="489.5" y1="58" x2="489.5" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="489.5" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">10</text>
+<line x1="56" y1="354.0" x2="602" y2="354.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="358.0" font-size="11" fill="var(--muted)" text-anchor="end">0</text>
+<line x1="56" y1="294.8" x2="602" y2="294.8" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="298.8" font-size="11" fill="var(--muted)" text-anchor="end">5</text>
+<line x1="56" y1="235.6" x2="602" y2="235.6" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="239.6" font-size="11" fill="var(--muted)" text-anchor="end">10</text>
+<line x1="56" y1="176.4" x2="602" y2="176.4" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="180.4" font-size="11" fill="var(--muted)" text-anchor="end">15</text>
+<line x1="56" y1="117.2" x2="602" y2="117.2" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="121.2" font-size="11" fill="var(--muted)" text-anchor="end">20</text>
+<line x1="56" y1="58.0" x2="602" y2="58.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="62.0" font-size="11" fill="var(--muted)" text-anchor="end">25</text>
+<text x="329.0" y="392" font-size="12" fill="var(--muted)" text-anchor="middle">time limit per instance (s, log scale)</text>
+<text x="14" y="206.0" font-size="12" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 14 206.0)">instances solved</text>
+<polyline class="s0" points="56.0,354.0 56.0,354.0 56.0,342.2 56.0,342.2 56.0,330.3 214.9,330.3 214.9,318.5 221.0,318.5 221.0,306.6 236.2,306.6 236.2,294.8 261.8,294.8 261.8,283.0 272.9,283.0 272.9,271.1 310.5,271.1 310.5,259.3 349.5,259.3 349.5,247.4 362.8,247.4 362.8,235.6 382.7,235.6 382.7,223.8 398.2,223.8 398.2,211.9 405.2,211.9 405.2,200.1 407.3,200.1 407.3,188.2 415.6,188.2 415.6,176.4 423.0,176.4 423.0,164.6 428.1,164.6 428.1,152.7 460.8,152.7 460.8,140.9 465.0,140.9 465.0,129.0 467.3,129.0 467.3,117.2 495.2,117.2 495.2,105.4 518.9,105.4 518.9,93.5 519.8,93.5 519.8,81.7 521.8,81.7 521.8,69.8 571.3,69.8 571.3,58.0 602.0,58.0" stroke-width="2" stroke-linejoin="round"/>
+<polyline class="s1" points="56.0,354.0 187.5,354.0 187.5,342.2 197.6,342.2 197.6,330.3 205.0,330.3 205.0,318.5 212.5,318.5 212.5,306.6 221.3,306.6 221.3,294.8 230.4,294.8 230.4,283.0 311.6,283.0 311.6,271.1 320.6,271.1 320.6,259.3 349.1,259.3 349.1,247.4 369.0,247.4 369.0,235.6 402.0,235.6 402.0,223.8 403.0,223.8 403.0,211.9 410.3,211.9 410.3,200.1 412.6,200.1 412.6,188.2 433.7,188.2 433.7,176.4 435.3,176.4 435.3,164.6 439.4,164.6 439.4,152.7 449.8,152.7 449.8,140.9 451.6,140.9 451.6,129.0 456.3,129.0 456.3,117.2 473.2,117.2 473.2,105.4 479.3,105.4 479.3,93.5 499.8,93.5 499.8,81.7 526.2,81.7 526.2,69.8 534.2,69.8 534.2,58.0 602.0,58.0" stroke-width="2" stroke-linejoin="round"/>
+<polyline class="s2" points="56.0,354.0 181.7,354.0 181.7,342.2 200.8,342.2 200.8,330.3 239.2,330.3 239.2,318.5 249.5,318.5 249.5,306.6 264.4,306.6 264.4,294.8 281.8,294.8 281.8,283.0 301.4,283.0 301.4,271.1 357.6,271.1 357.6,259.3 378.6,259.3 378.6,247.4 402.7,247.4 402.7,235.6 405.5,235.6 405.5,223.8 407.5,223.8 407.5,211.9 431.8,211.9 431.8,200.1 449.7,200.1 449.7,188.2 467.9,188.2 467.9,176.4 470.0,176.4 470.0,164.6 474.7,164.6 474.7,152.7 497.2,152.7 497.2,140.9 521.0,140.9 521.0,129.0 530.8,129.0 530.8,117.2 546.1,117.2 546.1,105.4 550.3,105.4 550.3,93.5 556.7,93.5 556.7,81.7 602.0,81.7" stroke-width="2" stroke-linejoin="round"/>
+<polyline class="s3" points="56.0,354.0 185.5,354.0 185.5,342.2 200.3,342.2 200.3,330.3 356.0,330.3 356.0,318.5 367.3,318.5 367.3,306.6 389.4,306.6 389.4,294.8 391.7,294.8 391.7,283.0 399.9,283.0 399.9,271.1 400.9,271.1 400.9,259.3 409.4,259.3 409.4,247.4 427.7,247.4 427.7,235.6 432.0,235.6 432.0,223.8 434.1,223.8 434.1,211.9 448.1,211.9 448.1,200.1 456.8,200.1 456.8,188.2 457.4,188.2 457.4,176.4 461.3,176.4 461.3,164.6 492.5,164.6 492.5,152.7 497.9,152.7 497.9,140.9 506.1,140.9 506.1,129.0 533.1,129.0 533.1,117.2 557.1,117.2 557.1,105.4 582.0,105.4 582.0,93.5 591.4,93.5 591.4,81.7 602.0,81.7" stroke-width="2" stroke-linejoin="round"/>
+<polyline class="s4" points="56.0,354.0 186.9,354.0 186.9,342.2 202.4,342.2 202.4,330.3 298.1,330.3 298.1,318.5 335.5,318.5 335.5,306.6 339.8,306.6 339.8,294.8 356.4,294.8 356.4,283.0 388.0,283.0 388.0,271.1 396.9,271.1 396.9,259.3 400.5,259.3 400.5,247.4 435.2,247.4 435.2,235.6 456.2,235.6 456.2,223.8 472.6,223.8 472.6,211.9 480.4,211.9 480.4,200.1 481.0,200.1 481.0,188.2 499.4,188.2 499.4,176.4 503.4,176.4 503.4,164.6 551.0,164.6 551.0,152.7 575.7,152.7 575.7,140.9 599.3,140.9 599.3,129.0 600.6,129.0 600.6,117.2 602.0,117.2" stroke-width="2" stroke-linejoin="round"/>
+<text x="610" y="62.0" font-size="12" font-weight="600" class="t1">Kissat 4.0.4 (25)</text>
+<text x="610" y="76.0" font-size="12" font-weight="600" class="t0">popso-sat 0.1 (25)</text>
+<text x="610" y="90.0" font-size="12" font-weight="600" class="t2">CaDiCaL 1.9.5 (23)</text>
+<text x="610" y="104.0" font-size="12" font-weight="600" class="t3">Glucose 4 (23)</text>
+<text x="610" y="121.2" font-size="12" font-weight="600" class="t4">MiniSat 2.2 (20)</text>
+</svg>

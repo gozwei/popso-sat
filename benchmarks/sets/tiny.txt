@@ -1,0 +1,29 @@
+# generated tiny instances (benchmarks/generators/generate.py --tier tiny)
+# path  expected-status  # family, how the status is known
+benchmarks/instances/tiny/addereq_tiny_n8-bug.cnf                sat      # family=addereq construction
+benchmarks/instances/tiny/addereq_tiny_n8-ok.cnf                 unsat    # family=addereq construction
+benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4.cnf          sat      # family=coloring construction
+benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s0.cnf     unsat    # family=coloring reference
+benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s14.cnf    sat      # family=coloring reference
+benchmarks/instances/tiny/counter_tiny_steps6-target6.cnf        sat      # family=counter construction
+benchmarks/instances/tiny/counter_tiny_steps6-target7.cnf        unsat    # family=counter construction
+benchmarks/instances/tiny/multeq_tiny_n4-ok.cnf                  unsat    # family=multeq construction
+benchmarks/instances/tiny/php_tiny_n4.cnf                        unsat    # family=php construction
+benchmarks/instances/tiny/php_tiny_n5.cnf                        unsat    # family=php construction
+benchmarks/instances/tiny/queens_tiny_n8.cnf                     sat      # family=queens construction
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s0.cnf  sat      # family=rand3sat reference
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s1.cnf  sat      # family=rand3sat reference
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s2.cnf  sat      # family=rand3sat reference
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s3.cnf  unsat    # family=rand3sat reference
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s4.cnf  unsat    # family=rand3sat reference
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s5.cnf  unsat    # family=rand3sat reference
+benchmarks/instances/tiny/sudoku_tiny_escargot.cnf               sat      # family=sudoku published puzzle
+benchmarks/instances/tiny/sudoku_tiny_euler01.cnf                sat      # family=sudoku published puzzle
+benchmarks/instances/tiny/sudoku_tiny_goldennugget.cnf           sat      # family=sudoku published puzzle
+benchmarks/instances/tiny/sudoku_tiny_inkala2012.cnf             sat      # family=sudoku published puzzle
+benchmarks/instances/tiny/sudoku_tiny_norvighard1.cnf            sat      # family=sudoku published puzzle
+benchmarks/instances/tiny/tseitin_tiny_n10-d3-even.cnf           sat      # family=tseitin construction
+benchmarks/instances/tiny/tseitin_tiny_n10-d3-odd.cnf            unsat    # family=tseitin construction
+benchmarks/instances/tiny/xorchain_tiny_n12.cnf                  unsat    # family=xorchain construction
+benchmarks/instances/tiny/xorsat_tiny_n20-m20-s0.cnf             unsat    # family=xorsat gf2-elimination
+benchmarks/instances/tiny/xorsat_tiny_n20-m20-s1.cnf             sat      # family=xorsat gf2-elimination

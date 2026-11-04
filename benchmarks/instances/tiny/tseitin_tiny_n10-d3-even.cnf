@@ -1,0 +1,45 @@
+c popso-sat benchmark generator: tseitin_tiny_n10-d3-even
+c family=tseitin tier=tiny params={"d": 3, "n": 10, "odd": false}
+c Tseitin formula on a random 3-regular graph, 10 vertices, even total charge
+c status: sat (by construction)
+p cnf 15 40
+1 2 3 0
+-1 -2 3 0
+-1 2 -3 0
+1 -2 -3 0
+-4 5 6 0
+4 -5 6 0
+4 5 -6 0
+-4 -5 -6 0
+-7 8 9 0
+7 -8 9 0
+7 8 -9 0
+-7 -8 -9 0
+-10 11 12 0
+10 -11 12 0
+10 11 -12 0
+-10 -11 -12 0
+-1 4 7 0
+1 -4 7 0
+1 4 -7 0
+-1 -4 -7 0
+5 10 13 0
+-5 -10 13 0
+-5 10 -13 0
+5 -10 -13 0
+2 11 14 0
+-2 -11 14 0
+-2 11 -14 0
+2 -11 -14 0
+-6 8 15 0
+6 -8 15 0
+6 8 -15 0
+-6 -8 -15 0
+12 14 15 0
+-12 -14 15 0
+-12 14 -15 0
+12 -14 -15 0
+-3 9 13 0
+3 -9 13 0
+3 9 -13 0
+-3 -9 -13 0

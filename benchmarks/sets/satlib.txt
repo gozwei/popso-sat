@@ -1,0 +1,3 @@
+# SATLIB subsets
+@include satlib_random
+@include satlib_structured

@@ -1,0 +1,71 @@
+# Correctness gate: a quick mix with known status, run before every merge.
+#   .venv/bin/python benchmarks/gate.py                      (= run.py --set gate --strict -j 2 --mem-limit 2048 -t 30)
+#   .venv/bin/python benchmarks/gate.py --variant deterministic   (adds --deterministic; for later)
+# Must report WRONG 0.  Generated instances are committed; the SATLIB ones are downloaded into the
+# cache by gate.py (benchmarks/satlib.py --groups gate: 18 archives, ~20 MB, once).
+# Statuses: generated = by construction / GF(2) / reference (cadical195 + minisat22 or glucose4);
+# SATLIB = SATLIB description or file name, else reference (cadical195 + glucose4 agree).
+
+# ---- generated, tiny
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s0.cnf     sat      # family=rand3sat
+benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s3.cnf     unsat    # family=rand3sat
+benchmarks/instances/tiny/php_tiny_n5.cnf                           unsat    # family=php
+benchmarks/instances/tiny/xorsat_tiny_n20-m20-s0.cnf                unsat    # family=xorsat
+benchmarks/instances/tiny/xorsat_tiny_n20-m20-s1.cnf                sat      # family=xorsat
+benchmarks/instances/tiny/xorchain_tiny_n12.cnf                     unsat    # family=xorchain
+benchmarks/instances/tiny/tseitin_tiny_n10-d3-odd.cnf               unsat    # family=tseitin
+benchmarks/instances/tiny/tseitin_tiny_n10-d3-even.cnf              sat      # family=tseitin
+benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s0.cnf        unsat    # family=coloring
+benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4.cnf             sat      # family=coloring
+benchmarks/instances/tiny/queens_tiny_n8.cnf                        sat      # family=queens
+benchmarks/instances/tiny/sudoku_tiny_inkala2012.cnf                sat      # family=sudoku
+benchmarks/instances/tiny/sudoku_tiny_escargot.cnf                  sat      # family=sudoku
+benchmarks/instances/tiny/addereq_tiny_n8-ok.cnf                    unsat    # family=addereq
+benchmarks/instances/tiny/addereq_tiny_n8-bug.cnf                   sat      # family=addereq
+benchmarks/instances/tiny/multeq_tiny_n4-ok.cnf                     unsat    # family=multeq
+benchmarks/instances/tiny/counter_tiny_steps6-target6.cnf           sat      # family=counter
+benchmarks/instances/tiny/counter_tiny_steps6-target7.cnf           unsat    # family=counter
+
+# ---- generated, small
+benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s1.cnf.gz   sat      # family=rand3sat
+benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s0.cnf.gz   unsat    # family=rand3sat
+benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s1.cnf.gz   sat      # family=rand3sat
+benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s0.cnf.gz   unsat    # family=rand3sat
+benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s2.cnf.gz    sat      # family=rand5sat
+benchmarks/instances/small/php_small_n7.cnf.gz                          unsat    # family=php
+benchmarks/instances/small/xorsat_small_n60-m60-s0.cnf.gz               sat      # family=xorsat
+benchmarks/instances/small/xorsat_small_n60-m60-s1.cnf.gz               unsat    # family=xorsat
+benchmarks/instances/small/tseitin_small_n16-d4-odd.cnf.gz              unsat    # family=tseitin
+benchmarks/instances/small/tseitin_small_n40-d4-even.cnf.gz             sat      # family=tseitin
+benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s1.cnf.gz      unsat    # family=coloring
+benchmarks/instances/small/coloring_small_n150-k3-deg4p4.cnf.gz         sat      # family=coloring
+benchmarks/instances/small/queens_small_n20.cnf.gz                      sat      # family=queens
+benchmarks/instances/small/sudoku_small_N4-holes0p6.cnf.gz              sat      # family=sudoku
+benchmarks/instances/small/addereq_small_n64-ok.cnf.gz                  unsat    # family=addereq
+benchmarks/instances/small/addereq_small_n64-bug.cnf.gz                 sat      # family=addereq
+benchmarks/instances/small/multeq_small_n6-ok.cnf.gz                    unsat    # family=multeq
+benchmarks/instances/small/multeq_small_n7-bug.cnf.gz                   sat      # family=multeq
+benchmarks/instances/small/counter_small_steps40-target37.cnf.gz        sat      # family=counter
+benchmarks/instances/small/counter_small_steps40-target41.cnf.gz        unsat    # family=counter
+
+# ---- SATLIB (cache)
+satlib/uf50-218/uf50-01.cnf             sat      # family=uf50-218
+satlib/uuf50-218/uuf50-01.cnf           unsat    # family=uuf50-218
+satlib/uf100-430/uf100-01.cnf           sat      # family=uf100-430
+satlib/uuf100-430/uuf100-01.cnf         unsat    # family=uuf100-430
+satlib/flat30-60/flat30-1.cnf           sat      # family=flat30-60
+satlib/ais/ais8.cnf                     sat      # family=ais
+satlib/logistics/logistics.a.cnf        sat      # family=logistics
+satlib/blocksworld/bw_large.a.cnf       sat      # family=blocksworld
+satlib/pigeon-hole/hole6.cnf            unsat    # family=pigeon-hole
+satlib/dubois/dubois20.cnf              unsat    # family=dubois
+satlib/pret/pret60_25.cnf               unsat    # family=pret
+satlib/aim/aim-50-1_6-yes1-1.cnf        sat      # family=aim
+satlib/aim/aim-50-1_6-no-1.cnf          unsat    # family=aim
+satlib/ssa/ssa0432-003.cnf              unsat    # family=ssa
+satlib/bf/bf0432-007.cnf                unsat    # family=bf
+satlib/jnh/jnh1.cnf                     sat      # family=jnh reference
+satlib/jnh/jnh2.cnf                     unsat    # family=jnh reference
+satlib/ii/ii8a1.cnf                     sat      # family=ii
+satlib/qg/qg1-07.cnf                    sat      # family=qg reference
+satlib/bmc/bmc-ibm-2.cnf                sat      # family=bmc reference

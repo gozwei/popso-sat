@@ -1,0 +1,28 @@
+# generated medium instances (benchmarks/generators/generate.py --tier medium)
+# files live in <main>/benchmarks/cache/generated/medium (not committed)
+# path  expected-status  # family, how the status is known
+generated/medium/coloring_medium_n2000-k3-deg4p4.cnf       sat      # family=coloring construction
+generated/medium/coloring_medium_n500-k3-deg4p65-s0.cnf    sat      # family=coloring reference
+generated/medium/coloring_medium_n500-k3-deg4p65-s1.cnf    unsat    # family=coloring reference
+generated/medium/counter_medium_steps1000-target1001.cnf   unsat    # family=counter construction
+generated/medium/counter_medium_steps1000-target990.cnf    sat      # family=counter construction
+generated/medium/multeq_medium_n24-bug.cnf                 sat      # family=multeq construction
+generated/medium/multeq_medium_n8-ok.cnf                   unsat    # family=multeq construction
+generated/medium/multeq_medium_n9-ok.cnf                   unsat    # family=multeq construction
+generated/medium/php_medium_n10.cnf                        unsat    # family=php construction
+generated/medium/queens_medium_n100.cnf                    sat      # family=queens construction
+generated/medium/rand3sat_medium_n275-k3-ratio4p26-s0.cnf  sat      # family=rand3sat reference
+generated/medium/rand3sat_medium_n275-k3-ratio4p26-s1.cnf  sat      # family=rand3sat reference
+generated/medium/rand3sat_medium_n275-k3-ratio4p26-s3.cnf  unsat    # family=rand3sat reference
+generated/medium/rand3sat_medium_n275-k3-ratio4p26-s5.cnf  unsat    # family=rand3sat reference
+generated/medium/rand5sat_medium_n60-k5-ratio21p1-s0.cnf   unsat    # family=rand5sat reference
+generated/medium/rand5sat_medium_n60-k5-ratio21p1-s1.cnf   sat      # family=rand5sat reference
+generated/medium/sudoku_medium_N6-holes0p7.cnf             sat      # family=sudoku construction
+generated/medium/tseitin_medium_n40-d4-odd.cnf             unsat    # family=tseitin construction
+generated/medium/tseitin_medium_n44-d4-odd.cnf             unsat    # family=tseitin construction
+generated/medium/tseitin_medium_n80-d3-even.cnf            sat      # family=tseitin construction
+generated/medium/tseitin_medium_n80-d3-odd.cnf             unsat    # family=tseitin construction
+generated/medium/xorchain_medium_n40.cnf                   unsat    # family=xorchain construction
+generated/medium/xorchain_medium_n48.cnf                   unsat    # family=xorchain construction
+generated/medium/xorsat_medium_n500-m460-s0.cnf            sat      # family=xorsat gf2-elimination
+generated/medium/xorsat_medium_n500-m460-s2.cnf            unsat    # family=xorsat gf2-elimination

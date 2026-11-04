@@ -1,0 +1,1 @@
+python-sat>=1.8   # reference solving and the pysat_cli stand-in; run.py / gate.py need only the standard library

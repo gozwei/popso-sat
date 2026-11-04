@@ -1,0 +1,3669 @@
+{
+ "instances": {
+  "benchmarks/instances/small/addereq_small_n64-bug.cnf.gz": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.231,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.277,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/addereq_small_n64-ok.cnf.gz": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.216,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.222,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s0.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.295,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.262,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/coloring_small_n100-k3-deg4p7-s1.cnf.gz": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.204,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.203,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/coloring_small_n150-k3-deg4p4.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.157,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.152,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/coloring_small_n60-k5-deg12.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.197,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.164,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/counter_small_steps40-target37.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.17,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.172,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/counter_small_steps40-target41.cnf.gz": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.206,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.165,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/multeq_small_n6-ok.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.307,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.376,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/multeq_small_n7-bug.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.181,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.134,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/php_small_n7.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.246,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.258,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/php_small_n8.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.358,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 1.559,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/queens_small_n20.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.719,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.315,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/queens_small_n40.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.315,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.345,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s0.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.195,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.177,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s1.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.206,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.166,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s2.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.275,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.232,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n100-k3-ratio4p26-s3.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.505,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.185,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s0.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.209,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.144,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s1.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.153,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.152,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s2.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.2,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.234,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/rand3sat_small_n150-k3-ratio4p26-s3.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.19,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.14,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s0.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.978,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 1.179,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/rand5sat_small_n50-k5-ratio21p1-s2.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.726,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.739,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/sudoku_small_N4-holes0p6.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.497,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.249,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/tseitin_small_n16-d4-odd.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.3,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.19,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/tseitin_small_n24-d3-odd.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.189,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.152,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/tseitin_small_n40-d4-even.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.139,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.183,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/xorchain_small_n30.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.436,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.584,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/small/xorsat_small_n60-m60-s0.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.209,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.163,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/small/xorsat_small_n60-m60-s1.cnf.gz": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.234,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.195,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/addereq_tiny_n8-bug.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.154,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.157,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/addereq_tiny_n8-ok.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.144,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.155,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.167,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.183,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s0.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.17,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.177,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/coloring_tiny_n30-k3-deg4p7-s14.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.167,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.173,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/counter_tiny_steps6-target6.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.198,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.187,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/counter_tiny_steps6-target7.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.158,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.159,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/multeq_tiny_n4-ok.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.204,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.182,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/php_tiny_n4.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.17,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.213,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/php_tiny_n5.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.178,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.201,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/queens_tiny_n8.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.168,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.159,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s0.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.2,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.174,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.221,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.225,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s2.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.146,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.124,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s3.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.144,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.165,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s4.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.129,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.137,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/rand3sat_tiny_n50-k3-ratio4p26-s5.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.161,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.163,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_escargot.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.264,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.241,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_euler01.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "sat",
+     "time": 0.215,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "sat",
+     "time": 0.228,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_goldennugget.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.162,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.157,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_inkala2012.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.205,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.22,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/sudoku_tiny_norvighard1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.168,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.159,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/tseitin_tiny_n10-d3-even.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.148,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.139,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "benchmarks/instances/tiny/tseitin_tiny_n10-d3-odd.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.178,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.144,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/xorchain_tiny_n12.cnf": {
+   "solvers": {
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.169,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.224,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/xorsat_tiny_n20-m20-s0.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.139,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.143,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "benchmarks/instances/tiny/xorsat_tiny_n20-m20-s1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.18,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.192,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/coloring_medium_n2000-k3-deg4p4.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 3.035,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/coloring_medium_n500-k3-deg4p65-s0.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.789,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/coloring_medium_n500-k3-deg4p65-s1.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 22.844,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/counter_medium_steps1000-target1001.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 7.273,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/counter_medium_steps1000-target990.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.362,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/multeq_medium_n24-bug.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.26,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/multeq_medium_n8-ok.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 3.53,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/multeq_medium_n9-ok.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 15.136,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/php_medium_n10.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 1.772,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/queens_medium_n100.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 7.025,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s0.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.855,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s1.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.231,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s3.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 5.859,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/rand3sat_medium_n275-k3-ratio4p26-s5.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 11.325,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/rand5sat_medium_n60-k5-ratio21p1-s0.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 5.495,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/rand5sat_medium_n60-k5-ratio21p1-s1.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.371,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/sudoku_medium_N6-holes0p7.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 3.928,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/tseitin_medium_n40-d4-odd.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 3.739,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/tseitin_medium_n44-d4-odd.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 9.793,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/tseitin_medium_n80-d3-even.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.155,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/tseitin_medium_n80-d3-odd.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 1.32,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/xorchain_medium_n40.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 4.122,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/xorchain_medium_n48.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 22.467,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "generated/medium/xorsat_medium_n500-m460-s0.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "sat",
+     "time": 0.24,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "generated/medium/xorsat_medium_n500-m460-s2.cnf": {
+   "solvers": {
+    "kissat404": {
+     "status": "unsat",
+     "time": 5.931,
+     "version": "PySAT 1.9.dev18 kissat404 (Kissat 4.0.4)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/beijing/2bitadd_10.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 4.48,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 4.108,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/beijing/2bitadd_11.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 1.057,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.213,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/2bitadd_12.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.885,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.131,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/2bitcomp_5.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.798,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.233,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/2bitmax_6.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.884,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.132,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/3bitadd_31.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.886,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 6.804,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/3bitadd_32.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.926,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.415,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/3blocks.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.216,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.266,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/4blocks.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.332,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.422,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/4blocksb.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.279,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.541,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/e0ddr2-10-by-5-1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.245,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.32,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/e0ddr2-10-by-5-4.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.254,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.273,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/enddr2-10-by-5-1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.415,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.478,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/enddr2-10-by-5-8.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.295,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.358,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/ewddr2-10-by-5-1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.424,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.268,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/beijing/ewddr2-10-by-5-8.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.422,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.299,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-galileo-8.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.856,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.609,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-galileo-9.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.715,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.539,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.247,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.289,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-10.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.678,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.764,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-11.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.805,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.668,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-12.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 1.357,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 1.457,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-13.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.685,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.251,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-2.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.146,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.189,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-3.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.31,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.336,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-4.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.307,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.36,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-5.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.174,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.211,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-6.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.644,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.654,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/bmc/bmc-ibm-7.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.236,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.281,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh1.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.143,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.134,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh10.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.191,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.154,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh11.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.196,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.137,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh12.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.197,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.136,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh13.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.201,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.152,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh14.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.18,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.139,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh15.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.186,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.12,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh16.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.127,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.143,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh17.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.136,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.15,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh18.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.127,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.121,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh19.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.132,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.155,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh2.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.136,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.14,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh20.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.136,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.18,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh201.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.138,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.168,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh202.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.123,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.17,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh203.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.134,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.252,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh204.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.139,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.168,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh205.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.127,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.189,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh206.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.138,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.187,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh207.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.139,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.149,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh208.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.214,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.117,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh209.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.186,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.116,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh210.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.208,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.147,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh211.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.176,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.166,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh212.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.256,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.182,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh213.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.221,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.152,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh214.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.235,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.198,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh215.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.351,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.197,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh216.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.289,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.136,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh217.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.184,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.121,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh218.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.224,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.147,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh219.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.212,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.12,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh220.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.502,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.127,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh3.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.134,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.159,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh301.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.772,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.125,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh302.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.627,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.181,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh303.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.582,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.208,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh304.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.162,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.169,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh305.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.32,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.239,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh306.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.248,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.276,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh307.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.158,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.264,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh308.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.451,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.202,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh309.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.359,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.192,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh310.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.27,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.135,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh4.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.162,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.186,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh5.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.145,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.162,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh6.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.154,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.163,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh7.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.13,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.261,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/jnh/jnh8.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.199,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.185,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/jnh/jnh9.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.182,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.137,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg1-07.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.273,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.319,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg1-08.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.505,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.595,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg2-07.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.262,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.408,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg2-08.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.536,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 1.382,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg3-08.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.182,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.182,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg3-09.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.765,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 1.44,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg4-08.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.239,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.187,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg4-09.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.153,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.286,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg5-09.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.204,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.201,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg5-10.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.183,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.221,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg5-11.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.215,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.277,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg5-12.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.327,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.29,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg5-13.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 1.492,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 1.715,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg6-09.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.165,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.21,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg6-10.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.193,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.196,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg6-11.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.237,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.258,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg6-12.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.782,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.563,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg7-09.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.163,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.174,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  },
+  "satlib/qg/qg7-10.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.21,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.221,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg7-11.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.297,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.227,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg7-12.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "unsat",
+     "time": 0.384,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "unsat",
+     "time": 0.374,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "unsat"
+  },
+  "satlib/qg/qg7-13.cnf": {
+   "solvers": {
+    "cadical195": {
+     "status": "sat",
+     "time": 0.237,
+     "version": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    },
+    "glucose4": {
+     "status": "sat",
+     "time": 0.277,
+     "version": "PySAT 1.9.dev18 glucose4 (Glucose 4.1)",
+     "time_limit": 60.0,
+     "machine": "Apple M4 Pro (Darwin arm64)",
+     "date": "2026-11-03"
+    }
+   },
+   "status": "sat"
+  }
+ },
+ "note": "reference statuses (benchmarks/reference.py); SAT verified by model check, UNSAT not proof-checked"
+}

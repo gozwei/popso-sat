@@ -1,0 +1,53 @@
+name: ci
+
+# Manual runs only while the repository is private (Actions minutes are paid then). Add push /
+# pull_request triggers once the repository is public.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'gozwei/popso-sat'
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc
+            os: ubuntu-latest
+            cxx: g++
+            sanitize: OFF
+          - name: linux-clang
+            os: ubuntu-latest
+            cxx: clang++
+            sanitize: OFF
+          - name: macos-clang
+            os: macos-latest
+            cxx: clang++
+            sanitize: OFF
+          - name: linux-sanitizers
+            os: ubuntu-latest
+            cxx: clang++
+            sanitize: ON
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPSAT_BUILD_TESTS=ON -DPSAT_WERROR=ON \
+            -DPSAT_SANITIZE=${{ matrix.sanitize }} -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+
+      - name: Build
+        run: cmake --build build --parallel 4
+
+      - name: Unit tests
+        run: cd build && ctest -j1 --output-on-failure

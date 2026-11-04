@@ -1,0 +1,18 @@
+build/
+build-*/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.idea/
+.claude/
+
+# local-only data and tools (never committed)
+private/
+
+# benchmark output, downloaded instances, reference-solver builds
+benchmarks/results/
+benchmarks/cache/
+benchmarks/tools/build/
+bin/
