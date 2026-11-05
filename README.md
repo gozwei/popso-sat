@@ -57,16 +57,16 @@ default every model is checked against the original formula before it is printed
 Competition instances from the main tracks of the SAT Competitions 2022 to 2025, 120 s limit,
 an otherwise idle Apple M4 Pro, every model checked (solved / PAR-2 in seconds):
 
-| set | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
-|---|---|---|---|
-| 26 unsatisfiable instances (A/B set) | 21 / 64.9 | 20 / 73.4 | 22 / 52.9 |
-| 29 tuning instances (mixed) | 23 / 63.2 | 23 / 65.0 | 26 / 45.5 |
-| 32 held-out instances (one per family) | 21 / 103.2 | 22 / 99.4 | 24 / 83.9 |
+| set | popso-sat 0.3.3 | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| 26 unsatisfiable instances (A/B set) | 21 / 63.3 | 21 / 64.9 | 20 / 73.4 | 22 / 52.9 |
+| 29 tuning instances (mixed) | 23 / 61.6 | 23 / 63.2 | 23 / 65.0 | 26 / 45.5 |
+| 32 held-out instances (one per family) | 21 / 104.6 | 21 / 103.2 | 22 / 99.4 | 24 / 83.9 |
 
 The first two sets were used for tuning decisions, so they are not an independent test; the
 held-out set is. Satisfiable instances vary a lot from run to run. On 25 generated formulas
 (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier equivalence, ...)
-popso-sat 0.3.2 solves all 25 in 60 s on the Linux machine, as Kissat does. Setup, per-instance times and plots, and the
+popso-sat 0.3.3 solves all 25 within 60 s (PAR-2 3.5 s on the M4), as Kissat does. Setup, per-instance times and plots, and the
 earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## What's inside
@@ -91,6 +91,10 @@ earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
 - Kitten, a small CDCL sub-solver for local sub-formulas, used for sweeping (backbones and
   equivalences in the environment of a variable, candidates refined by the models found; the
   environments grow when sweeping finds little) and for definition mining in elimination.
+- Equivalences found by random simulation: the extracted AND and XOR gates are evaluated on 512
+  random input vectors, and variables with equal signatures are proven equivalent by Kitten on
+  small windows of their fan-in cones (functional equivalences between distant parts of a
+  circuit, such as the two halves of a miter).
 - Local search (ProbSAT with incrementally maintained break values) for rephasing, and lucky
   assignments tried before search.
 - DRAT proof output; every UNSAT answer in the test suite and the benchmark runner is checked.

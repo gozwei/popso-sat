@@ -587,10 +587,14 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.unhides), ull(stats_.unhide_units), ull(stats_.unhide_transitive), ull(stats_.unhide_tautologies),
                ull(stats_.unhide_strengthened), ull(stats_.unhide_literals), ull(stats_.unhide_ticks));
   std::fprintf(out, "c sweeping       %14llu  variables %llu  units %llu  equivalences %llu  flips %llu  ticks %llu  "
-                    "limits %u vars / %u clauses / depth %u (growth %u)\n",
+                    "(kitten %llu in %llu solves)  limits %u vars / %u clauses / depth %u (growth %u)\n",
                ull(stats_.sweeps), ull(stats_.swept_vars), ull(stats_.sweep_units), ull(stats_.sweep_equivalences),
-               ull(stats_.sweep_flips), ull(stats_.sweep_ticks), sweep_lim_vars_, sweep_lim_clauses_, sweep_lim_depth_,
-               sweep_growth_);
+               ull(stats_.sweep_flips), ull(stats_.sweep_ticks), ull(stats_.sweep_kitten_ticks), ull(stats_.sweep_solves),
+               sweep_lim_vars_, sweep_lim_clauses_, sweep_lim_depth_, sweep_growth_);
+  std::fprintf(out, "c simulation     %14llu  gates %llu (ite %llu)  candidates %llu  checked %llu  equivalences %llu  units %llu  "
+                    "failed %llu  ticks %llu\n",
+               ull(stats_.simulations), ull(stats_.sim_gates), ull(stats_.sim_ites), ull(stats_.sim_candidates), ull(stats_.sim_checked),
+               ull(stats_.sim_equivalences), ull(stats_.sim_units), ull(stats_.sim_failed), ull(stats_.sim_ticks));
   std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu; xor merges skipped %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
                ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions),
                ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites));
@@ -616,9 +620,9 @@ void Solver::print_statistics(std::FILE* out) const {
                  t - passes, share(t - passes), p[kPassSweep], share(p[kPassSweep]), p[kPassVivify], share(p[kPassVivify]),
                  p[kPassEliminate], share(p[kPassEliminate]), p[kPassWalk], share(p[kPassWalk]));
     std::fprintf(out, "c                probe %.2f  substitute %.2f  congruence %.2f  subsume %.2f  bva %.2f  reduce %.2f  "
-                      "lucky %.2f  unhide %.2f s\n",
+                      "lucky %.2f  unhide %.2f  simulate %.2f s\n",
                  p[kPassProbe], p[kPassSubstitute], p[kPassCongruence], p[kPassSubsume], p[kPassBva], p[kPassReduce],
-                 p[kPassLucky], p[kPassUnhide]);
+                 p[kPassLucky], p[kPassUnhide], p[kPassSimulate]);
   }
 }
 

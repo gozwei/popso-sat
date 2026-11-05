@@ -154,6 +154,157 @@ uint32_t Solver::congruence(uint64_t& budget) {
     return found;
   }
 
+  if (opts_.congruenceclosure) {
+    // Congruence closure (AND gates): the outputs of gates with the same inputs are merged in a
+    // union-find over literals; after a merge only the gates with an input in the absorbed class
+    // are normalized again (inputs replaced by their representatives, sorted, duplicates
+    // removed) and looked up again. Chains of gates (two copies of a circuit in a miter)
+    // collapse in one call; matching the inputs as they are merged one level per call and
+    // substitution in between (manol-pipe: 16 calls in a row, each a pass over the formula).
+    // Each equivalence is added as two binary clauses when it is found, RUP given the earlier
+    // ones: a class is connected by the binary clauses of its merges, so the inputs of one gate
+    // imply those of the other, whose base clause then gives its output. A gate whose inputs
+    // collapse to a single literal x gives lhs = x (both binaries RUP the same way); one with
+    // complementary inputs or its own output among them is dropped.
+    const uint32_t ng = static_cast<uint32_t>(gates.size());
+    std::vector<Lit> rep(num_vars_);
+    for (Var v = 0; v < num_vars_; ++v) rep[v] = make_lit(v, false);
+    auto find = [&](Lit l) {
+      Lit r = l;
+      for (;;) {
+        const Lit p = rep[var_of(r)] ^ (r & 1u);
+        if (p == r) break;
+        r = p;
+      }
+      for (Lit x = l; x != r;) {  // path compression
+        const Lit p = rep[var_of(x)] ^ (x & 1u);
+        rep[var_of(x)] = r ^ (x & 1u);
+        x = p;
+      }
+      return r;
+    };
+    // Gates with an input in the class of a root variable (lists move to the surviving root).
+    std::vector<std::vector<uint32_t>> class_gates(num_vars_);
+    for (uint32_t g = 0; g < ng; ++g) {
+      for (uint32_t k = 0; k < gates[g].size; ++k) class_gates[var_of(inputs[gates[g].begin + k])].push_back(g);
+    }
+    budget += inputs.size() / 4 + ng;
+    std::vector<uint32_t> queue(ng);
+    for (uint32_t g = 0; g < ng; ++g) queue[g] = g;
+    auto merge = [&](Lit a, Lit b) {
+      Lit ra = find(a), rb = find(b);
+      if (ra == rb || ra == negate(rb)) return false;  // (complementary: the inputs are false; skip)
+      const Lit e1[2] = {negate(a), b};
+      const Lit e2[2] = {a, negate(b)};
+      if (proof_) {
+        proof_->add(e1, 2);
+        proof_->add(e2, 2);
+      }
+      add_binary(e1[0], e1[1], false);
+      add_binary(e2[0], e2[1], false);
+      if (class_gates[var_of(ra)].size() < class_gates[var_of(rb)].size()) std::swap(ra, rb);
+      rep[var_of(rb)] = ra ^ (rb & 1u);  // rb's class joins ra's
+      std::vector<uint32_t>& moved = class_gates[var_of(rb)];
+      std::vector<uint32_t>& into = class_gates[var_of(ra)];
+      queue.insert(queue.end(), moved.begin(), moved.end());
+      into.insert(into.end(), moved.begin(), moved.end());
+      budget += moved.size() + 1;
+      std::vector<uint32_t>().swap(moved);
+      return true;
+    };
+    // Open addressing on the hash of the normalized inputs; an entry is stale once its gate was
+    // normalized to another hash (or dropped).
+    auto mix = [](uint64_t h) {
+      h ^= h >> 33;
+      h *= 0xC4CEB9FE1A85EC53ull;
+      h ^= h >> 29;
+      return h;
+    };
+    struct Slot {
+      uint64_t hash;
+      uint32_t gate;
+    };
+    constexpr uint32_t kEmpty = UINT32_MAX;
+    std::vector<Slot> table(std::bit_ceil(2 * size_t{ng} + 16), Slot{0, kEmpty});
+    size_t used = 0;
+    auto live = [&](const Slot& s) { return s.gate != kEmpty && gates[s.gate].size && gates[s.gate].hash == s.hash; };
+    auto insert = [&](uint64_t h, uint32_t g) {
+      if (2 * (used + 1) > table.size()) {
+        std::vector<Slot> old;
+        old.swap(table);
+        table.assign(2 * old.size(), Slot{0, kEmpty});
+        used = 0;
+        for (const Slot& s : old) {
+          if (!live(s)) continue;
+          size_t i = mix(s.hash) & (table.size() - 1);
+          while (table[i].gate != kEmpty) i = (i + 1) & (table.size() - 1);
+          table[i] = s;
+          ++used;
+        }
+        budget += old.size() / 4;
+      }
+      size_t i = mix(h) & (table.size() - 1);
+      while (table[i].gate != kEmpty) i = (i + 1) & (table.size() - 1);
+      table[i] = Slot{h, g};
+      ++used;
+    };
+    for (size_t head = 0; head < queue.size(); ++head) {
+      const uint32_t g = queue[head];
+      Gate& G = gates[g];
+      if (!G.size) continue;  // dropped
+      // Normalize.
+      Lit* in = inputs.data() + G.begin;
+      for (uint32_t k = 0; k < G.size; ++k) in[k] = find(in[k]);
+      std::sort(in, in + G.size);
+      uint32_t n = 0;
+      bool drop = false;
+      const Var out = var_of(find(G.lhs));
+      for (uint32_t k = 0; k < G.size; ++k) {
+        if (n && in[n - 1] == in[k]) continue;
+        if ((n && in[n - 1] == negate(in[k])) || var_of(in[k]) == out) drop = true;
+        in[n++] = in[k];
+      }
+      budget += G.size / 4 + 1;
+      if (drop || n == 1) {
+        G.size = 0;
+        if (!drop && merge(G.lhs, in[0])) ++found;
+        continue;
+      }
+      G.size = n;
+      uint64_t h = 0x9E3779B97F4A7C15ull * n;
+      for (uint32_t k = 0; k < n; ++k) h = (h ^ in[k]) * 0x100000001B3ull;
+      G.hash = h;
+      // Look up a live gate with the same inputs.
+      bool present = false;
+      uint32_t partner = kEmpty;
+      for (size_t i = mix(h) & (table.size() - 1); table[i].gate != kEmpty; i = (i + 1) & (table.size() - 1)) {
+        const Slot& s = table[i];
+        ++budget;
+        if (s.hash != h || !live(s)) continue;
+        if (s.gate == g) {
+          present = true;
+          continue;
+        }
+        const Gate& H = gates[s.gate];
+        if (H.size == n && std::equal(in, in + n, inputs.data() + H.begin)) {
+          partner = s.gate;
+          break;
+        }
+      }
+      if (partner != kEmpty) {
+        if (merge(G.lhs, gates[partner].lhs)) ++found;
+      } else if (!present) {
+        insert(h, g);
+      }
+    }
+    std::vector<Gate>().swap(gates);
+    std::vector<Lit>().swap(inputs);
+    found += congruent_xors(budget);
+    found += congruent_ites(budget);
+    stats_.congruent += found;
+    return found;
+  }
+
   // Gates with identical inputs: their outputs are equivalent.
   std::sort(gates.begin(), gates.end(), [&](const Gate& a, const Gate& b) {
     if (a.hash != b.hash) return a.hash < b.hash;

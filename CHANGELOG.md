@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.3.3 — 2026-11-05
+
+Equivalences from random simulation, and congruence closure to a fixpoint in one call.
+On the idle Apple M4 Pro (120 s): unsat26 21 solved, PAR-2 63.3 s (0.3.2: 21, 64.9; Kissat
+4.0.4: 22, 52.9); tune 23, 61.6 s (23, 63.2; Kissat 26, 45.5); held-out validation 21, 104.6 s
+(21, 103.2; Kissat 24, 83.9), with one unsatisfiable instance more and one satisfiable fewer.
+See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Simulation equivalences** (new, on by default, `--simeq`): AND gates and XOR constraints of
+  3 to 5 variables are extracted and evaluated on 512 random input vectors; variables with
+  equal or complementary signatures, and variables constant in every vector, are candidates.
+  They are proven bottom-up by Kitten on windows of their fan-in cones (depth `--simeqdepth`,
+  default 16) that include the binary clauses of the pairs proven so far, so the windows stay
+  small where two copies of a circuit meet; the proofs go to the DRAT output as in sweeping.
+  Sweeping finds equivalences only inside one variable's environment and congruence closure
+  only between gates with identical inputs; simulation finds functional equivalences between
+  distant parts of a circuit, as in a miter of two implementations. beempgsol2b1 (BEEM model
+  checking) is solved in 1 to 4 s instead of 13 to 16 s (Kissat 4.0.4: 9 s). If-then-else
+  gates are supported but off (`--simeqite`: more equivalences on pipeline instances, but
+  slower overall).
+- **Congruence closure** within one call: a union-find over literals, re-hashing only the gates
+  whose inputs were merged, instead of matching gates on their inputs once per call with
+  substitution in between (chains of gates in two copies of a circuit merged one level per
+  call, up to 16 calls per round). manol-pipe-f7nidw: congruence 6.6 -> 1.4 s, substitution
+  2.4 -> 0.5 s. `--congruenceclosure=0` restores the earlier matching.
+- **Statistics:** a simulation line, Kitten solves and ticks of sweeping, and with `-v -v` a
+  line per congruence round.
+
 ## v0.3.2 — 2026-11-05
 
 Sweeping rework, adaptive sweep environments, and new inprocessing techniques (opt-in until

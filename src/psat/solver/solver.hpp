@@ -118,7 +118,7 @@ struct Reluctant {
 // Wall time per pass (top-level passes, and the sub-passes of elimination and vivification).
 enum Pass : uint8_t {
   kPassEliminate, kPassSubstitute, kPassCongruence, kPassSubsume, kPassBva,
-  kPassVivify, kPassProbe, kPassSweep, kPassWalk, kPassReduce, kPassLucky, kPassUnhide, kPassCount
+  kPassVivify, kPassProbe, kPassSweep, kPassWalk, kPassReduce, kPassLucky, kPassUnhide, kPassSimulate, kPassCount
 };
 
 struct Stats {
@@ -135,7 +135,9 @@ struct Stats {
            vivify_asym = 0;
   uint64_t unhides = 0, unhide_units = 0, unhide_transitive = 0, unhide_tautologies = 0, unhide_strengthened = 0,
            unhide_literals = 0, unhide_ticks = 0;
-  uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0, sweep_flips = 0;
+  uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0, sweep_flips = 0, sweep_solves = 0, sweep_kitten_ticks = 0;
+  uint64_t simulations = 0, sim_gates = 0, sim_candidates = 0, sim_checked = 0, sim_equivalences = 0, sim_units = 0,
+           sim_failed = 0, sim_ticks = 0, sim_ites = 0;
   uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0;
   uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
@@ -312,6 +314,8 @@ class Solver {
   bool sweep_classes(uint32_t n);  // backbone / equivalence candidates as classes (Kissat)
   void sweep_emit_learned();
   bool sweep_add(const Lit* lits, uint32_t size);
+  void sweep_retire_learned();
+  void simulate_equivalences();
   Kitten kitten_;
   std::vector<uint32_t> sweep_local_;   // per variable: index in the environment or UINT32_MAX
   std::vector<Var> sweep_env_;          // environment variables (local index -> variable)

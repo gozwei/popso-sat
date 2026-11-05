@@ -154,6 +154,9 @@ std::vector<Options> option_variants() {
   e.unhide = 1;
   e.sweepsubst = 1;
   e.sweepgrow = 1;
+  e.simeq = 1;
+  e.simeqite = 1;
+  e.simeqdepth = 2;  // (small windows: candidates that fail as well as ones that are proven)
   e.vivifyeffort = 10000;
   e.sweep = 1;
   e.sweepeffort = 10000;
@@ -175,6 +178,8 @@ std::vector<Options> option_variants() {
   f.sweep = 0;
   v.push_back(f);
   Options g;  // elimination without subsumption, large bound from the start
+  g.simeq = 0;              // (and the earlier congruence matching, no simulation)
+  g.congruenceclosure = 0;
   g.subsume = 0;
   g.eliminategates = 0;
   g.bva = 1;

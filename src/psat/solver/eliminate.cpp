@@ -181,6 +181,11 @@ void Solver::eliminate() {
     }
   };
   scan("start");
+  // Equivalences from random simulation (first round only: elimination removes gate definitions).
+  if (opts_.simeq && eliminate_rounds_ == 1) {
+    simulate_equivalences();
+    if (inconsistent_) return;
+  }
   disconnect_long_watches();
   const uint32_t inactive_before = inactive_;
   if (opts_.substitute) substitute();
@@ -193,11 +198,21 @@ void Solver::eliminate() {
       --congruence_skip_;
     } else {
       bool found = false;
+      const double tc = seconds();
+      const uint64_t congruent_before = stats_.congruent;
+      int iterations = 0;
       for (int iter = 0; iter < 16 && !inconsistent_; ++iter) {
-        if (!congruence(budget)) break;
+        ++iterations;
+        const uint32_t n = congruence(budget);
+        if (opts_.verbose >= 3) std::printf("c   congruence iteration %d: %u congruent\n", iter, n);
+        if (!n) break;
         found = true;
         substitute();
         scan("congruence+substitute");
+      }
+      if (opts_.verbose >= 2) {
+        std::printf("c [%.2f s] congruence: %d iterations, %llu congruent, %.2f s\n", seconds(), iterations,
+                    static_cast<unsigned long long>(stats_.congruent - congruent_before), seconds() - tc);
       }
       congruence_delay_ = found ? 0 : std::min<uint32_t>(2 * congruence_delay_ + 1, 64);
       congruence_skip_ = congruence_delay_;

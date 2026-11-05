@@ -72,6 +72,12 @@ namespace psat {
   X(bvaprotect, 0, 0, 1, "variables added by BVA are not elimination candidates")                      \
   X(bvaticks, 1000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
   X(congruence, 1, 0, 1, "congruence closure on AND gates in elimination rounds")                 \
+  X(simeq, 1, 0, 1, "equivalences proposed by random simulation of AND gates, proven by Kitten")   \
+  X(simeqticks, 50000, 1, INT32_MAX, "simulation pass budget (thousands of ticks)")             \
+  X(simeqconst, 1, 0, 1, "simulation: also check variables that were constant in every vector")      \
+  X(simeqite, 0, 0, 1, "simulation: if-then-else gates too")                                   \
+  X(simeqdepth, 16, 1, 64, "depth of the fan-in windows that prove simulation candidates")          \
+  X(congruenceclosure, 1, 0, 1, "AND gate congruence to a fixpoint per call (union-find, re-hashing)")   \
   X(vivify, 1, 0, 1, "vivification of learned and irredundant clauses")                         \
   X(vivifyint, 2000, 10, INT32_MAX, "base interval between vivification rounds (conflicts)")      \
   X(vivifyeffort, 100, 1, 100000, "vivification effort relative to search ticks (per mille)")     \

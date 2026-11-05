@@ -7,6 +7,166 @@ off for the timing runs; UNSAT proofs are verified separately by the correctness
 ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines are
 never mixed.
 
+## v0.3.3 (Apple M4 Pro, macOS)
+
+Same machine and setup as the v0.3.2 section below (idle, 120 s, two instances at a time,
+native Kissat 4.0.4, every model checked; 8 GB on ncc and cfi-rigid and on the validation set).
+New in 0.3.3: equivalences found by random simulation of the extracted gates, and congruence
+closure to a fixpoint within one call (see the [CHANGELOG](CHANGELOG.md)).
+
+| set | popso-sat 0.3.3 | popso-sat 0.3.2 | Kissat 4.0.4 |
+|---|---|---|---|
+| unsat26 (26 unsatisfiable) | 21 / 63.3 | 21 / 64.9 | 22 / 52.9 |
+| tune (29 mixed) | 23 / 61.6 | 23 / 63.2 | 26 / 45.5 |
+| validation (32 held out) | 21 / 104.6 | 21 / 103.2 | 24 / 83.9 |
+
+(solved / PAR-2 in seconds.)
+
+**What this shows.** A small step: the same instances solved on the two tuning sets with
+PAR-2 2 to 3% lower, and on the held-out set one unsatisfiable instance more (oski15a01b42s,
+109 s; not solved by Kissat within 120 s) and one satisfiable instance fewer (sqrt_ineq_3.c,
+which takes 23 to 60 s or more from run to run). The simulation pass matters where two parts of
+a circuit compute the same functions: beempgsol2b1 4 s instead of 18 s (Kissat 9 s),
+sqrt-mitern172 23 instead of 31 s, BubbleVsPancakeSort 18 instead of 24 s. One instance is
+slower: SAT_dat.k80, 29 instead of 20 s (the simulation equivalences are ones congruence
+closure finds anyway; only the order in which variables are merged changes, and with it the
+search). Most validation instances have no gate structure for simulation to work with.
+
+<details>
+<summary>unsat26: per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+![unsat26: solved vs. time](docs/benchmarks/v0.3.3-unsat26-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 26 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.3 | 21 (0 / 21) | 63.3 | 23.27 |
+| popso-sat 0.3.2 | 21 (0 / 21) | 64.9 | 25.08 |
+| Kissat 4.0.4 | 22 (0 / 22) | 52.9 | 20.72 |
+
+| instance | popso-sat 0.3.3 | popso-sat 0.3.2 | Kissat 4.0.4 |
+|---|---|---|---|
+| BubbleVsPancakeSort_6_6 | **18.41** | 22.09 | 19.05 |
+| spg_420_280 | **8.52** | 9.46 | 65.99 |
+| div-mitern174 | **14.06** | 14.06 | 14.37 |
+| sqrt-mitern172 | **22.57** | 27.40 | 23.19 |
+| 6s158_Iter2 | 4.24 | 4.41 | **1.83** |
+| urquhart3_25bis.shuffled | 3.93 | 3.97 | **0.27** |
+| stb_588_138.apx_2_DC-ST | 91.95 | 97.87 | **77.08** |
+| mchess16-mixed-35percent-blocked | **17.90** | 18.70 | 27.76 |
+| mchess16-mixed-45percent-blocked | 7.43 | 7.89 | **2.45** |
+| php-010-009.shuffled-as.sat05-1185 | 1.86 | 1.94 | **1.32** |
+| mrpp_4x4_12_12 | **3.91** | 4.06 | 4.09 |
+| sgen1-unsat-97-100.cnf.mis-72.debugged | 8.12 | 8.66 | **1.04** |
+| battleship-13-13-unsat | TL | TL | **10.74** |
+| AProVE07-21 | 0.80 | **0.74** | 0.85 |
+| ps_200_300_70 | TL | TL | TL |
+| ps_200_323_70 | TL | TL | TL |
+| div-mitern171 | 54.18 | 58.14 | **41.77** |
+| 6s186_Iter20 | 101.57 | 106.03 | **25.79** |
+| SAT_dat.k80 | 29.16 | 19.97 | **16.07** |
+| manol-pipe-f7nidw | **32.86** | 40.49 | 34.45 |
+| beempgsol2b1 | **4.23** | 17.74 | 9.30 |
+| DivU_1520_10.cnf.sanitized | **5.72** | 6.84 | 13.42 |
+| DivU_624_11.cnf.sanitized | **5.71** | 6.73 | 9.28 |
+| j3045_4_mdd_bm1 | TL | TL | TL |
+| pcmax-scheduling-m30-14113-167638-UNSAT.sanitized | TL | TL | TL |
+| velev-pipe-o-uns-1.1-6 | **8.27** | 10.30 | 15.07 |
+
+</details>
+
+<details>
+<summary>tune: per-instance times (s)</summary>
+
+![tune: solved vs. time](docs/benchmarks/v0.3.3-tune-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 29 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.3 | 23 (10 / 13) | 61.6 | 20.54 |
+| popso-sat 0.3.2 | 23 (10 / 13) | 63.2 | 21.92 |
+| Kissat 4.0.4 | 26 (12 / 14) | 45.5 | 19.55 |
+
+| instance | popso-sat 0.3.3 | popso-sat 0.3.2 | Kissat 4.0.4 |
+|---|---|---|---|
+| mp1-squ_ali_s10x10_c39_abio_SAT | **19.43** | 22.74 | TL |
+| mp1-squ_ali_s10x10_c39_abix_SAT | 43.72 | 50.28 | **5.26** |
+| ncc_none_3001_7_3_3_1_31_435991723 | TL | TL | **32.54** |
+| cfi-rigid-r2-0072-01-or_3 | 9.73 | **9.70** | 39.46 |
+| velev-vliw-sat-4.0-b8 | 11.67 | 10.82 | **6.89** |
+| mdp-28-10-sat | TL | TL | **100.14** |
+| mdp-28-12-sat | **7.29** | 8.56 | TL |
+| stb_588_138.apx_2_DS-ST | TL | TL | **1.12** |
+| DivS_862_11.cnf.sanitized | **0.73** | 0.77 | 9.23 |
+| DivS_942_11.cnf.sanitized | **0.80** | 0.84 | 9.40 |
+| battleship-14-26-sat | **4.51** | 4.66 | 4.90 |
+| combined-crypto1-wff-seed-102-wffvars-500-cryptocplx-31-overlap-2 | **12.84** | 13.31 | 46.97 |
+| mp1-Nb5T15 | **30.57** | 31.92 | 51.39 |
+| case10 | TL | TL | TL |
+| case9 | TL | TL | **61.74** |
+| BubbleVsPancakeSort_6_6 | 18.45 | 24.26 | **16.22** |
+| spg_420_280 | **8.53** | 10.21 | 58.31 |
+| div-mitern174 | 14.09 | 15.72 | **13.13** |
+| sqrt-mitern172 | 22.66 | 30.47 | **22.11** |
+| 6s158_Iter2 | 4.27 | 4.83 | **1.77** |
+| urquhart3_25bis.shuffled | 3.93 | 4.08 | **0.27** |
+| stb_588_138.apx_2_DC-ST | 92.02 | 104.91 | **72.32** |
+| mchess16-mixed-35percent-blocked | **17.75** | 20.14 | 26.03 |
+| mchess16-mixed-45percent-blocked | 7.39 | 7.94 | **2.35** |
+| php-010-009.shuffled-as.sat05-1185 | 1.87 | 1.94 | **1.31** |
+| mrpp_4x4_12_12 | 3.88 | 5.10 | **3.55** |
+| sgen1-unsat-97-100.cnf.mis-72.debugged | 8.12 | 8.90 | **0.88** |
+| battleship-13-13-unsat | TL | TL | **10.42** |
+| AProVE07-21 | 0.79 | **0.71** | 0.84 |
+
+</details>
+
+<details>
+<summary>validation: per-instance times (s)</summary>
+
+![validation: solved vs. time](docs/benchmarks/v0.3.3-val-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 32 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.3 | 21 (10 / 11) | 104.6 | 45.65 |
+| popso-sat 0.3.2 | 21 (11 / 10) | 103.2 | 45.24 |
+| Kissat 4.0.4 | 24 (12 / 12) | 83.9 | 39.20 |
+
+| instance | popso-sat 0.3.3 | popso-sat 0.3.2 | Kissat 4.0.4 |
+|---|---|---|---|
+| b17 | **8.46** | 8.52 | 17.94 |
+| shift1add.28943 | 7.96 | **7.87** | 36.38 |
+| asconhashv12_opt64_H5_M2-A8qZX_m0_3_U23.c | TL | TL | **63.34** |
+| aes_decry_2_rounds.debugged | 106.18 | 93.24 | **55.13** |
+| edit_distance041_183 | 39.69 | 39.63 | **36.37** |
+| jkkk-one-one-11-32-unsat | TL | TL | **22.36** |
+| oski15a01b42s_opt | **109.20** | TL | TL |
+| manthey_single-ordered-initialized-w42-b8 | 58.16 | 58.09 | **56.64** |
+| grs-96-32 | 49.44 | 59.41 | **29.96** |
+| reconf20_61_myciel4_2 | 11.54 | **11.48** | 21.12 |
+| ktf_TF-3.tf_3_0.02_24 | 69.09 | 68.90 | **55.81** |
+| rphp5_085_shuffled | TL | TL | TL |
+| rook-56-1-1 | TL | TL | TL |
+| SCPC-500-19 | 12.21 | **12.17** | 14.04 |
+| satch2ways12u | 11.98 | 11.96 | **2.09** |
+| constraints_18_0.3_2.sanitized | TL | TL | TL |
+| brent_51_0.29 | 30.20 | 30.17 | **14.04** |
+| asconhashv12_opt64_H13_M2-axxJh7DAq767y_m4_5.c | TL | TL | **36.05** |
+| dislog_a14_x14_n24 | TL | TL | TL |
+| Folkman-175-1251868.sanitized | 48.92 | 48.96 | **36.65** |
+| noL-11-0.sanitized | **3.14** | 3.16 | TL |
+| DLTM_twitter774_83_17 | TL | TL | TL |
+| af-synthesis_stb_50_140_3_sat | 18.39 | 18.28 | **5.01** |
+| mod4block_2vars_10gates_u2_autoenc-sc2009 | 24.12 | 24.08 | **12.84** |
+| PRP_20_40 | 23.59 | 23.05 | **3.63** |
+| frb45-21-2.used-as.sat04-884 | 25.55 | **25.47** | 67.27 |
+| rbsat-v760c43649gyes9 | 29.90 | **29.79** | 92.08 |
+| SC23_Timetable_C_476_E_50_Cl_32_D_6_T_50 | TL | TL | **35.04** |
+| ContextModel_output_6_3_8.bul_.dimacs | TL | TL | TL |
+| sqrt_ineq_3.c | TL | 60.39 | **1.90** |
+| summle_X8639_steps8_I1-2-2-4-4-8-25-100 | **12.92** | 20.72 | 33.22 |
+| ktf_TF-7.tf_3_0.06_113 | 5.77 | **5.69** | 16.29 |
+
+</details>
+
 ## v0.3.2 (Apple M4 Pro, macOS)
 
 The machine used for the earlier sections (an Intel i7-7700K shared with other long jobs) gave

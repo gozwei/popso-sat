@@ -237,7 +237,7 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
   bool ok = true;
   const uint64_t kitten_start = kitten_.ticks();
   const uint32_t n = static_cast<uint32_t>(sweep_env_.size());
-  int r = kitten_.solve(kSolveTicks);
+  int r = (++stats_.sweep_solves, kitten_.solve(kSolveTicks));
   if (r == Kitten::kUnsat) {  // the environment, hence the formula, is unsatisfiable
     sweep_emit_learned();
     ok = sweep_add(nullptr, 0);
@@ -269,7 +269,7 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
       ++checks;
       const Kitten::KLit l = true_lit(i);
       kitten_.assume(l ^ 1u);
-      r = kitten_.solve(kSolveTicks);
+      r = (++stats_.sweep_solves, kitten_.solve(kSolveTicks));
       if (r == Kitten::kUnknown) break;
       if (r == Kitten::kSat) {
         refine();
@@ -297,7 +297,7 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
       for (int dir = 0; dir < 2 && proved; ++dir) {
         kitten_.assume(dir == 0 ? x : x ^ 1u);
         kitten_.assume(dir == 0 ? y ^ 1u : y);
-        r = kitten_.solve(kSolveTicks);
+        r = (++stats_.sweep_solves, kitten_.solve(kSolveTicks));
         if (r != Kitten::kUnsat) {
           if (r == Kitten::kSat) refine();
           proved = false;
@@ -328,25 +328,29 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
     }
   }
   ticks += kitten_.ticks() - kitten_start;
-  // The emitted learned clauses were only needed to derive the added ones: delete them again
-  // (except units, and copies of the binary clauses now in the formula).
-  if (proof_) {
-    for (size_t at = 0; at < sweep_emitted_lits_.size(); at += sweep_emitted_lits_[at] + 1) {
-      const uint32_t size = sweep_emitted_lits_[at];
-      const Lit* lits = sweep_emitted_lits_.data() + at + 1;
-      if (size < 2) continue;
-      bool kept = false;
-      if (size == 2) {
-        const Lit a = std::min(lits[0], lits[1]), b = std::max(lits[0], lits[1]);
-        for (size_t k = 0; k < sweep_added_.size() && !kept; k += 2) {
-          kept = sweep_added_[k] == a && sweep_added_[k + 1] == b;
-        }
-      }
-      if (!kept) proof_->del(lits, size);
-    }
-  }
+  stats_.sweep_kitten_ticks += kitten_.ticks() - kitten_start;
+  sweep_retire_learned();
   for (const Var u : sweep_env_) sweep_local_[u] = kNotLocal;
   return ok;
+}
+
+// The emitted learned clauses were only needed to derive the added ones: deletes them from the
+// proof again (except units, and copies of the binary clauses now in the formula).
+void Solver::sweep_retire_learned() {
+  if (!proof_) return;
+  for (size_t at = 0; at < sweep_emitted_lits_.size(); at += sweep_emitted_lits_[at] + 1) {
+    const uint32_t size = sweep_emitted_lits_[at];
+    const Lit* lits = sweep_emitted_lits_.data() + at + 1;
+    if (size < 2) continue;
+    bool kept = false;
+    if (size == 2) {
+      const Lit a = std::min(lits[0], lits[1]), b = std::max(lits[0], lits[1]);
+      for (size_t k = 0; k < sweep_added_.size() && !kept; k += 2) {
+        kept = sweep_added_[k] == a && sweep_added_[k + 1] == b;
+      }
+    }
+    if (!kept) proof_->del(lits, size);
+  }
 }
 
 // Candidates as in Kissat's sweeping (--sweepclasses): backbone candidates are the literals true
@@ -363,7 +367,7 @@ bool Solver::sweep_classes(uint32_t n) {
   auto fixed = [&](KLit k) { return vals_[glit(k)] != 0; };
   auto solve = [&]() {
     kitten_.randomize_phases(rng_);
-    return kitten_.solve(kSolveTicks);
+    return (++stats_.sweep_solves, kitten_.solve(kSolveTicks));
   };
   const uint64_t limit = kitten_.ticks() + kVariableTicks;
   std::vector<KLit>& backbone = sweep_backbone_;
