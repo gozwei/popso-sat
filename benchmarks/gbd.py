@@ -286,6 +286,127 @@ def cmd_select(args):
     return 0
 
 
+# ------------------------------------------------------------------ heldout
+
+def _set_hashes_and_families(names):
+    """Hashes of the GBD entries of the given sets, and the families named in their comments."""
+    hashes, fams = set(), set()
+    for name in names:
+        p = paths.SETS / f"{name}.txt"
+        if not p.exists():
+            continue
+        for ln in p.read_text().splitlines():
+            body, _, comment = ln.partition("#")
+            f = body.split()
+            if f and f[0].startswith("gbd/files/"):
+                hashes.add(Path(f[0]).name.split("-", 1)[0])
+                m = re.search(r"family=(\S+)", comment)
+                if m:
+                    fams.add(m.group(1))
+    return hashes, fams
+
+
+def cmd_heldout(args):
+    """A large held-out set: a deterministic sample of one competition year's main track,
+    without runtime filtering (no selection by any solver's results), excluding every instance
+    of an existing set and the families of the sets defaults were tuned on."""
+    d = gbd_dir()
+    meta, base = d / "meta.db", d / "base.db"
+    if not meta.exists():
+        print("meta.db missing: run  benchmarks/gbd.py fetch-meta", file=sys.stderr)
+        return 2
+    db = sqlite3.connect(f"file:{meta}?mode=ro", uri=True)
+    years = args.years.split(",")
+    rows = db.execute(
+        "select t.value, f.hash, f.result, f.family, f.minisat1m from track t "
+        "join features f on f.hash = t.hash where t.value in (%s)" %
+        ",".join(f"'main_{y}'" for y in years)).fetchall()
+    fname = dict(db.execute("select hash, value from filename"))
+    plain = {}
+    if base.exists():
+        bdb = sqlite3.connect(f"file:{base}?mode=ro", uri=True)
+        for h, b in bdb.execute("select hash, bytes from features"):
+            plain[h] = b
+    all_sets = sorted(p.stem for p in paths.SETS.glob("*.txt") if p.stem != args.out)
+    used, _ = _set_hashes_and_families(all_sets)
+    _, tuned_fams = _set_hashes_and_families(args.exclude_families_of.split(","))
+    sizes_f = d / "xz_sizes.json"
+    sizes = json.loads(sizes_f.read_text()) if sizes_f.exists() else {}
+
+    cands, skipped = [], {"result": 0, "used": 0, "family": 0, "trivial": 0, "plain": 0}
+    seen = set()
+    for track, h, res, fam, ms in sorted(rows):
+        if h in seen:
+            continue
+        seen.add(h)
+        fam = fam or "unknown"
+        if res not in ("sat", "unsat"):
+            skipped["result"] += 1
+        elif h in used:
+            skipped["used"] += 1
+        elif fam in tuned_fams:
+            skipped["family"] += 1
+        elif args.require_nontrivial and ms == "yes":
+            skipped["trivial"] += 1
+        else:
+            try:
+                pmb = int(plain.get(h)) / 1048576.0
+            except (TypeError, ValueError):
+                pmb = None
+            if pmb is not None and pmb > args.max_plain_mb:
+                skipped["plain"] += 1
+                continue
+            cands.append({"hash": h, "filename": fname.get(h, h + ".cnf.xz"), "year": track.split("_")[1],
+                          "family": fam, "result": res, "plain_mb": round(pmb, 2) if pmb else None})
+    print(f"{len(cands)} candidates; skipped {skipped}; tuned families excluded: {len(tuned_fams)}")
+
+    chosen, fam_count, heads = [], {}, 0
+    for c in sorted(cands, key=lambda c: _order_key(c["hash"])):
+        if fam_count.get(c["family"], 0) >= args.per_family:
+            continue
+        if c["hash"] not in sizes:
+            sizes[c["hash"]] = head_size(c["hash"])
+            heads += 1
+            if heads % 25 == 0:
+                sizes_f.write_text(json.dumps(sizes, indent=0))
+                print(f"  ... {heads} size requests", flush=True)
+        xz = sizes[c["hash"]]
+        if xz is None or xz > args.max_xz_mb * 1048576:
+            continue
+        c["xz_mb"] = round(xz / 1048576.0, 2)
+        chosen.append(c)
+        fam_count[c["family"]] = fam_count.get(c["family"], 0) + 1
+        if len(chosen) >= args.size:
+            break
+    sizes_f.write_text(json.dumps(sizes, indent=0))
+    chosen.sort(key=lambda c: (c["result"], c["family"], c["filename"]))
+    rows_out = []
+    for c in chosen:
+        safe = re.sub(r"[^A-Za-z0-9._+-]", "_", c["filename"])
+        info = [f"family={c['family']}", f"year={c['year']}", f"xz={c['xz_mb']}MB"]
+        if c.get("plain_mb"):
+            info.append(f"cnf={c['plain_mb']:.1f}MB")
+        rows_out.append((f"gbd/files/{c['hash']}-{safe}", c["result"], " ".join(info)))
+    nsat = sum(1 for c in chosen if c["result"] == "sat")
+    fams = sorted({c["family"] for c in chosen})
+    hdr = [f"held-out set: {len(chosen)} instances of the SAT Competition main track {'/'.join(years)} "
+           f"(benchmarks/gbd.py heldout), {nsat} sat / {len(chosen) - nsat} unsat, {len(fams)} families",
+           "no runtime filter: a deterministic hash-ordered sample, not chosen by any solver's results;",
+           f"excluded: instances of every other set, families of {args.exclude_families_of}, "
+           f"minisat1m=yes, cnf > {args.max_plain_mb:g} MB, xz > {args.max_xz_mb:g} MB; "
+           f"at most {args.per_family} per family",
+           f"files: <main>/benchmarks/cache/gbd/files (benchmarks/gbd.py download --set {args.out})",
+           f"total xz {sum(c['xz_mb'] for c in chosen):.0f} MB"]
+    write_set(paths.SETS / f"{args.out}.txt", rows_out, hdr)
+    (paths.REFERENCE / f"gbd_{args.out}.json").write_text(json.dumps(
+        {"generated": time.strftime("%Y-%m-%d"), "args": {k: v for k, v in vars(args).items() if k != "func"},
+         "instances": chosen}, indent=1) + "\n")
+    print(f"selected {len(chosen)}: {nsat} sat, {len(chosen) - nsat} unsat, {len(fams)} families, "
+          f"{sum(c['xz_mb'] for c in chosen):.0f} MB xz ({heads} HEAD requests)")
+    print(f"written {paths.portable(paths.SETS / (args.out + '.txt'))}")
+    return 0
+
+
 # ------------------------------------------------------------------ download
 
 def cmd_download(args):
@@ -379,6 +500,18 @@ def main(argv=None):
     p.add_argument("--require-nontrivial", action=argparse.BooleanOptionalAction, default=True,
                    help="unfiltered: skip minisat1m=yes instances (default on)")
     p.set_defaults(func=cmd_select)
+    p = sub.add_parser("heldout", help="write a large held-out set from one year's main track")
+    p.add_argument("--years", default="2026", help="comma-separated main-track years (default 2026)")
+    p.add_argument("--out", default="sc2026", help="set name (default sc2026)")
+    p.add_argument("--size", type=int, default=200)
+    p.add_argument("--per-family", type=int, default=4)
+    p.add_argument("--exclude-families-of", default="tune,unsat26,unsat_dev,medium,small,gate",
+                   help="sets whose GBD families defaults were tuned on")
+    p.add_argument("--max-xz-mb", type=float, default=100.0)
+    p.add_argument("--max-plain-mb", type=float, default=400.0)
+    p.add_argument("--require-nontrivial", action=argparse.BooleanOptionalAction, default=True,
+                   help="skip minisat1m=yes instances (default on)")
+    p.set_defaults(func=cmd_heldout)
     p = sub.add_parser("download", help="download the GBD files of a set into the cache")
     p.add_argument("--set", default="dev_candidates")
     p.add_argument("--max-total-mb", type=float, default=1000.0, help="download budget (default 1000 MB)")

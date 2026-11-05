@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.3.4 — 2026-11-05
+
+Bounded variable addition on by default, with a trial that keeps it to the formulas it helps;
+proof output that never claims unsatisfiability with an incomplete proof; and a held-out
+benchmark set of 168 SAT Competition 2026 instances.
+On the Apple M4 Pro (120 s): unsat26 22 solved, PAR-2 56.2 s (0.3.3: 21, 63.3; Kissat 4.0.4:
+22, 52.9); tune 25, 47.3 s (23, 61.6; Kissat 26, 45.5); held-out validation unchanged (21, the
+same search as 0.3.3). See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **BVA trial rounds** (`--bvamin`, default 200 per mille; BVA now on by default):
+  - Before replacing anything, BVA runs its matching once without changes. It only marks the
+    clauses a replacement would remove, and sums the reduction.
+  - The replacements are made only when that reduction reaches a fifth of the irredundant
+    clauses.
+  - BVA pays off on formulas dominated by at-most-one cliques (battleship, stb argumentation,
+    pigeonhole-like counting), where it removes 35–65% of the clauses. On large formulas where
+    it removes a few percent, it only perturbed the search (spg: 2 variables added, 8 → 82 s).
+  - A declined trial leaves the run exactly as with BVA off.
+  - Results:
+    - Tuning sets: battleship-13-13 timeout → 4 s, stb DS-ST timeout → 15 s.
+    - The 32 validation instances: none passes the trial.
+    - The 16 of 168 SC2026 instances that pass (M4, 300 s): 4 → 8 solved, PAR-2 457.7 → 319.0 s.
+- **Proof output:**
+  - A failing proof write (for example a full disk) no longer aborts the solver. The proof is
+    marked failed and the solver goes on.
+  - The proof file is flushed and closed before the answer is printed. If anything failed, an
+    unsatisfiable result is reported as `s UNKNOWN`; satisfiable answers stand, since their
+    models are checked.
+  - Exceptions inside the search print `s UNKNOWN` instead of terminating.
+  - `run.sh` creates the proof directory if it is missing.
+  - Proofs were checked with the verified chains used by the SAT Competition (dpr-trim with
+    cake_lpr, and gratgen with gratchk) as well as drat-trim, all VERIFIED. `build.sh` builds
+    without CMake in Ubuntu 24.04 (g++ 13) and in the organizers' current image (g++ 15).
+- **Benchmarks:**
+  - `benchmarks/gbd.py heldout` writes `sets/sc2026.txt`: 168 instances of the SAT Competition
+    2026 main track from 87 families.
+  - The sample is deterministic and not filtered by any solver's runtime, and it excludes the
+    families tuned on.
+  - `compare.py --per-family`.
+- **Opt-in:** `--restartgrow`. The minimum interval between focused-mode restarts grows with
+  the logarithm of the restart count. With a fixed interval of one conflict, restarts came in
+  bursts (3.5–10 conflicts per restart, against 9–19 in Kissat).
+- **Statistics:** BVA trials and the rounds they allowed; `-v -v` prints each trial's estimate.
+
 ## v0.3.3 — 2026-11-05
 
 Equivalences from random simulation, and congruence closure to a fixpoint in one call.

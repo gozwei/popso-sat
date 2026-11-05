@@ -17,17 +17,18 @@ ProofWriter::ProofWriter(std::FILE* file, bool binary)
           },
           binary) {}
 
-ProofWriter::~ProofWriter() {
-  try {
-    flush();
-  } catch (...) {
-  }
-}
+ProofWriter::~ProofWriter() { flush(); }
 
 void ProofWriter::flush() {
   if (pos_ == 0) return;
-  sink_(buf_.data(), pos_);
-  bytes_ += pos_;
+  if (!failed_) {
+    try {
+      sink_(buf_.data(), pos_);
+      bytes_ += pos_;
+    } catch (...) {
+      failed_ = true;
+    }
+  }
   pos_ = 0;
 }
 

@@ -11,8 +11,15 @@
 // -x (every resolvent with an (x v Ci') clause is the existing clause (k v Ci')); the pivot is
 // written first. The replaced clauses are then deleted. Models need no reconstruction: x true
 // forces every k, x false forces every Ci', so the original clauses hold either way.
+//
+// Trial rounds (--bvamin): the same matching without replacements; the clauses a replacement
+// would remove are only marked, so later matchings skip them, and the reductions are summed.
+// BVA pays off where it removes a large share of the formula (at-most-one cliques: battleship,
+// stb); a few replacements in a large formula only perturb the search (spg: 2 variables, 10x
+// slower), so a round is made only when the trial's reduction reaches the threshold.
 
 #include <algorithm>
+#include <unordered_set>
 
 #include "psat/io/proof.hpp"
 #include "psat/solver/solver.hpp"
@@ -40,8 +47,14 @@ size_t Solver::bva_count(Lit l, uint64_t& budget) {
   return n;
 }
 
-void Solver::bva_round(uint64_t& budget, uint64_t limit) {
+int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
   const PassTimer pass_timer(*this, kPassBva);
+  int64_t reduced = 0;
+  // Trial rounds: the clauses later replacements may not use (long by reference, binary by
+  // their ordered literal pair).
+  std::unordered_set<uint32_t> consumed_long;
+  std::unordered_set<uint64_t> consumed_bin;
+  auto bin_key = [](Lit a, Lit b) { return (uint64_t{std::min(a, b)} << 32) | std::max(a, b); };
   // New variables per round: a tenth of the variables, but at least --bvavars (small crafted
   // formulas, such as at-most-one cliques over a few hundred variables, need several per clique).
   const uint32_t max_new = std::max<uint32_t>(static_cast<uint32_t>(opts_.bvavars), num_vars_ / 10);
@@ -52,14 +65,19 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
     uint32_t* os = occs_.begin(l);
     const uint32_t n = occs_.size(l);
     uint32_t j = 0;
+    // (A trial leaves the occurrence lists as they are: when it declines, elimination sees the
+    // same lists, in particular the same counts for its candidate order, as without BVA.)
     for (uint32_t i = 0; i < n; ++i) {
       if (clause(os[i]).garbage) continue;
-      os[j++] = os[i];
+      if (!dry) os[j++] = os[i];
+      if (dry && consumed_long.count(os[i])) continue;
       out.push_back(BClause{os[i], kNoLit, kNoLit});
     }
-    occs_.truncate(l, j);
+    if (!dry) occs_.truncate(l, j);
     for (const Watch& w : watches_[l]) {
-      if (w.binary() && !w.redundant_binary()) out.push_back(BClause{kNoReason, l, w.blit});
+      if (!w.binary() || w.redundant_binary()) continue;
+      if (dry && consumed_bin.count(bin_key(l, w.blit))) continue;
+      out.push_back(BClause{kNoReason, l, w.blit});
     }
     budget += out.size() / 4 + 1;
   };
@@ -276,6 +294,22 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
       m_lit.push_back(lmax);
     }
     if (m_lit.size() < 2 || reduction(m_lit.size(), m_cls.size()) <= 0) continue;
+    if (dry) {
+      reduced += reduction(m_lit.size(), m_cls.size());
+      ++added;
+      for (const auto& row : matched) {
+        for (const BClause& d : row) {
+          if (d.ref != kNoReason) {
+            consumed_long.insert(d.ref);
+          } else {
+            consumed_bin.insert(bin_key(d.a, d.b));
+          }
+        }
+      }
+      budget += m_lit.size() * m_cls.size();
+      if (retries++ < 8) --qi;
+      continue;
+    }
 
     // Replace with a fresh variable x.
     const Var xv = num_vars_;
@@ -328,8 +362,30 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
     }
     stats_.bva_removed += m_lit.size() * m_cls.size();
     stats_.bva_added += m_lit.size() + m_cls.size();
+    reduced += reduction(m_lit.size(), m_cls.size());
     if (retries++ < 8) --qi;  // try l again
   }
+  return reduced;
+}
+
+void Solver::bva_run(uint64_t& budget) {
+  const uint64_t extra = std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4);
+  if (opts_.bvamin > 0) {
+    const uint64_t clauses = irredundant_ + binaries_irredundant_;
+    const int64_t trial = bva_round(budget, budget + extra, true);
+    ++stats_.bva_trials;
+    const bool go = clauses > 0 && trial > 0 &&
+                    static_cast<uint64_t>(trial) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses;
+    if (opts_.verbose >= 2) {
+      std::printf("c [%.2f s] bva trial: reduction %lld of %llu irredundant clauses (%.1f%%), %s\n", seconds(),
+                  static_cast<long long>(trial), static_cast<unsigned long long>(clauses),
+                  clauses ? 100.0 * static_cast<double>(trial) / static_cast<double>(clauses) : 0.0,
+                  go ? "replacing" : "skipped");
+    }
+    if (!go) return;
+    ++stats_.bva_rounds;
+  }
+  bva_round(budget, budget + extra, false);
 }
 
 }  // namespace psat

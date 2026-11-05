@@ -427,7 +427,19 @@ void Solver::restart() {
   stats_.reused_levels += keep;
   backtrack(keep);
   reluctant_.trigger = false;
-  restart_limit_ = stats_.conflicts + static_cast<uint64_t>(opts_.restartint);
+  restart_limit_ = stats_.conflicts + focused_restart_interval();
+}
+
+// Conflicts before the next focused-mode restart may be considered. Right after a restart the
+// fast glue average is still above the slow one, so with a fixed interval of 1 restarts come in
+// bursts (one per conflict); with --restartgrow the interval grows with the decimal logarithm of
+// the restart count (1 below 91 restarts, 2 below 991, ...), as long runs need fewer of them.
+uint64_t Solver::focused_restart_interval() const {
+  uint64_t delta = static_cast<uint64_t>(opts_.restartint);
+  if (opts_.restartgrow) {
+    for (uint64_t r = stats_.restarts + 9; r >= 100; r /= 10) ++delta;
+  }
+  return delta;
 }
 
 // Trail reuse (van der Tak, Ramos & Heule 2011): the decisions of levels 1..k whose variables rank
@@ -486,7 +498,7 @@ void Solver::switch_mode() {
     reluctant_.init(static_cast<uint64_t>(opts_.reluctantint), static_cast<uint64_t>(opts_.reluctantlim));
   } else {
     queue_search_ = queue_last_;
-    restart_limit_ = stats_.conflicts + static_cast<uint64_t>(opts_.restartint);
+    restart_limit_ = stats_.conflicts + focused_restart_interval();
   }
   if (opts_.verbose >= 2) {
     std::printf("c [%.2f s] switched to %s mode after %llu conflicts\n", seconds(), stable_ ? "stable" : "focused",
@@ -601,8 +613,10 @@ void Solver::print_statistics(std::FILE* out) const {
   std::fprintf(out, "c lucky          %14llu\n", ull(stats_.lucky));
   std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu\n", ull(stats_.walks), ull(stats_.walk_flips),
                ull(stats_.walk_ticks));
-  std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu, 3-hop tie-breaks %llu\n",
-               ull(stats_.bva_vars), ull(stats_.bva_removed), ull(stats_.bva_added), ull(stats_.bva_hop_ties));
+  std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu, 3-hop tie-breaks %llu, "
+               "trials %llu (rounds made %llu)\n",
+               ull(stats_.bva_vars), ull(stats_.bva_removed), ull(stats_.bva_added), ull(stats_.bva_hop_ties),
+               ull(stats_.bva_trials), ull(stats_.bva_rounds));
   std::fprintf(out, "c tiers          %14u  tier2 %u\n", tier1_, tier2_);
   std::fprintf(out, "c shrunk         %14llu  literals\n", ull(stats_.shrunk_literals));
   std::fprintf(out, "c fixed          %14llu  of %u variables\n", ull(stats_.fixed), num_vars_);

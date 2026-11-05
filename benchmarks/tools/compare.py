@@ -8,7 +8,8 @@ Each argument is LABEL=RESULT.json (one run.py result per solver, same instance 
 
 Table columns: solved (SAT / UNSAT), PAR-2 (an unsolved instance counts twice the time
 limit) and the shifted geometric mean (shift 10 s, unsolved = time limit). A per-instance table
-is printed with --per-instance. The SVG is self-contained (no dependencies) and follows the
+is printed with --per-instance, solved counts per family (the families where the solvers differ)
+with --per-family. The SVG is self-contained (no dependencies) and follows the
 viewer's light / dark preference (the style of popso's plots).
 """
 
@@ -117,8 +118,9 @@ def main():
     ap.add_argument("--subtitle", default="")
     ap.add_argument("--svg", help="write the plot here")
     ap.add_argument("--per-instance", action="store_true")
+    ap.add_argument("--per-family", action="store_true", help="solved per family where the solvers differ")
     args = ap.parse_args()
-    series, tl, names = [], None, None
+    series, tl, names, family = [], None, None, {}
     for i, spec in enumerate(args.runs):
         label, path = spec.split("=", 1)
         meta, results = load(path)
@@ -126,6 +128,8 @@ def main():
         if meta["time_limit"] != tl:
             raise SystemExit(f"{path}: time limit {meta['time_limit']} differs from {tl}")
         names = names or [r["name"] for r in results]
+        for r in results:
+            family.setdefault(r["name"], r.get("family") or "unknown")
         series.append((label, stats(results, tl), COLORS[i % len(COLORS)]))
     n = series[0][1]["n"]
     print(f"| solver | solved (SAT / UNSAT) of {n} | PAR-2 (s) | shifted geomean (s) |")
@@ -148,6 +152,23 @@ def main():
                     s = f"{v:.2f}"
                     row.append(f"**{s}**" if best is not None and v == best else s)
             print(f"| {name} | " + " | ".join(row) + " |")
+    if args.per_family:
+        fams = {}
+        for name in names:
+            fams.setdefault(family.get(name, "unknown"), []).append(name)
+        print()
+        print("| family (instances) | " + " | ".join(label for label, _, _ in series) + " |")
+        print("|---" * (len(series) + 1) + "|")
+        same = 0
+        for fam in sorted(fams):
+            counts = [sum(1 for nm in fams[fam] if st["times"].get(nm) is not None) for _, st, _ in series]
+            if len(set(counts)) == 1:
+                same += 1
+                continue
+            top = max(counts)
+            cells = [f"**{c}**" if c == top else str(c) for c in counts]
+            print(f"| {fam} ({len(fams[fam])}) | " + " | ".join(cells) + " |")
+        print(f"\n{same} of {len(fams)} families with equal solved counts not shown")
     if args.svg:
         sub = args.subtitle or f"{n} instances, time limit {tl:g} s"
         Path(args.svg).parent.mkdir(parents=True, exist_ok=True)

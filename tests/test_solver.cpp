@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -146,6 +147,7 @@ std::vector<Options> option_variants() {
   v.push_back(e);
   e.vivifyint = 10;  // the same with frequent vivification, BVA, shrinking and sweeping
   e.bva = 1;
+  e.bvamin = 0;  // (replacements without a trial)
   e.shrink = 2;  // (with implied lower-level literals)
   e.vivifytier3 = 1;
   e.vivifyinst = 1;
@@ -183,6 +185,7 @@ std::vector<Options> option_variants() {
   g.subsume = 0;
   g.eliminategates = 0;
   g.bva = 1;
+  g.bvamin = 0;  // (replacements without a trial)
   g.eliminatebound = 1024;
   g.eliminateint = 20;
   g.vivifyint = 15;
@@ -200,6 +203,12 @@ std::vector<Options> option_variants() {
   g.bvaevery = 1;
   g.bvaprotect = 1;
   v.push_back(g);  // BVA in every round, its variables protected from elimination
+  g.bvamin = 200;
+  v.push_back(g);  // trial rounds first: replacements only where they remove a fifth of the clauses
+  g.bvamin = 1;
+  g.bvaevery = 0;
+  g.bvaprotect = 0;
+  v.push_back(g);  // a trial, then (almost always) the round
   Options h;  // semantic definitions only (no syntactic gates), frequent rounds
   h.eliminategates = 0;
   h.definitions = 1;
@@ -497,6 +506,34 @@ TEST(solver_conflict_limit_unknown) {
   s.set_conflict_limit(100);
   CHECK_EQ(s.solve(), kUnknown);
   CHECK(std::string(s.unknown_reason()) == "conflict limit");
+}
+
+TEST(proof_write_error_is_sticky) {
+  // A sink that fails on its first call (full disk): no exception leaves the solver, the proof
+  // is marked failed and nothing more is written; the solver still answers.
+  int calls = 0;
+  ProofWriter proof([&](const char*, size_t) {
+    ++calls;
+    throw std::runtime_error("disk full");
+  }, false);
+  Solver s;
+  s.set_proof(&proof);
+  const ClauseList f = pigeonhole(5);
+  s.reserve(30);
+  for (const auto& c : f) {
+    for (int l : c) s.add(l);
+    s.add(0);
+  }
+  CHECK_EQ(s.solve(), kUnsat);
+  proof.flush();
+  CHECK(proof.failed());
+  CHECK_EQ(calls, 1);
+  std::string ok_text;
+  ProofWriter ok([&](const char* d, size_t k) { ok_text.append(d, k); }, false);
+  const Lit a[1] = {from_dimacs(1)};
+  ok.add(a, 1);
+  ok.flush();
+  CHECK(!ok.failed());
 }
 
 TEST(proof_binary_encoding) {

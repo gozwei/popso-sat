@@ -261,8 +261,24 @@ int main(int argc, char** argv) {
   } catch (const std::bad_alloc&) {
     if (!quiet) std::printf("c out of memory\n");
     res = psat::kUnknown;
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "c ERROR: %s\n", e.what());
+    if (!quiet) std::printf("c ERROR: %s\n", e.what());
+    res = psat::kUnknown;
   }
-  if (proof) proof->flush();
+  // The proof is complete on disk (flushed, closed, no write error) before an answer is printed:
+  // 's UNSATISFIABLE' with a truncated proof would be rejected by the checker.
+  if (proof) {
+    proof->flush();
+    std::FILE* f = proof_file.release();
+    const bool write_error = proof->failed() || std::fflush(f) != 0 || std::ferror(f) != 0;
+    const bool close_error = std::fclose(f) != 0;
+    if (write_error || close_error) {
+      std::fprintf(stderr, "c ERROR: writing the proof file '%s' failed\n", proof_path.c_str());
+      if (!quiet) std::printf("c ERROR: writing the proof file failed\n");
+      if (res == psat::kUnsat) res = psat::kUnknown;
+    }
+  }
 
   if (res == psat::kSat && opts.check) {
     const long long bad = check_model(solver, original);

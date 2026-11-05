@@ -139,7 +139,7 @@ struct Stats {
   uint64_t simulations = 0, sim_gates = 0, sim_candidates = 0, sim_checked = 0, sim_equivalences = 0, sim_units = 0,
            sim_failed = 0, sim_ticks = 0, sim_ites = 0;
   uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
-  uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0;
+  uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0, bva_trials = 0, bva_rounds = 0;
   uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
@@ -252,6 +252,7 @@ class Solver {
   // --- schedules ------------------------------------------------------------------------------
   bool restarting() const;
   void restart();
+  uint64_t focused_restart_interval() const;
   uint32_t reuse_trail_level();
   bool rephasing() const { return opts_.rephase && stats_.conflicts >= rephase_limit_; }
   void rephase();
@@ -283,7 +284,8 @@ class Solver {
   uint32_t congruent_xors(uint64_t& budget);
   uint32_t congruent_ites(uint64_t& budget);
   void prove_by_cases(std::vector<Lit>& clause, const std::vector<Var>& cases, size_t depth);
-  void bva_round(uint64_t& budget, uint64_t limit);
+  int64_t bva_round(uint64_t& budget, uint64_t limit, bool dry);  // -> clauses removed (estimated if dry)
+  void bva_run(uint64_t& budget);  // a trial round first with --bvamin
   size_t bva_count(Lit l, uint64_t& budget);
   bool try_eliminate(Var v, uint32_t bound, uint64_t& budget);
   void gather_occurrences(Lit l, std::vector<uint32_t>& out, uint64_t& budget);

@@ -20,6 +20,7 @@ namespace psat {
   X(modegrowth, 200, 100, 1000, "growth of the mode length in ticks per focused+stable pair (%)") \
   X(modeschedule, 1, 0, 1, "mode lengths: 0 = geometric (modegrowth), 1 = quadratic in the pair count") \
   X(restartint, 1, 1, 10000, "minimum conflicts between focused-mode restarts")                   \
+  X(restartgrow, 0, 0, 1, "focused restart interval grows with log10 of the restart count")      \
   X(restartmargin, 10, 0, 100, "fast glue average above slow one by this much restarts (%)")      \
   X(reusetrail, 1, 0, 1, "restarts keep the decisions that would be taken again")               \
   X(emafast, 33, 1, 1000, "window of the fast glue moving average (conflicts)")                   \
@@ -64,12 +65,13 @@ namespace psat {
   X(subsumeeffort, 100, 1, 100000, "forward subsumption effort per round in percent of the default") \
   X(eagersubsume, 20, 0, 100, "learned clauses checked for subsumption by each new learned clause") \
   X(substitute, 1, 0, 1, "equivalent literal substitution (SCCs of binary implications)")         \
-  X(bva, 0, 0, 1, "bounded variable addition in elimination rounds")                             \
+  X(bva, 1, 0, 1, "bounded variable addition in elimination rounds")                             \
   X(bvavars, 1000, 1, 1000000, "BVA adds at most max(bvavars, variables / 10) variables per round")  \
   X(bvahops, 0, 0, 1, "BVA ties: most 3-hop paths to the factored literal (SBVA), else smaller")     \
   X(bvafirst, 1, 0, 1, "BVA before (1) or after (0) the eliminations of the first round")            \
   X(bvaevery, 0, 0, 1, "BVA in every elimination round (not only the first)")                           \
   X(bvaprotect, 0, 0, 1, "variables added by BVA are not elimination candidates")                      \
+  X(bvamin, 200, 0, 1000, "BVA only if a trial round removes this many per mille of the clauses (0: always)") \
   X(bvaticks, 1000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
   X(congruence, 1, 0, 1, "congruence closure on AND gates in elimination rounds")                 \
   X(simeq, 1, 0, 1, "equivalences proposed by random simulation of AND gates, proven by Kitten")   \

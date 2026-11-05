@@ -57,16 +57,18 @@ default every model is checked against the original formula before it is printed
 Competition instances from the main tracks of the SAT Competitions 2022 to 2025, 120 s limit,
 an otherwise idle Apple M4 Pro, every model checked (solved / PAR-2 in seconds):
 
-| set | popso-sat 0.3.3 | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
+| set | popso-sat 0.3.4 | popso-sat 0.3.3 | popso-sat 0.3.0 | Kissat 4.0.4 |
 |---|---|---|---|---|
-| 26 unsatisfiable instances (A/B set) | 21 / 63.3 | 21 / 64.9 | 20 / 73.4 | 22 / 52.9 |
-| 29 tuning instances (mixed) | 23 / 61.6 | 23 / 63.2 | 23 / 65.0 | 26 / 45.5 |
-| 32 held-out instances (one per family) | 21 / 104.6 | 21 / 103.2 | 22 / 99.4 | 24 / 83.9 |
+| 26 unsatisfiable instances (A/B set) | 22 / 56.2 | 21 / 63.3 | 20 / 73.4 | 22 / 52.9 |
+| 29 tuning instances (mixed) | 25 / 47.3 | 23 / 61.6 | 23 / 65.0 | 26 / 45.5 |
+| 32 held-out instances (one per family) | 21 / 104.6 | 21 / 104.6 | 22 / 99.4 | 24 / 83.9 |
 
 The first two sets were used for tuning decisions, so they are not an independent test; the
-held-out set is. Satisfiable instances vary a lot from run to run. On 25 generated formulas
+held-out set is. 0.3.4 searches the held-out instances exactly as 0.3.3 does (its new BVA trial
+passes on none of them). On the 16 of 168 instances of a held-out SAT Competition 2026 sample
+where the trial passes, 0.3.4 solves 8 within 300 s and 0.3.3 4. Satisfiable instances vary a lot from run to run. On 25 generated formulas
 (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier equivalence, ...)
-popso-sat 0.3.3 solves all 25 within 60 s (PAR-2 3.5 s on the M4), as Kissat does. Setup, per-instance times and plots, and the
+popso-sat 0.3.4 solves all 25 within 60 s (PAR-2 3.7 s on the M4), as Kissat does. Setup, per-instance times and plots, and the
 earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## What's inside
@@ -95,6 +97,9 @@ earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
   random input vectors, and variables with equal signatures are proven equivalent by Kitten on
   small windows of their fan-in cones (functional equivalences between distant parts of a
   circuit, such as the two halves of a miter).
+- Bounded variable addition (re-encoding at-most-one cliques and similar structure with new
+  variables) behind a trial: the matching runs once without changing the formula, and the
+  replacements are made only if they remove at least a fifth of the clauses.
 - Local search (ProbSAT with incrementally maintained break values) for rephasing, and lucky
   assignments tried before search.
 - DRAT proof output; every UNSAT answer in the test suite and the benchmark runner is checked.
@@ -110,9 +115,9 @@ solvers on random and structured formulas and shrink failures with delta debuggi
 ## Current limitations
 
 - Several techniques are implemented but off by default because they cost more than they gain
-  in our A/B runs: bounded variable addition, chronological backtracking, unhiding (transitive
-  reduction, hidden tautologies and literals), and some vivification variants. No symmetry
-  handling.
+  in our A/B runs: chronological backtracking, unhiding (transitive reduction, hidden
+  tautologies and literals), learned clause shrinking, and some vivification variants. No
+  symmetry handling.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
 - Memory per variable is larger than in Kissat; very large formulas need more memory.
 

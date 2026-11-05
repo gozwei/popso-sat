@@ -247,7 +247,7 @@ void Solver::eliminate() {
   // removes much of the structure (binary clauses of at-most-one encodings) BVA would factor.
   const bool bva_round_now = opts_.bva && !inconsistent_ && (eliminate_rounds_ == 1 || opts_.bvaevery);
   if (bva_round_now && opts_.bvafirst) {
-    bva_round(budget, budget + std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4));
+    bva_run(budget);
     scan("bva");
   }
   const double t2 = seconds();
@@ -282,9 +282,7 @@ void Solver::eliminate() {
   }
   for (size_t i = tried; i < cands.size(); ++i) touched_[cands[i].second] = 1;
   // BVA once, in the first round (as SBVA preprocessing): repeated rounds keep adding variables.
-  if (bva_round_now && !opts_.bvafirst && !inconsistent_) {
-    bva_round(budget, budget + std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4));
-  }
+  if (bva_round_now && !opts_.bvafirst && !inconsistent_) bva_run(budget);
   const double t4 = seconds();
 
   // Learned clauses on eliminated variables are dropped (they would constrain them again).

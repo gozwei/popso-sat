@@ -7,6 +7,159 @@ off for the timing runs; UNSAT proofs are verified separately by the correctness
 ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines are
 never mixed.
 
+## v0.3.4 (Apple M4 Pro, macOS)
+
+Same machine and setup as the v0.3.3 section below (120 s, two instances at a time, native
+Kissat 4.0.4, every model checked). New in 0.3.4: bounded variable addition (BVA) is on by
+default, behind a trial. The trial runs BVA's matching without changing the formula, and the
+replacements are made only if they would remove at least a fifth of the clauses. When the
+trial declines, the search is exactly that of 0.3.3. See the [CHANGELOG](CHANGELOG.md).
+
+| set | popso-sat 0.3.4 | popso-sat 0.3.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| unsat26 (26 unsatisfiable) | 22 / 56.2 | 21 / 63.3 | 22 / 52.9 |
+| tune (29 mixed) | 25 / 47.3 | 23 / 61.6 | 26 / 45.5 |
+| validation (32 held out) | 21 / 104.6 (identical to 0.3.3, see below) | 21 / 104.6 | 24 / 83.9 |
+| sc2026, the 16 instances where the trial passes (300 s) | 8 / 319.0 | 4 / 457.7 | |
+
+(solved / PAR-2 in seconds.)
+
+**What this shows:**
+- BVA helps where it removes a large part of the formula: at-most-one cliques in battleship,
+  stb argumentation and pigeonhole-like counting.
+  - battleship-13-13: not solved in 120 s → 4.8 s.
+  - stb_588_138 DS-ST: not solved → 16 s.
+  - battleship-14-26: 4.5 → 0.5 s.
+- On the held-out sample of the SAT Competition 2026 (`sets/sc2026.txt`), 16 of 168
+  instances pass the trial. Within 300 s, four more of them are solved: homer18, homer20,
+  os_fwalk_12 and or_randxor_k3_n600_m600. homer11 is slower (1.4 → 20 s).
+- None of the 32 validation instances passes the trial, so 0.3.4 searches them exactly as
+  0.3.3 does. Conflict, decision and propagation counts are identical on the instances
+  checked.
+- The validation rerun took place while other jobs used the machine. All its times were
+  20–25% longer: 20 solved, PAR-2 111.0 s, with oski15a01b42s at 109 s in 0.3.3 just over
+  the limit. The table therefore shows 0.3.3's idle-machine times.
+- The same load explains velev-vliw-sat in the tuning set (11.7 → 15.5 s, identical search).
+- The full sc2026 tables (168 instances, 1000 s, Linux) follow with the next release.
+
+<details>
+<summary>unsat26: per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+![unsat26: solved vs. time](docs/benchmarks/v0.3.4-unsat26-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 26 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.4 | 22 (0 / 22) | 56.2 | 22.15 |
+| popso-sat 0.3.3 | 21 (0 / 21) | 63.3 | 23.27 |
+| Kissat 4.0.4 | 22 (0 / 22) | 52.9 | 20.72 |
+
+| instance | popso-sat 0.3.4 | popso-sat 0.3.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| c1b30b4e03c3024ad9d084e29e79aa46-BubbleVsPancakeSort_6_6 | 19.83 | **18.41** | 19.05 |
+| 004b0f451f7d96f6a572e9e76360f51a-spg_420_280 | 9.59 | **8.52** | 65.99 |
+| bb80971144a5423532aea9424dade891-div-mitern174 | 15.05 | **14.06** | 14.37 |
+| 5e04f38ff11cee5d75fb98e12f6a14fc-sqrt-mitern172 | 27.18 | **22.57** | 23.19 |
+| a1158a2d8c8a1c6da02c2c4fcb32337f-6s158_Iter2 | 4.74 | 4.24 | **1.83** |
+| 01d142c43f3ce9a8c5ef7a1ecdbb6cba-urquhart3_25bis.shuffled | 4.52 | 3.93 | **0.27** |
+| 3ff114cc7bee4f39fa56a0325e605c2d-stb_588_138.apx_2_DC-ST | 100.97 | 91.95 | **77.08** |
+| 112b0ac22b2a567cd3badfed3a5497fd-mchess16-mixed-35percent-blocked | 22.06 | **17.90** | 27.76 |
+| 8d458780fb74c28c01a5fe89990ad521-mchess16-mixed-45percent-blocked | 8.49 | 7.43 | **2.45** |
+| 44092fcc83a5cba81419e82cfd18602c-php-010-009.shuffled-as.sat05-1185 | 1.73 | 1.86 | **1.32** |
+| 02066c116dbacc40ec5cca2067db26c0-mrpp_4x4_12_12 | 4.65 | **3.91** | 4.09 |
+| 26114429758a203d651f4df87c94de4c-sgen1-unsat-97-100.cnf.mis-72.debugged | 9.33 | 8.12 | **1.04** |
+| d88c6afc13cdad0e2c8371a879692b39-battleship-13-13-unsat | **5.01** | TL | 10.74 |
+| ad9eb96bac59319fc2f7daffd1f961f8-AProVE07-21 | 0.87 | **0.80** | 0.85 |
+| 02627689047d06fbb642eef14768d751-ps_200_300_70 | TL | TL | TL |
+| 5d357f1e4b5abc96c90d305f629edd5c-ps_200_323_70 | TL | TL | TL |
+| fe800e62b55609cb152965c223e72280-div-mitern171 | 57.74 | 54.18 | **41.77** |
+| 07b7859003d84402cbb1ebdc37655d55-6s186_Iter20 | 112.60 | 101.57 | **25.79** |
+| a130a3f95891daed1bfd71c77bd2d8a1-SAT_dat.k80 | 32.25 | 29.16 | **16.07** |
+| 436d00b6d41912e800e9855d08c75139-manol-pipe-f7nidw | 37.06 | **32.86** | 34.45 |
+| 81b674a2aa6fbda9b06cf8ea334ddc44-beempgsol2b1 | 4.56 | **4.23** | 9.30 |
+| 4282ea42fd414bfd2c4bf81fe8a43e24-DivU_1520_10.cnf.sanitized | 6.67 | **5.72** | 13.42 |
+| da43a3ef0ef5d34143e765d480dedc7a-DivU_624_11.cnf.sanitized | 6.85 | **5.71** | 9.28 |
+| fae08ac5b6d7eeb4f56f1cfac6c51703-j3045_4_mdd_bm1 | TL | TL | TL |
+| dafc03ea784fee849febca7b64230558-pcmax-scheduling-m30-14113-167638-UNSAT.sanitized | TL | TL | TL |
+| d672bdbca3b1fb26d585e78add79537e-velev-pipe-o-uns-1.1-6 | 9.16 | **8.27** | 15.07 |
+
+</details>
+
+<details>
+<summary>tune: per-instance times (s)</summary>
+
+![tune: solved vs. time](docs/benchmarks/v0.3.4-tune-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 29 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.4 | 25 (11 / 14) | 47.3 | 17.99 |
+| popso-sat 0.3.3 | 23 (10 / 13) | 61.6 | 20.54 |
+| Kissat 4.0.4 | 26 (12 / 14) | 45.5 | 19.55 |
+
+| instance | popso-sat 0.3.4 | popso-sat 0.3.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| 02223564bd2f5c20768e63cf28c785e3-mp1-squ_ali_s10x10_c39_abio_SAT | 21.83 | **19.43** | TL |
+| 6965d5369d3ab26daaf074303c3d1739-mp1-squ_ali_s10x10_c39_abix_SAT | 53.87 | 43.72 | **5.26** |
+| e01c39b7b41c9ff1621579b747254fab-ncc_none_3001_7_3_3_1_31_435991723 | TL | TL | **32.54** |
+| fb5cf4ad3c46dd294eb8253218524ba6-cfi-rigid-r2-0072-01-or_3 | 11.28 | **9.73** | 39.46 |
+| cfa14a7015b0f7fecd98e898f3c95896-velev-vliw-sat-4.0-b8 | 15.48 | 11.67 | **6.89** |
+| 5457c05649be6f3bc4f743c5e6086a18-mdp-28-10-sat | TL | TL | **100.14** |
+| cd36b290c27ed9bafedfb2ca88469f01-mdp-28-12-sat | 7.83 | **7.29** | TL |
+| 29bab0de14e56e526be9683131005cb2-stb_588_138.apx_2_DS-ST | 16.11 | TL | **1.12** |
+| 74931e82fd208ed949fa44bccd80df6b-DivS_862_11.cnf.sanitized | 0.82 | **0.73** | 9.23 |
+| accf33a84bdf211bebbd2111fb7f6b91-DivS_942_11.cnf.sanitized | 0.93 | **0.80** | 9.40 |
+| 7083b70c1976162e2693d7a493717ffd-battleship-14-26-sat | **0.46** | 4.51 | 4.90 |
+| 9276ce38c625b2d00de247f8588f1542-combined-crypto1-wff-seed-102-wffvars-500-cryptocplx-31-overlap-2 | 14.09 | **12.84** | 46.97 |
+| 04e219c640ed59dc68ea2d50493de5b5-mp1-Nb5T15 | 34.37 | **30.57** | 51.39 |
+| 416e33a8463911546e4cd87d282a7e1e-case10 | TL | TL | TL |
+| fab2022deb130fe3ad1136a5c71b4109-case9 | TL | TL | **61.74** |
+| c1b30b4e03c3024ad9d084e29e79aa46-BubbleVsPancakeSort_6_6 | 21.33 | 18.45 | **16.22** |
+| 004b0f451f7d96f6a572e9e76360f51a-spg_420_280 | 10.34 | **8.53** | 58.31 |
+| bb80971144a5423532aea9424dade891-div-mitern174 | 16.26 | 14.09 | **13.13** |
+| 5e04f38ff11cee5d75fb98e12f6a14fc-sqrt-mitern172 | 27.14 | 22.66 | **22.11** |
+| a1158a2d8c8a1c6da02c2c4fcb32337f-6s158_Iter2 | 4.97 | 4.27 | **1.77** |
+| 01d142c43f3ce9a8c5ef7a1ecdbb6cba-urquhart3_25bis.shuffled | 4.50 | 3.93 | **0.27** |
+| 3ff114cc7bee4f39fa56a0325e605c2d-stb_588_138.apx_2_DC-ST | 97.55 | 92.02 | **72.32** |
+| 112b0ac22b2a567cd3badfed3a5497fd-mchess16-mixed-35percent-blocked | 21.42 | **17.75** | 26.03 |
+| 8d458780fb74c28c01a5fe89990ad521-mchess16-mixed-45percent-blocked | 8.37 | 7.39 | **2.35** |
+| 44092fcc83a5cba81419e82cfd18602c-php-010-009.shuffled-as.sat05-1185 | 1.97 | 1.87 | **1.31** |
+| 02066c116dbacc40ec5cca2067db26c0-mrpp_4x4_12_12 | 4.83 | 3.88 | **3.55** |
+| 26114429758a203d651f4df87c94de4c-sgen1-unsat-97-100.cnf.mis-72.debugged | 9.78 | 8.12 | **0.88** |
+| d88c6afc13cdad0e2c8371a879692b39-battleship-13-13-unsat | **4.81** | TL | 10.42 |
+| ad9eb96bac59319fc2f7daffd1f961f8-AProVE07-21 | 0.85 | **0.79** | 0.84 |
+
+</details>
+
+<details>
+<summary>sc2026, the 16 instances whose BVA trial passes: per-instance times (s), 300 s</summary>
+
+![sc2026 BVA instances: solved vs. time](docs/benchmarks/v0.3.4-sc2026bva-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 16 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.4 | 8 (1 / 7) | 319.0 | 93.70 |
+| popso-sat 0.3.3 | 4 (1 / 3) | 457.7 | 155.67 |
+
+| instance | popso-sat 0.3.4 | popso-sat 0.3.3 |
+|---|---|---|
+| 4ae685a11b5cecca76dc3d463481ce92-x9-10032.sat.sanitized | **70.09** | 102.34 |
+| 7d311f620f4ebc4adf8f4079899750eb-x9-11033.sat.sanitized | TL | TL |
+| 5d06225b27017e9a703f10cb577cf3bf-clqcl_25_7_6.normalised | TL | TL |
+| 4aab4f954196d3277d9ca7b17c52acca-clqcl_25_8_7.normalised | TL | TL |
+| cb2e8b7fada420c5046f587ea754d052-clique_n2_k10.sanitized | **0.16** | 1.37 |
+| 15456f0d13b26f0b4b21525ef7d0d711-clique_n5_k10.sanitized | TL | TL |
+| 727ebce936c010888c7f71f00885e643-count_p2_M25.sanitized | TL | TL |
+| 35e0b5a19c88961d98dd806e805759f4-count_p2_M33.sanitized | TL | TL |
+| 1890f49a43a94b97828528b68c32b78e-homer11.shuffled | 20.22 | **1.39** |
+| 3c4ac805726d78a869ff8116ee3533db-homer18.shuffled | **126.66** | TL |
+| 805a742eb8b4e0df3561ca8e0670670b-homer20.shuffled | **48.06** | TL |
+| d0b5d1dc96a5bf33d2c65106c3b179a8-connm-ue-csp-sat-n600-d0.04-s1793042357.used-as.sat04-975 | 18.53 | **18.10** |
+| 0be1e12a8e7282d1a4e389bb90f6dbc7-or_randxor_k3_n600_m600 | **15.46** | TL |
+| 965ca988015c9aee5a1a7b2136c1fe5d-os_fwalk_12 | **4.80** | TL |
+| 43d40ced32b5be08814ef24f97379654-php_sudoku_p15_h14.sanitized | TL | TL |
+| f83424f869b61931d720f93e5a12df3c-php_sudoku_p20_h19.sanitized | TL | TL |
+
+</details>
+
 ## v0.3.3 (Apple M4 Pro, macOS)
 
 Same machine and setup as the v0.3.2 section below (idle, 120 s, two instances at a time,

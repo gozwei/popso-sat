@@ -33,7 +33,11 @@ class ProofWriter {
   void add_unit(Lit l) { line(false, &l, 1); }
   void add_empty() { line(false, nullptr, 0); }
 
+  // Hands the buffer to the sink. A sink that throws (write error, full disk) marks the proof as
+  // failed: nothing more is written, and the caller must not claim unsatisfiability
+  // (an incomplete proof is rejected; a SAT answer needs no proof, so solving goes on).
   void flush();
+  bool failed() const { return failed_; }
   bool binary() const { return binary_; }
   uint64_t added() const { return added_; }
   uint64_t deleted() const { return deleted_; }
@@ -49,6 +53,7 @@ class ProofWriter {
   bool binary_;
   std::vector<char> buf_;
   size_t pos_ = 0;
+  bool failed_ = false;
   uint64_t added_ = 0, deleted_ = 0, bytes_ = 0;
 };
 
