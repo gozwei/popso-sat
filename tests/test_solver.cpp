@@ -105,6 +105,18 @@ std::vector<Options> option_variants() {
   b.minimize = 0;
   b.bumpreasons = 0;
   v.push_back(b);
+  Options k;  // chronological backtracking on every backjump, frequent restarts and reductions
+  k.chrono = 1;
+  k.chronolevels = 0;
+  k.reduceint = 10;
+  k.rephaseint = 10;
+  k.modeinit = 10;
+  k.eliminateint = 10;
+  k.vivifyint = 10;
+  v.push_back(k);
+  k.chronolevels = 2;
+  k.stable = 2;
+  v.push_back(k);
   Options c;
   c.stable = 2;
   c.target = 2;
@@ -134,11 +146,21 @@ std::vector<Options> option_variants() {
   v.push_back(e);
   e.vivifyint = 10;  // the same with frequent vivification, BVA, shrinking and sweeping
   e.bva = 1;
-  e.shrink = 1;
+  e.shrink = 2;  // (with implied lower-level literals)
+  e.vivifytier3 = 1;
+  e.vivifyinst = 1;
+  e.vivifyimplied = 1;
+  e.vivifyasym = 1;
+  e.unhide = 1;
+  e.sweepsubst = 1;
+  e.sweepgrow = 1;
   e.vivifyeffort = 10000;
   e.sweep = 1;
   e.sweepeffort = 10000;
   e.definitions = 1;
+  v.push_back(e);
+  e.sweepclasses = 0;  // the same with the earlier sweeping candidates (only with the swept variable)
+  e.sweepgrow = 0;     // and fixed environment limits
   v.push_back(e);
   Options s;  // sweeping with small environments
   s.sweep = 1;
@@ -163,7 +185,16 @@ std::vector<Options> option_variants() {
   v.push_back(g);
   g.definitions = 0;
   g.sweep = 0;
-  v.push_back(g);  // the same without definitions and sweeping
+  g.bvahops = 1;
+  v.push_back(g);  // the same without definitions and sweeping, 3-hop BVA tie-breaks
+  g.bvafirst = 0;
+  g.bvaticks = 1000;
+  v.push_back(g);  // BVA after elimination, tiny budget
+  g.bvafirst = 1;
+  g.bvaticks = 1000000;
+  g.bvaevery = 1;
+  g.bvaprotect = 1;
+  v.push_back(g);  // BVA in every round, its variables protected from elimination
   Options h;  // semantic definitions only (no syntactic gates), frequent rounds
   h.eliminategates = 0;
   h.definitions = 1;

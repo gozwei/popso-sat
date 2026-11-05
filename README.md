@@ -9,7 +9,7 @@ This is a side project by [Marcin Polkowski](https://marcinpolkowski.com), built
 use of AI coding agents. The goal is a fully open-source solver that holds its own against the
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
 first milestone. It is at an early stage: on 32 instances from recent SAT Competitions that were
-not used for tuning it solves 17 within 120 s, where Kissat solves 23 (see
+not used for tuning it solves 21 within 120 s, where Kissat solves 24 (see
 [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
@@ -54,27 +54,20 @@ default every model is checked against the original formula before it is printed
 
 ## Performance
 
-36 instances from the main tracks of the SAT Competitions 2022 to 2025 (mostly ones on which
-Kissat needed 10 to 300 s in the competition), 120 s limit, one Linux machine, every model checked:
+Competition instances from the main tracks of the SAT Competitions 2022 to 2025, 120 s limit,
+an otherwise idle Apple M4 Pro, every model checked (solved / PAR-2 in seconds):
 
-| solver | solved of 36 | PAR-2 (s) |
-|---|---|---|
-| popso-sat 0.3 | 21 | 110.9 |
-| popso-sat 0.2 | 18 | 134.2 |
-| popso-sat 0.1.1 | 15 | 152.6 |
-| Kissat 4.0.4 | 22 | 113.8 |
+| set | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| 26 unsatisfiable instances (A/B set) | 21 / 64.9 | 20 / 73.4 | 22 / 52.9 |
+| 29 tuning instances (mixed) | 23 / 63.2 | 23 / 65.0 | 26 / 45.5 |
+| 32 held-out instances (one per family) | 21 / 103.2 | 22 / 99.4 | 24 / 83.9 |
 
-The defaults of 0.3 were chosen with A/B runs on these instances, so this is not an independent
-test; single runs, and satisfiable instances vary a lot from run to run. On 32 other competition
-instances (one from each of 32 families, not used for tuning; same machine and limit) popso-sat
-0.3 solves 17 (PAR-2 138.1 s) and Kissat 23 (107.5 s): the gap is in unsatisfiable instances
-(7 against 12).
-
-On 25 generated formulas (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier
-equivalence, ...) popso-sat 0.3 solves all 25 in 60 s (PAR-2 7.5 s), Kissat 25 (8.5 s),
-CaDiCaL 23, Glucose 21, MiniSat 17.
-Setup, caveats (the reference solvers run through PySAT), per-instance times and plots are in
-[BENCHMARKS.md](BENCHMARKS.md).
+The first two sets were used for tuning decisions, so they are not an independent test; the
+held-out set is. Satisfiable instances vary a lot from run to run. On 25 generated formulas
+(coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier equivalence, ...)
+popso-sat 0.3.2 solves all 25 in 60 s on the Linux machine, as Kissat does. Setup, per-instance times and plots, and the
+earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## What's inside
 
@@ -96,7 +89,8 @@ Setup, caveats (the reference solvers run through PySAT), per-instance times and
   if-then-else gates, vivification with conflict analysis, failed literal probing, eager
   subsumption of learned clauses.
 - Kitten, a small CDCL sub-solver for local sub-formulas, used for sweeping (backbones and
-  equivalences in the environment of a variable) and for definition mining in elimination.
+  equivalences in the environment of a variable, candidates refined by the models found; the
+  environments grow when sweeping finds little) and for definition mining in elimination.
 - Local search (ProbSAT with incrementally maintained break values) for rephasing, and lucky
   assignments tried before search.
 - DRAT proof output; every UNSAT answer in the test suite and the benchmark runner is checked.
@@ -111,9 +105,10 @@ solvers on random and structured formulas and shrink failures with delta debuggi
 
 ## Current limitations
 
-- Bounded variable addition is implemented but off by default (on the test set it costs more
-  than it gains); no chronological backtracking yet (in development), no transitive reduction or
-  symmetry handling.
+- Several techniques are implemented but off by default because they cost more than they gain
+  in our A/B runs: bounded variable addition, chronological backtracking, unhiding (transitive
+  reduction, hidden tautologies and literals), and some vivification variants. No symmetry
+  handling.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
 - Memory per variable is larger than in Kissat; very large formulas need more memory.
 

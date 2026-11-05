@@ -145,9 +145,10 @@ void Solver::gather_occurrences(Lit l, std::vector<uint32_t>& out, uint64_t& bud
 }
 
 void Solver::eliminate() {
+  const PassTimer pass_timer(*this, kPassEliminate);
   ++stats_.eliminations;
-  backtrack(0);
-  // Root level, fully propagated (backtracking keeps the propagated root trail).
+  if (!backtrack_to_root()) return;
+  // Root level, fully propagated.
   if (fixed_ > last_simplify_fixed_) simplify_root();
   uint64_t budget = 0;
   const uint64_t search_ticks = stats_.ticks - eliminate_last_ticks_;
@@ -227,6 +228,13 @@ void Solver::eliminate() {
   const uint64_t subsumed_before = stats_.subsumed, strengthened_before = stats_.strengthened;
   if (opts_.subsume && !inconsistent_) subsume_round(budget);
   scan("subsume");
+  // BVA before elimination (as SBVA and Kissat's factor in preprocessing): elimination first
+  // removes much of the structure (binary clauses of at-most-one encodings) BVA would factor.
+  const bool bva_round_now = opts_.bva && !inconsistent_ && (eliminate_rounds_ == 1 || opts_.bvaevery);
+  if (bva_round_now && opts_.bvafirst) {
+    bva_round(budget, budget + std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4));
+    scan("bva");
+  }
   const double t2 = seconds();
 
   // Candidates: active, unassigned (touched) variables, fewest occurrences first.
@@ -234,6 +242,7 @@ void Solver::eliminate() {
   for (Var v = 0; v < num_vars_; ++v) {
     if (eliminated_[v] || vals_[make_lit(v, false)] != 0) continue;
     if (!all_candidates && !touched_[v]) continue;
+    if (opts_.bvaprotect && v < bva_added_.size() && bva_added_[v]) continue;  // would undo BVA
     const Lit p = make_lit(v, false), n = make_lit(v, true);
     uint64_t np = occs_.size(p), nn = occs_.size(n);
     for (const Watch& w : watches_[p]) np += w.binary() && !w.redundant_binary();
@@ -258,7 +267,9 @@ void Solver::eliminate() {
   }
   for (size_t i = tried; i < cands.size(); ++i) touched_[cands[i].second] = 1;
   // BVA once, in the first round (as SBVA preprocessing): repeated rounds keep adding variables.
-  if (opts_.bva && eliminate_rounds_ == 1 && !inconsistent_) bva_round(budget, budget + std::max<uint64_t>(1'000'000, arena_.size() / 4));
+  if (bva_round_now && !opts_.bvafirst && !inconsistent_) {
+    bva_round(budget, budget + std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4));
+  }
   const double t4 = seconds();
 
   // Learned clauses on eliminated variables are dropped (they would constrain them again).
@@ -298,14 +309,7 @@ void Solver::eliminate() {
       watches_[l].clear();
       watches_[l].shrink_to_fit();
     }
-    // Eliminated variables leave the decision queue for good.
-    for (Var v = 0; v < num_vars_; ++v) {
-      if (eliminated_[v] && (links_[v].prev != UINT32_MAX || links_[v].next != UINT32_MAX || queue_first_ == v)) {
-        queue_dequeue(v);
-      }
-    }
-    queue_search_ = queue_last_;
-    if (stable_) rebuild_heap();
+    drop_inactive_decisions();
   }
 
   occs_.clear();

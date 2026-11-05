@@ -115,6 +115,12 @@ struct Reluctant {
   }
 };
 
+// Wall time per pass (top-level passes, and the sub-passes of elimination and vivification).
+enum Pass : uint8_t {
+  kPassEliminate, kPassSubstitute, kPassCongruence, kPassSubsume, kPassBva,
+  kPassVivify, kPassProbe, kPassSweep, kPassWalk, kPassReduce, kPassLucky, kPassUnhide, kPassCount
+};
+
 struct Stats {
   uint64_t conflicts = 0, decisions = 0, propagations = 0, ticks = 0;
   uint64_t reused_levels = 0;
@@ -122,12 +128,16 @@ struct Stats {
   uint64_t collections_full = 0, collected_words = 0;  // words scanned and moved from the start on
   uint64_t learned = 0, learned_units = 0, learned_binary = 0, learned_literals = 0, minimized_literals = 0;
   uint64_t eager_subsumed = 0;
+  uint64_t chrono_backtracks = 0, chrono_conflict_backtracks = 0, chrono_missed = 0;
   uint64_t reduced_clauses = 0, simplified_root = 0, fixed = 0;
   uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0;
-  uint64_t vivifications = 0, vivify_ticks = 0, vivify_checked = 0, vivified = 0, vivified_literals = 0;
-  uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0;
+  uint64_t vivifications = 0, vivify_ticks = 0, vivify_checked = 0, vivified = 0, vivified_literals = 0, vivify_instantiated = 0, vivify_implied_deleted = 0,
+           vivify_asym = 0;
+  uint64_t unhides = 0, unhide_units = 0, unhide_transitive = 0, unhide_tautologies = 0, unhide_strengthened = 0,
+           unhide_literals = 0, unhide_ticks = 0;
+  uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0, sweep_flips = 0;
   uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
-  uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0;
+  uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0;
   uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
@@ -174,12 +184,14 @@ class Solver {
   void grow_vars(uint32_t n);
   uint32_t level() const { return static_cast<uint32_t>(control_.size()); }
   int8_t value(Lit l) const { return vals_[l]; }
-  void assign(Lit l, uint32_t reason) {
+  void assign(Lit l, uint32_t reason) { assign_at(l, reason, level()); }
+  // With chronological backtracking an implied literal gets the highest level of its reason's
+  // other literals, which can be below the current level ("out of order" on the trail).
+  void assign_at(Lit l, uint32_t reason, uint32_t lvl) {
     const Var v = var_of(l);
     vals_[l] = 1;
     vals_[negate(l)] = -1;
     VarData& d = vdata_[v];
-    const uint32_t lvl = level();
     d.level = lvl;
     d.reason = lvl ? reason : kNoReason;
     d.trail = static_cast<uint32_t>(trail_.size());
@@ -206,7 +218,9 @@ class Solver {
   bool propagate_vivify(uint32_t ignore);
   template <bool kVivify>
   bool propagate_impl(uint32_t ignore);
-  void analyze();
+  bool analyze();  // false: the conflict is at the root (unsatisfiable)
+  uint32_t conflict_level(Lit& forced, uint32_t& count);
+  void remove_long_watch(Lit l, uint32_t ref);
   void minimize_clause();
   void shrink_clause();
   bool minimize_literal(Lit lit, uint32_t depth);
@@ -214,6 +228,9 @@ class Solver {
   void bump_reason_clause(uint32_t ref);
   void learn_clause(uint32_t jump, uint32_t glue);
   void backtrack(uint32_t new_level);
+  // Backtracks to the root and propagates the root literals kept by chronological backtracking
+  // (inprocessing expects a fully propagated root). False on a root conflict (inconsistent_).
+  bool backtrack_to_root();
   void update_target_and_best(uint32_t consistent);
   bool decide();
   Var next_focused();
@@ -228,6 +245,7 @@ class Solver {
   void queue_bump(Var v);
   void heap_bump(Var v);
   void rebuild_heap();
+  void drop_inactive_decisions();
 
   // --- schedules ------------------------------------------------------------------------------
   bool restarting() const;
@@ -258,6 +276,7 @@ class Solver {
   void reconnect_long_watches();
   void subsume_round(uint64_t& budget);
   bool substitute();
+  void substitute_now();  // outside elimination rounds, at the root
   uint32_t congruence(uint64_t& budget);
   uint32_t congruent_xors(uint64_t& budget);
   uint32_t congruent_ites(uint64_t& budget);
@@ -278,12 +297,19 @@ class Solver {
   void vivify();
   void vivify_clauses(bool redundant, uint64_t ticks_limit);
   bool vivify_clause(uint32_t ref, const Lit* lits, uint32_t n);
-  void vivify_analyze(Lit implied);
+  void vivify_analyze(Lit implied, bool track_redundant);
+  bool irredundant_binary(Lit a, Lit b);
+  bool viv_used_redundant_ = false;  // the last vivify_analyze used a learned clause
   void probe_failed_literals(uint64_t ticks_limit);
+  void unhide(uint64_t ticks_limit);
+  std::vector<uint32_t> unhide_start_, unhide_dsc_, unhide_fin_;
+  std::vector<Lit> unhide_target_;
+  size_t unhide_next_ = 0;  // long clause to continue with
   void sweep(uint64_t min_budget = 100000);
   bool sweep_initial_done_ = false;
   uint32_t sweep_delay_ = 0, sweep_skip_ = 0;  // back-off after unproductive sweeps
   bool sweep_variable(Var v, const std::vector<uint32_t>& start, const std::vector<uint32_t>& occ, uint64_t& ticks);
+  bool sweep_classes(uint32_t n);  // backbone / equivalence candidates as classes (Kissat)
   void sweep_emit_learned();
   bool sweep_add(const Lit* lits, uint32_t size);
   Kitten kitten_;
@@ -293,6 +319,12 @@ class Solver {
   uint32_t sweep_stamp_now_ = 0;
   size_t sweep_emitted_ = 0;            // kitten learned clauses already in the proof
   std::vector<Lit> sweep_emitted_lits_; // their literals (flat, size-prefixed) for deletion
+  std::vector<uint32_t> sweep_backbone_, sweep_partition_, sweep_next_;  // Kitten literals (sweep_classes)
+  std::vector<uint32_t> sweep_merged_;  // per variable: the sweep round that proved it equivalent
+  uint32_t sweep_lim_vars_ = 0, sweep_lim_clauses_ = 0, sweep_lim_depth_ = 0;  // this round's environment limits
+  std::vector<uint8_t> bva_added_;  // per variable: introduced by BVA
+  uint32_t sweep_growth_ = 0;              // growth steps of the limits (--sweepgrow)
+  uint64_t sweep_cycle_found_ = 0, sweep_cycle_swept_ = 0;  // finds before / variables swept in this cycle
   std::vector<Lit> sweep_added_;        // binary clauses added to the formula for this variable
   Var sweep_cursor_ = 0;
   std::vector<Kitten::KLit> def_lits_;
@@ -336,6 +368,7 @@ class Solver {
   std::vector<Var> minimized_;
   std::vector<Var> shrunk_;
   std::vector<Lit> learned_;
+  std::vector<Lit> backtrack_tmp_;  // literals unassigned by a chronological backtrack
   struct LevelInfo {
     uint32_t seen = 0;          // learned-clause literals on this level
     uint32_t trail = UINT32_MAX;  // earliest trail position of those literals
@@ -430,6 +463,29 @@ class Solver {
   std::chrono::steady_clock::time_point start_;
   uint64_t rng_ = 0;
   Stats stats_;
+  // Exclusive wall time per pass: a pass called from another (sweeping from vivification,
+  // substitution from elimination) is subtracted from its caller.
+  double pass_seconds_[kPassCount] = {};
+  struct PassTimer;
+  PassTimer* pass_top_ = nullptr;
+  struct PassTimer {
+    Solver& s;
+    double& acc;
+    PassTimer* parent;
+    double nested = 0;
+    std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+    PassTimer(Solver& solver, Pass p) : s(solver), acc(solver.pass_seconds_[p]), parent(solver.pass_top_) {
+      s.pass_top_ = this;
+    }
+    PassTimer(const PassTimer&) = delete;
+    PassTimer& operator=(const PassTimer&) = delete;
+    ~PassTimer() {
+      const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      acc += t - nested;
+      if (parent) parent->nested += t;
+      s.pass_top_ = parent;
+    }
+  };
 };
 
 }  // namespace psat

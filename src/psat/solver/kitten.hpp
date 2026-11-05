@@ -39,6 +39,13 @@ class Kitten {
   // Solves under the assumptions given since the last solve() (which are then cleared).
   int solve(uint64_t ticks_limit);
   int8_t value(KLit lit) const { return vals_[lit]; }  // after kSat: +1 / -1 (0: unassigned)
+  // Only right after a kSat result (no clause added since): makes the true literal lit false if
+  // the assignment stays a model, i.e. every clause watched by lit has another true literal,
+  // which becomes its watch (with two watched literals a false watch has a true partner, so the
+  // other clauses stay satisfied). Never for root literals (unit clauses are not watched).
+  bool flip(KLit lit);
+  // Random decision phases for the next solves (diverse models refine candidates faster).
+  void randomize_phases(uint64_t& state);
 
   // After kUnsat: the negations of the assumptions involved (empty: unsatisfiable without them).
   const std::vector<KLit>& final_clause() const { return final_; }
@@ -96,6 +103,7 @@ class Kitten {
   size_t propagated_ = 0;
   std::vector<KLit> assumptions_, final_, learned_;
   uint32_t conflict_ = kNone;
+  int status_ = kUnknown;  // result of the last solve, reset by add_clause() / clear()
   bool inconsistent_ = false;
   uint64_t ticks_ = 0;
   uint32_t nvars_ = 0;

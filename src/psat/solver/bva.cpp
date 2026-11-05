@@ -41,6 +41,7 @@ size_t Solver::bva_count(Lit l, uint64_t& budget) {
 }
 
 void Solver::bva_round(uint64_t& budget, uint64_t limit) {
+  const PassTimer pass_timer(*this, kPassBva);
   // New variables per round: a tenth of the variables, but at least --bvavars (small crafted
   // formulas, such as at-most-one cliques over a few hundred variables, need several per clique).
   const uint32_t max_new = std::max<uint32_t>(static_cast<uint32_t>(opts_.bvavars), num_vars_ / 10);
@@ -93,6 +94,66 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
   std::vector<Pair> pairs;
   std::vector<uint32_t> lit_count(2 * size_t{num_vars_}, 0);
   uint32_t retries = 0;
+
+  // Ties between matching literals (SBVA's 3-hop heuristic, Kissat's factorhops): the candidate
+  // b with the largest (A^3)[l][b], where A[x][y] is the number of irredundant clauses with both
+  // variables x and y (the diagonal A[x][x] is x's number of clauses, as in SBVA). hop1 = A[l]
+  // and hop2 = A^2[l] are computed once per l (the formula only changes when a replacement is
+  // made); b's score is the sum of hop2 over the variables of b's clauses. Equal scores: the
+  // smaller literal. Skipped (smaller literal) when l's second neighbourhood is too large.
+  std::vector<uint64_t> hop1(num_vars_, 0), hop2(num_vars_, 0);
+  std::vector<Var> hop1_vars, hop2_vars, ties;
+  Var hops_for = UINT32_MAX;
+  bool hops_ok = false;
+  constexpr uint64_t kHopVisits = uint64_t{1} << 20;
+  auto neighbors = [&](Var u, auto&& visit) {
+    for (int sign = 0; sign < 2; ++sign) {
+      const Lit lit = make_lit(u, sign != 0);
+      const uint32_t* os = occs_.begin(lit);
+      const uint32_t n = occs_.size(lit);
+      for (uint32_t i = 0; i < n; ++i) {
+        const Clause& c = clause(os[i]);
+        if (c.garbage) continue;
+        budget += c.size / 4 + 1;
+        for (uint32_t k = 0; k < c.size; ++k) visit(var_of(c.lits()[k]));  // (u itself too)
+      }
+      for (const Watch& w : watches_[lit]) {
+        if (w.binary() && !w.redundant_binary()) {
+          visit(u);
+          visit(var_of(w.blit));
+        }
+      }
+      budget += watches_[lit].size() / 8 + 1;
+    }
+  };
+  auto compute_hops = [&](Var a) {
+    for (const Var y : hop2_vars) hop2[y] = 0;
+    for (const Var x : hop1_vars) hop1[x] = 0;
+    hop1_vars.clear();
+    hop2_vars.clear();
+    hops_for = a;
+    neighbors(a, [&](Var x) {
+      if (!hop1[x]++) hop1_vars.push_back(x);
+    });
+    uint64_t visits = 0;
+    for (const Var x : hop1_vars) {
+      for (int sign = 0; sign < 2; ++sign) visits += occs_.size(make_lit(x, sign != 0)) + watches_[make_lit(x, sign != 0)].size();
+    }
+    hops_ok = visits <= kHopVisits;
+    if (!hops_ok) return;
+    for (const Var x : hop1_vars) {
+      const uint64_t w = hop1[x];
+      neighbors(x, [&](Var y) {
+        if (!hop2[y]) hop2_vars.push_back(y);
+        hop2[y] += w;
+      });
+    }
+  };
+  auto hop_score = [&](Var b) {
+    uint64_t score = 0;
+    neighbors(b, [&](Var y) { score += hop2[y]; });
+    return score;
+  };
   Lit last_l = kNoLit;
 
   for (size_t qi = 0; qi < queue.size() && budget <= limit && added < max_new && !inconsistent_; ++qi) {
@@ -111,7 +172,14 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
     for (;;) {
       if (budget > limit) break;
       pairs.clear();
+      bool out_of_budget = false;
       for (uint32_t ci = 0; ci < m_cls.size(); ++ci) {
+        // Checked per clause too: on formulas with few variables and many clauses one step
+        // scans thousands of clauses with thousands of partner occurrences each.
+        if (budget > limit) {
+          out_of_budget = true;
+          break;
+        }
         lits_of(m_cls[ci], cl);
         budget += cl.size() / 4 + 1;
         // Mark C - {l} and pick its literal with the fewest occurrences.
@@ -142,15 +210,17 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
               }
               extra = y;
             }
-            if (!ok || extra == kNoLit || extra == l || vals_[extra] != 0 || eliminated_[var_of(extra)]) continue;
+            if (!ok || extra == kNoLit || vals_[extra] != 0 || eliminated_[var_of(extra)]) continue;
             if (marks_[negate(extra)]) continue;
-            if (std::find(m_lit.begin(), m_lit.end(), extra) != m_lit.end()) continue;
+            // Not a literal of a matched variable (in particular not -l: (l v C) and (-l v C) are
+            // for strengthening, and -l would always win the 3-hop tie-break).
+            if (std::any_of(m_lit.begin(), m_lit.end(), [&](Lit k) { return var_of(k) == var_of(extra); })) continue;
             pairs.push_back(Pair{extra, ci, d});
           }
         }
         for (const Lit y : cl) marks_[y] = 0;
       }
-      if (pairs.empty()) break;
+      if (out_of_budget || pairs.empty()) break;  // (an incomplete step: the last complete matching)
       // The literal matching the most clauses (ties: smaller literal, deterministic).
       Lit lmax = kNoLit;
       uint32_t best_count = 0;
@@ -166,8 +236,31 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
           lmax = p.lit;
         }
       }
+      const bool improves = reduction(m_lit.size() + 1, best_count) > reduction(m_lit.size(), m_cls.size());
+      if (improves && opts_.bvahops) {
+        ties.clear();
+        for (const Pair& p : pairs) {
+          if (lit_count[p.lit] != best_count) continue;
+          lit_count[p.lit] = 0;  // (once per literal)
+          ties.push_back(p.lit);
+        }
+        if (ties.size() > 1) {
+          if (hops_for != var_of(l)) compute_hops(var_of(l));
+          if (hops_ok) {
+            uint64_t best_score = 0;
+            for (const Lit t : ties) {
+              const uint64_t sc = hop_score(var_of(t));
+              if (sc > best_score || (sc == best_score && t < lmax)) {
+                best_score = sc;
+                lmax = t;
+              }
+            }
+            ++stats_.bva_hop_ties;
+          }
+        }
+      }
       for (const Pair& p : pairs) lit_count[p.lit] = 0;
-      if (reduction(m_lit.size() + 1, best_count) <= reduction(m_lit.size(), m_cls.size())) break;
+      if (!improves) break;
       std::vector<BClause> next_cls;
       std::vector<std::vector<BClause>> next_matched;
       last = UINT32_MAX;
@@ -189,7 +282,12 @@ void Solver::bva_round(uint64_t& budget, uint64_t limit) {
     grow_vars(num_vars_ + 1);
     occs_.grow(2 * size_t{num_vars_});
     lit_count.resize(2 * size_t{num_vars_}, 0);
+    hop1.resize(num_vars_, 0);
+    hop2.resize(num_vars_, 0);
+    hops_for = UINT32_MAX;  // the formula changes
     touched_[xv] = 1;
+    if (bva_added_.size() < num_vars_) bva_added_.resize(num_vars_, 0);
+    bva_added_[xv] = 1;
     ++added;
     ++stats_.bva_vars;
     const Lit x = make_lit(xv, false);

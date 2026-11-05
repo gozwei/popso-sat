@@ -7,6 +7,206 @@ off for the timing runs; UNSAT proofs are verified separately by the correctness
 ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines are
 never mixed.
 
+## v0.3.2 (Apple M4 Pro, macOS)
+
+The machine used for the earlier sections (an Intel i7-7700K shared with other long jobs) gave
+times that differed by a factor of 1.3 (median, up to 2) between two sessions for the same
+deterministic binary, depending on what else was running. The comparisons in this section were
+therefore run on an otherwise idle Apple M4 Pro (macOS 27, Apple clang 21, `-O3`; both
+popso-sat versions built with the same command), two instances at a time, 120 s per instance.
+Kissat 4.0.4 is the native binary built from source. Every model was checked. Memory limit 2 GB
+(popso-sat is told the limit, Kissat is stopped above it); on the two instances where Kissat
+went over 2 GB (ncc, cfi-rigid) all three solvers were rerun with 8 GB, and those runs are the
+ones shown.
+
+### Unsatisfiable instances (unsat26)
+
+26 unsatisfiable competition instances: the 14 unsatisfiable ones of the 36 below and 12 more
+from the same pool, none from a validation-set family
+([benchmarks/sets/unsat26.txt](benchmarks/sets/unsat26.txt)). Used for A/B decisions since 0.3.0.
+
+![unsat26: solved vs. time](docs/benchmarks/v0.3.2-unsat26-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 26 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.2 | 21 (0 / 21) | 64.9 | 25.08 |
+| popso-sat 0.3.0 | 20 (0 / 20) | 73.4 | 28.90 |
+| Kissat 4.0.4 | 22 (0 / 22) | 52.9 | 20.72 |
+
+**What this shows.** 0.3.2 solves one instance more than 0.3.0 (21 against 20; Kissat 22) with
+a 12% lower PAR-2. The gains are on circuit and hardware-verification instances where sweeping
+matters: beempgsol2b1 and 6s186_Iter20 are solved now (sweep environments grow when sweeping
+finds little; without the growth both time out), spg_420_280 9 instead of 57 s, 6s158_Iter2
+4.4 instead of 14 s, manol-pipe 40 instead of 57 s, AProVE07-21 0.7 instead of 3.4 s. One
+instance is lost (ps_200_300_70, which 0.3.0 solved in 31 s). Kissat remains faster on most of
+these instances: 6s186_Iter20 26 s against 106 s, beempgsol2b1 9 against 18 s, sgen1 1 against
+9 s, and it solves battleship-13-13, which needs bounded variable addition (off by default in
+popso-sat: in an A/B run on the Linux machine it lost 6 of the 32 validation instances).
+
+<details>
+<summary>Per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+| instance | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| BubbleVsPancakeSort_6_6 | 22.09 | 20.18 | **19.05** |
+| spg_420_280 | **9.46** | 56.53 | 65.99 |
+| div-mitern174 | 14.06 | **13.19** | 14.37 |
+| sqrt-mitern172 | 27.40 | 27.26 | **23.19** |
+| 6s158_Iter2 | 4.41 | 14.48 | **1.83** |
+| urquhart3_25bis.shuffled | 3.97 | 3.98 | **0.27** |
+| stb_588_138.apx_2_DC-ST | 97.87 | 99.61 | **77.08** |
+| mchess16-mixed-35percent-blocked | **18.70** | 19.14 | 27.76 |
+| mchess16-mixed-45percent-blocked | 7.89 | 7.55 | **2.45** |
+| php-010-009.shuffled-as.sat05-1185 | 1.94 | 1.92 | **1.32** |
+| mrpp_4x4_12_12 | **4.06** | 5.72 | 4.09 |
+| sgen1-unsat-97-100.cnf.mis-72.debugged | 8.66 | 7.05 | **1.04** |
+| battleship-13-13-unsat | TL | TL | **10.74** |
+| AProVE07-21 | **0.74** | 3.35 | 0.85 |
+| ps_200_300_70 | TL | **31.15** | TL |
+| ps_200_323_70 | TL | TL | TL |
+| div-mitern171 | 58.14 | 55.38 | **41.77** |
+| 6s186_Iter20 | 106.03 | TL | **25.79** |
+| SAT_dat.k80 | 19.97 | 20.65 | **16.07** |
+| manol-pipe-f7nidw | 40.49 | 56.72 | **34.45** |
+| beempgsol2b1 | 17.74 | TL | **9.30** |
+| DivU_1520_10.cnf.sanitized | 6.84 | **6.22** | 13.42 |
+| DivU_624_11.cnf.sanitized | **6.73** | 6.77 | 9.28 |
+| j3045_4_mdd_bm1 | TL | TL | TL |
+| pcmax-scheduling-m30-14113-167638-UNSAT.sanitized | TL | TL | TL |
+| velev-pipe-o-uns-1.1-6 | **10.30** | 11.24 | 15.07 |
+
+</details>
+
+### Tuning set (tune)
+
+The 29 of the 36 competition instances below that some configuration solves within 120 s
+([benchmarks/sets/tune.txt](benchmarks/sets/tune.txt)): 15 satisfiable, 14 unsatisfiable.
+
+![tune: solved vs. time](docs/benchmarks/v0.3.2-tune-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 29 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.2 | 23 (10 / 13) | 63.2 | 21.92 |
+| popso-sat 0.3.0 | 23 (10 / 13) | 65.0 | 23.66 |
+| Kissat 4.0.4 | 26 (12 / 14) | 45.5 | 19.55 |
+
+**What this shows.** On this mixed set 0.3.2 and 0.3.0 solve the same 23 instances (PAR-2 63.2
+against 65.0 s): the sweeping gains above (spg, 6s158, AProVE) against slower satisfiable runs
+(combined-crypto1, mp1-squ_ali abix, which vary from run to run). Kissat solves 26: four
+satisfiable instances popso-sat does not solve (ncc, stb_588_138 DS-ST, mdp-28-10, case9;
+Kissat's 1.1 s on stb DS-ST is a lucky run: with seeds 1 and 2 it takes 22 s and more than 60 s)
+and battleship-13-13; popso-sat solves two that Kissat does not (mp1-squ_ali abio,
+mdp-28-12).
+
+<details>
+<summary>Per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+| instance | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| mp1-squ_ali_s10x10_c39_abio_SAT | **22.74** | 44.82 | TL |
+| mp1-squ_ali_s10x10_c39_abix_SAT | 50.28 | 39.25 | **5.26** |
+| ncc_none_3001_7_3_3_1_31_435991723 | TL | TL | **32.54** |
+| cfi-rigid-r2-0072-01-or_3 | **9.70** | 9.86 | 39.46 |
+| velev-vliw-sat-4.0-b8 | 10.82 | 8.96 | **6.89** |
+| mdp-28-10-sat | TL | TL | **100.14** |
+| mdp-28-12-sat | 8.56 | **7.74** | TL |
+| stb_588_138.apx_2_DS-ST | TL | TL | **1.12** |
+| DivS_862_11.cnf.sanitized | **0.77** | 0.82 | 9.23 |
+| DivS_942_11.cnf.sanitized | **0.84** | 0.93 | 9.40 |
+| battleship-14-26-sat | **4.66** | 4.72 | 4.90 |
+| combined-crypto1-wff-seed-102-wffvars-500-cryptocplx-31-overlap-2 | 13.31 | **6.18** | 46.97 |
+| mp1-Nb5T15 | **31.92** | 33.47 | 51.39 |
+| case10 | TL | TL | TL |
+| case9 | TL | TL | **61.74** |
+| BubbleVsPancakeSort_6_6 | 24.26 | 19.32 | **16.22** |
+| spg_420_280 | **10.21** | 57.38 | 58.31 |
+| div-mitern174 | 15.72 | 13.37 | **13.13** |
+| sqrt-mitern172 | 30.47 | 28.27 | **22.11** |
+| 6s158_Iter2 | 4.83 | 16.12 | **1.77** |
+| urquhart3_25bis.shuffled | 4.08 | 4.22 | **0.27** |
+| stb_588_138.apx_2_DC-ST | 104.91 | 102.22 | **72.32** |
+| mchess16-mixed-35percent-blocked | 20.14 | **20.13** | 26.03 |
+| mchess16-mixed-45percent-blocked | 7.94 | 7.78 | **2.35** |
+| php-010-009.shuffled-as.sat05-1185 | 1.94 | 2.30 | **1.31** |
+| mrpp_4x4_12_12 | 5.10 | 6.08 | **3.55** |
+| sgen1-unsat-97-100.cnf.mis-72.debugged | 8.90 | 6.67 | **0.88** |
+| battleship-13-13-unsat | TL | TL | **10.42** |
+| AProVE07-21 | **0.71** | 3.90 | 0.84 |
+
+</details>
+
+### Held-out validation set
+
+The 32 instances of the validation set (one from each of 32 families, 16 satisfiable, 16
+unsatisfiable, not used for tuning; see the v0.3.0 section), same machine and setup, memory
+limit 8 GB for all three solvers.
+
+![validation: solved vs. time](docs/benchmarks/v0.3.2-validation-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 32 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.3.2 | 21 (11 / 10) | 103.2 | 45.24 |
+| popso-sat 0.3.0 | 22 (12 / 10) | 99.4 | 46.05 |
+| Kissat 4.0.4 | 24 (12 / 12) | 83.9 | 39.20 |
+
+**What this shows.** On the held-out instances 0.3.2 is not better than 0.3.0: 21 against 22
+solved, PAR-2 103 against 99 s (shifted geometric mean 45.2 against 46.1 s). The instance fewer
+is a satisfiable one (SC23_Timetable, 45 s for 0.3.0). Of the unsatisfiable instances 0.3.2
+solves the same 10, faster on grs-96-32 (59 against 93 s) and ktf_TF-3 (69 against 77 s),
+slower on manthey (58 against 46 s); the satisfiable ones move both ways (mod4block 24 against
+61 s, summle 21 against 49 s; sqrt_ineq_3.c 60 against 23 s, where Kissat needs 1.9 s). The
+gains on the unsatisfiable set above do not carry over to these families yet. Kissat
+solves 24: two Ascon hash instances, jkkk-one-one and SC23_Timetable that 0.3.2 does not solve;
+popso-sat solves noL-11-0 (3 s), which Kissat does not. On this idle machine the gap to Kissat
+(21 against 24) is smaller than the 17 against 23 measured for 0.3.0 on the shared Linux
+machine (with Kissat through PySAT there).
+
+<details>
+<summary>Per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+| instance | popso-sat 0.3.2 | popso-sat 0.3.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| b17 | **8.52** | 9.20 | 17.94 |
+| shift1add.28943 | 7.87 | **7.34** | 36.38 |
+| asconhashv12_opt64_H5_M2-A8qZX_m0_3_U23.c | TL | TL | **63.34** |
+| aes_decry_2_rounds.debugged | 93.24 | 102.23 | **55.13** |
+| edit_distance041_183 | 39.63 | 40.18 | **36.37** |
+| jkkk-one-one-11-32-unsat | TL | TL | **22.36** |
+| oski15a01b42s_opt | TL | TL | TL |
+| manthey_single-ordered-initialized-w42-b8 | 58.09 | **45.76** | 56.64 |
+| grs-96-32 | 59.41 | 93.39 | **29.96** |
+| reconf20_61_myciel4_2 | **11.48** | 13.06 | 21.12 |
+| ktf_TF-3.tf_3_0.02_24 | 68.90 | 77.47 | **55.81** |
+| rphp5_085_shuffled | TL | TL | TL |
+| rook-56-1-1 | TL | TL | TL |
+| SCPC-500-19 | **12.17** | 12.26 | 14.04 |
+| satch2ways12u | 11.96 | 11.90 | **2.09** |
+| constraints_18_0.3_2.sanitized | TL | TL | TL |
+| brent_51_0.29 | 30.17 | 30.69 | **14.04** |
+| asconhashv12_opt64_H13_M2-axxJh7DAq767y_m4_5.c | TL | TL | **36.05** |
+| dislog_a14_x14_n24 | TL | TL | TL |
+| Folkman-175-1251868.sanitized | 48.96 | 49.48 | **36.65** |
+| noL-11-0.sanitized | 3.16 | **3.14** | TL |
+| DLTM_twitter774_83_17 | TL | TL | TL |
+| af-synthesis_stb_50_140_3_sat | 18.28 | 19.17 | **5.01** |
+| mod4block_2vars_10gates_u2_autoenc-sc2009 | 24.08 | 60.69 | **12.84** |
+| PRP_20_40 | 23.05 | 24.71 | **3.63** |
+| frb45-21-2.used-as.sat04-884 | **25.47** | 25.60 | 67.27 |
+| rbsat-v760c43649gyes9 | **29.79** | 30.16 | 92.08 |
+| SC23_Timetable_C_476_E_50_Cl_32_D_6_T_50 | TL | 44.94 | **35.04** |
+| ContextModel_output_6_3_8.bul_.dimacs | TL | TL | TL |
+| sqrt_ineq_3.c | 60.39 | 23.42 | **1.90** |
+| summle_X8639_steps8_I1-2-2-4-4-8-25-100 | **20.72** | 49.14 | 33.22 |
+| ktf_TF-7.tf_3_0.06_113 | **5.69** | 7.43 | 16.29 |
+
+</details>
+
+### Medium set (generated formulas)
+
+On the Linux machine of the sections below (60 s, shared, so the times are only indicative):
+0.3.2 solves all 25 formulas of the medium set, PAR-2 7.0 s (0.3.0 in its section below: 25,
+7.5 s).
+
 ## v0.3.0 (Intel i7-7700K, Linux)
 
 ### SAT Competition instances

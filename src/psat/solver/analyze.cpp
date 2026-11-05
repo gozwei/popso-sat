@@ -3,6 +3,7 @@
 // bumping, backjumping.
 
 #include <algorithm>
+#include <cstddef>
 
 #include "psat/io/proof.hpp"
 #include "psat/solver/solver.hpp"
@@ -36,12 +37,101 @@ void Solver::bump_reason_clause(uint32_t ref) {
   c.used = c.glue <= tier2_ ? 2 : 1;
 }
 
-void Solver::analyze() {
+void Solver::remove_long_watch(Lit l, uint32_t ref) {
+  std::vector<Watch>& ws = watches_[l];
+  for (size_t k = 0; k < ws.size(); ++k) {
+    if (!ws[k].binary() && ws[k].ref == ref) {
+      ws[k] = ws.back();
+      ws.pop_back();
+      return;
+    }
+  }
+}
+
+// Chronological backtracking (Nadel & Ryvchin 2018; Moehle & Biere 2019, as in CaDiCaL): the
+// conflict can be below the current level. Returns the highest level among the conflict's
+// literals, how many are on it and (if one) which. A long conflict clause gets its two
+// highest-level literals as watches, so that it is watched correctly after backtracking.
+uint32_t Solver::conflict_level(Lit& forced, uint32_t& count) {
+  Lit tmp[2];
+  Lit* lits;
+  uint32_t n;
+  if (conflict_ref_ == kNoReason) {
+    tmp[0] = conflict_bin_[0];
+    tmp[1] = conflict_bin_[1];
+    lits = tmp;
+    n = 2;
+  } else {
+    Clause& c = clause(conflict_ref_);
+    lits = c.lits();
+    n = c.size;
+  }
+  uint32_t res = 0;
+  count = 0;
+  forced = kNoLit;
+  for (uint32_t k = 0; k < n; ++k) {
+    const uint32_t lvl = vdata_[var_of(lits[k])].level;
+    if (lvl > res) {
+      res = lvl;
+      forced = lits[k];
+      count = 1;
+    } else if (lvl == res) {
+      ++count;
+    }
+  }
+  if (conflict_ref_ != kNoReason) {
+    for (uint32_t i = 0; i < 2; ++i) {
+      const Lit lit = lits[i];
+      uint32_t best = i, best_level = vdata_[var_of(lit)].level;
+      for (uint32_t k = i + 1; k < n; ++k) {
+        const uint32_t lvl = vdata_[var_of(lits[k])].level;
+        if (lvl > best_level) {
+          best = k;
+          best_level = lvl;
+          if (lvl == res) break;
+        }
+      }
+      if (best == i) continue;
+      const Lit high = lits[best];
+      if (best > 1) remove_long_watch(lit, conflict_ref_);
+      lits[best] = lit;
+      lits[i] = high;
+      if (best > 1) watches_[high].push_back(Watch{lits[1 - i], conflict_ref_});
+    }
+  }
+  return res;
+}
+
+bool Solver::analyze() {
   ++stats_.conflicts;
   if (stable_) {
     ++stats_.stable_conflicts;
   } else {
     ++stats_.focused_conflicts;
+  }
+  if (opts_.chrono) {
+    Lit forced;
+    uint32_t count;
+    const uint32_t lvl = conflict_level(forced, count);
+    if (lvl == 0) return false;
+    if (count == 1) {
+      // A missed lower implication: all but one literal were false below its level. Backtrack
+      // below that level and assign it, with the conflict clause as reason.
+      ++stats_.chrono_missed;
+      backtrack(lvl - 1);
+      if (conflict_ref_ == kNoReason) {
+        const Lit other = conflict_bin_[0] == forced ? conflict_bin_[1] : conflict_bin_[0];
+        assign_at(forced, kBinaryTag | other, vdata_[var_of(other)].level);
+      } else {
+        const Clause& c = clause(conflict_ref_);  // forced is lits[0], the next highest lits[1]
+        assign_at(forced, conflict_ref_, vdata_[var_of(c.lits()[1])].level);
+      }
+      return true;
+    }
+    if (lvl < level()) {
+      ++stats_.chrono_conflict_backtracks;
+      backtrack(lvl);
+    }
   }
   update_target_and_best(control_.back());
 
@@ -83,9 +173,10 @@ void Solver::analyze() {
         if (d.trail < li.trail) li.trail = d.trail;
       }
     }
+    // (With chronological backtracking, seen literals of lower levels can follow on the trail.)
     do {
       uip = trail_[--i];
-    } while (!(flags_[var_of(uip)] & kSeen));
+    } while (!(flags_[var_of(uip)] & kSeen) || vdata_[var_of(uip)].level != cur);
     if (--open == 0) break;
     const uint32_t r = vdata_[var_of(uip)].reason;
     if (r & kBinaryTag) {
@@ -128,9 +219,17 @@ void Solver::analyze() {
   for (uint32_t lvl : touched_levels_) levels_[lvl] = LevelInfo{};
   touched_levels_.clear();
 
-  backtrack(jump);
+  // Chronological backtracking: a backjump over many levels throws away assignments that would
+  // mostly be made again; backtrack one level instead and assign the UIP at its own level.
+  uint32_t target = jump;
+  if (opts_.chrono && learned_.size() > 1 && cur - jump > static_cast<uint32_t>(opts_.chronolevels)) {
+    target = cur - 1;
+    ++stats_.chrono_backtracks;
+  }
+  backtrack(target);
   learn_clause(jump, glue);
   update_conflict_statistics(glue);
+  return true;
 }
 
 void Solver::minimize_clause() {
@@ -201,7 +300,9 @@ void Solver::shrink_clause() {
               ++open;
             }
           } else if (d.level != 0 && !(flags_[u] & kSeen)) {
-            ok = false;
+            // Not in the clause: with --shrink=2 (Kissat's shrink=3) it may still be implied by
+            // the clause's lower-level literals (the minimization check, depth 1).
+            if (opts_.shrink < 2 || !minimize_literal(negate(o), 1)) ok = false;
           }
         };
         if (r & kBinaryTag) {
@@ -234,6 +335,8 @@ void Solver::shrink_clause() {
     i = j;
   }
   learned_.resize(out);
+  for (Var v : minimized_) flags_[v] &= kSeen;  // (marks of the minimization checks)
+  minimized_.clear();
 }
 
 // lit is true on the trail (its negation is in, or implied by, the learned clause). Returns true
@@ -308,11 +411,11 @@ void Solver::learn_clause(uint32_t jump, uint32_t glue) {
   if (learned_.size() == 2) {
     ++stats_.learned_binary;
     add_binary(learned_[0], learned_[1], true);
-    assign(uip, kBinaryTag | learned_[1]);
+    assign_at(uip, kBinaryTag | learned_[1], jump);
     return;
   }
   const uint32_t ref = new_clause(learned_.data(), static_cast<uint32_t>(learned_.size()), true, glue);
-  assign(uip, ref);
+  assign_at(uip, ref, jump);
   if (opts_.eagersubsume) {
     if (recent_learned_.size() >= static_cast<size_t>(opts_.eagersubsume)) {
       recent_learned_.erase(recent_learned_.begin());
@@ -348,8 +451,26 @@ void Solver::eager_subsume() {
 void Solver::backtrack(uint32_t new_level) {
   if (level() <= new_level) return;
   const uint32_t start = control_[new_level];
+  size_t j = start;
+  if (opts_.chrono) {
+    // With chronological backtracking, literals of levels <= new_level can be above `start`: they
+    // stay (moved down, order kept) and are propagated again. The others follow them, in order.
+    backtrack_tmp_.clear();
+    for (size_t i = start; i < trail_.size(); ++i) {
+      const Lit l = trail_[i];
+      const Var v = var_of(l);
+      if (vdata_[v].level <= new_level) {
+        vdata_[v].trail = static_cast<uint32_t>(j);
+        trail_[j++] = l;
+      } else {
+        backtrack_tmp_.push_back(l);
+      }
+    }
+    std::copy(backtrack_tmp_.begin(), backtrack_tmp_.end(), trail_.begin() + static_cast<std::ptrdiff_t>(j));
+  }
+  // Unassign trail_[j..) from the top (the order decides ties in the heap).
   if (stable_) {
-    for (size_t i = trail_.size(); i-- > start;) {
+    for (size_t i = trail_.size(); i-- > j;) {
       const Lit l = trail_[i];
       vals_[l] = vals_[negate(l)] = 0;
       heap_.push(var_of(l));
@@ -357,7 +478,7 @@ void Solver::backtrack(uint32_t new_level) {
   } else {
     Var search = queue_search_;
     uint64_t search_stamp = search == UINT32_MAX ? 0 : bumped_[search];
-    for (size_t i = trail_.size(); i-- > start;) {
+    for (size_t i = trail_.size(); i-- > j;) {
       const Lit l = trail_[i];
       vals_[l] = vals_[negate(l)] = 0;
       const Var v = var_of(l);
@@ -368,7 +489,7 @@ void Solver::backtrack(uint32_t new_level) {
     }
     queue_search_ = search;
   }
-  trail_.resize(start);
+  trail_.resize(j);
   if (propagated_ > start) propagated_ = start;
   control_.resize(new_level);
 }

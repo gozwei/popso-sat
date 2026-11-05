@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.3.2 — 2026-11-05
+
+Sweeping rework, adaptive sweep environments, and new inprocessing techniques (opt-in until
+they gain in A/B runs). On 26 unsatisfiable competition instances (idle Apple M4 Pro, 120 s)
+0.3.2 solves 21 instead of 20 with a 12% lower PAR-2 (Kissat 4.0.4: 22); on the 29-instance
+tuning set both versions solve 23 (Kissat 26); on the 32 held-out validation instances 0.3.2
+solves 21 and 0.3.0 22 (the difference is one satisfiable instance), Kissat 24. See
+[BENCHMARKS.md](BENCHMARKS.md); benchmark tables now come from an idle machine (the Linux
+machine of earlier tables is shared, and its times varied by a factor of 1.3 between sessions).
+
+- **Sweeping** checks equivalences within classes of all environment literals, refined by the
+  models Kitten finds (with literal flips and random phases), instead of pairs with the swept
+  variable only (the candidate scheme of Kissat's sweeping). A variable proven equivalent
+  leaves the later candidate classes of the round (before, equivalences were proven again and
+  their binary clauses added again).
+- **Sweep environments grow** (on by default, `--sweepgrow`): after a full cycle over the
+  variables that found less than one unit or equivalence per 100 swept variables, the
+  environment limits double (variables, clauses) and the depth grows by one, at most three
+  times (`--sweepgrowmax`). Two hardware-verification instances of the unsatisfiable A/B set
+  that need large environments (beempgsol2b1, 6s186_Iter20) are now solved within 120 s.
+- **New, off by default:** unhiding (time stamps on the binary implication graph: failed
+  literals, transitive reduction, hidden tautologies and hidden literals; `--unhide`),
+  vivification deleting irredundant clauses implied by the other irredundant clauses
+  (`--vivifyasym`), substitution right after sweeping (`--sweepsubst`), vivification
+  instantiation and implied deletion (`--vivifyinst`, `--vivifyimplied`), tier-3 vivification
+  (`--vivifytier3`), shrinking with implied lower-level literals (`--shrink=2`), chronological
+  backtracking (`--chrono`), BVA 3-hop tie-breaking (`--bvahops`), BVA in every elimination
+  round (`--bvaevery`), BVA variables protected from elimination (`--bvaprotect`), BVA before
+  or after the first round's eliminations (`--bvafirst`) and its budget floor (`--bvaticks`).
+  New test sets: unsat26 (unsatisfiable A/B set) and a held-out validation set. BVA itself
+  stays off: with sweep growth it gained on both tuning sets but lost 6 of 32 held-out
+  instances.
+- **Speed:** the decision heap stores a copy of the score (same order, faster sifting);
+  congruence closure filters gate candidates before sorting (ncc: 2.3 -> 0.55 s per call).
+- **Fixes:** BVA checks its budget within a matching step (on formulas with few variables and
+  many clauses one step overshot it: DivS_862_11 spent 1.1 s in BVA finding nothing, now
+  0.04 s). A SIGTERM delivered twice (GNU timeout signals the process and its process group)
+  no longer makes the solver exit without its answer line; only a second Ctrl-C does.
+- **Statistics:** wall time per pass ("c profile" lines with `-v`); the sweeping line shows the
+  current environment limits and growth level.
+
 ## v0.3.1 — 2026-11-04
 
 - Documentation only: BENCHMARKS.md and the README add a held-out validation set (32 competition

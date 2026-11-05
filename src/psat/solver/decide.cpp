@@ -57,11 +57,23 @@ void Solver::heap_bump(Var v) {
   double s = score_[v] + score_inc_;
   if (s > 1e150) {
     for (double& x : score_) x *= 1e-150;
+    heap_.rescale(1e-150);
     score_inc_ *= 1e-150;
     s = score_[v] + score_inc_;
   }
   score_[v] = s;
   heap_.increased(v);
+}
+
+// Eliminated (and substituted) variables leave the decision queue for good.
+void Solver::drop_inactive_decisions() {
+  for (Var v = 0; v < num_vars_; ++v) {
+    if (eliminated_[v] && (links_[v].prev != UINT32_MAX || links_[v].next != UINT32_MAX || queue_first_ == v)) {
+      queue_dequeue(v);
+    }
+  }
+  queue_search_ = queue_last_;
+  if (stable_) rebuild_heap();
 }
 
 void Solver::rebuild_heap() {

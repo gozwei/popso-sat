@@ -44,6 +44,7 @@ void Solver::update_tier_limits() {
 }
 
 void Solver::reduce() {
+  const PassTimer pass_timer(*this, kPassReduce);
   ++stats_.reductions;
   if (opts_.dynamictiers) update_tier_limits();
   mark_reasons(true);

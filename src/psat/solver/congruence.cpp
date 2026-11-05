@@ -19,26 +19,80 @@
 
 namespace psat {
 
-uint32_t Solver::congruence(uint64_t& budget) {
-  const size_t nlits = 2 * size_t{num_vars_};
-  // Occurrence lists (CSR) of the live irredundant long clauses.
-  std::vector<uint32_t> start(nlits + 1, 0), occ;
-  for (const uint32_t ref : clauses_) {
-    const Clause& c = clause(ref);
-    if (c.garbage || c.redundant) continue;
-    for (uint32_t k = 0; k < c.size; ++k) ++start[c.lits()[k] + 1];
+namespace {
+
+// Saturating 8-bit counters indexed by a hash of a key: count(h) is at least the number of adds
+// of h (collisions only raise it). Filters the clauses that can be part of a gate before the
+// exact (sorting) passes: on large formulas with millions of ternary clauses and few or no
+// gates, sorting all of them cost seconds per elimination round.
+class CountFilter {
+ public:
+  explicit CountFilter(size_t keys) {
+    size_t n = 1024;
+    while (n < 2 * keys && n < (size_t{1} << 26)) n <<= 1;
+    counts_.assign(n, 0);
+    mask_ = n - 1;
   }
-  for (size_t l = 0; l < nlits; ++l) start[l + 1] += start[l];
-  occ.resize(start[nlits]);
-  {
+  void add(uint64_t h) {
+    uint8_t& c = counts_[mix(h) & mask_];
+    if (c < 255) ++c;
+  }
+  uint32_t count(uint64_t h) const { return counts_[mix(h) & mask_]; }
+  size_t size() const { return counts_.size(); }
+
+ private:
+  static uint64_t mix(uint64_t h) {
+    h ^= h >> 33;
+    h *= 0xFF51AFD7ED558CCDull;
+    h ^= h >> 33;
+    return h;
+  }
+  std::vector<uint8_t> counts_;
+  uint64_t mask_ = 0;
+};
+
+}  // namespace
+
+uint32_t Solver::congruence(uint64_t& budget) {
+  const PassTimer pass_timer(*this, kPassCongruence);
+  const size_t nlits = 2 * size_t{num_vars_};
+  // Possible outputs: literals lhs with binary clauses (-lhs v x) to at least two unassigned
+  // literals x. Occurrence lists (CSR) of the live irredundant long clauses are built only for
+  // them (on formulas with few binary clauses that skips most of the formula).
+  std::vector<uint8_t> output(nlits, 0);
+  size_t outputs = 0;
+  for (Lit lhs = 0; lhs < nlits; ++lhs) {
+    if (vals_[lhs] != 0 || eliminated_[var_of(lhs)]) continue;
+    uint32_t cands = 0;
+    for (const Watch& w : watches_[negate(lhs)]) {
+      if (w.binary() && vals_[w.blit] == 0 && ++cands >= 2) break;
+    }
+    if (cands >= 2) {
+      output[lhs] = 1;
+      ++outputs;
+    }
+  }
+  budget += nlits / 8;
+  std::vector<uint32_t> start(nlits + 1, 0), occ;
+  if (outputs) {
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage || c.redundant) continue;
+      for (uint32_t k = 0; k < c.size; ++k) start[c.lits()[k] + 1] += output[c.lits()[k]];
+    }
+    for (size_t l = 0; l < nlits; ++l) start[l + 1] += start[l];
+    occ.resize(start[nlits]);
     std::vector<uint32_t> fill(start.begin(), start.end() - 1);
     for (const uint32_t ref : clauses_) {
       const Clause& c = clause(ref);
       if (c.garbage || c.redundant) continue;
-      for (uint32_t k = 0; k < c.size; ++k) occ[fill[c.lits()[k]]++] = ref;
+      for (uint32_t k = 0; k < c.size; ++k) {
+        if (output[c.lits()[k]]) occ[fill[c.lits()[k]]++] = ref;
+      }
     }
+    budget += arena_.size() / 16 + occ.size() / 4;
   }
-  budget += occ.size() / 4;
+  std::vector<uint8_t>().swap(output);
 
   // Extract gates: (sorted inputs, lhs), stored flat.
   struct Gate {
@@ -181,9 +235,9 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
     uint8_t n, mask;
   };
   // A clause of size n can only be part of an XOR if 2^(n-1) clauses share its variable set: a
-  // first pass collects one hash per candidate clause (8 bytes instead of a 24-byte row for every
-  // clause of size 3..5, which cost hundreds of MB on large formulas), the second pass keeps
-  // rows only for variable sets that occur often enough.
+  // first pass counts variable sets (hashed, in a CountFilter), the second keeps rows only for
+  // sets that occur often enough (a row for every clause of size 3..5 cost hundreds of MB on
+  // large formulas, sorting hashes of all of them seconds).
   auto make_row = [&](const Clause& c, Row& r) -> bool {
     r = Row{};
     r.n = static_cast<uint8_t>(c.size);
@@ -203,25 +257,29 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
     for (int k = 0; k < r.n; ++k) h = (h ^ r.vars[k]) * 0x100000001B3ull;
     return h;
   };
-  std::vector<uint64_t> hashes;
+  size_t candidates = 0;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (!c.garbage && !c.redundant && c.size >= 3 && c.size <= 5) ++candidates;
+  }
+  if (candidates < 4) return 0;
+  CountFilter filter(candidates);
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
     if (c.garbage || c.redundant || c.size < 3 || c.size > 5) continue;
     Row r;
-    if (make_row(c, r)) hashes.push_back(set_hash(r));
+    if (make_row(c, r)) filter.add(set_hash(r));
   }
-  budget += hashes.size();
-  std::sort(hashes.begin(), hashes.end());
+  budget += candidates + filter.size() / 64;
   std::vector<Row> rows;
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
     if (c.garbage || c.redundant || c.size < 3 || c.size > 5) continue;
     Row r;
     if (!make_row(c, r)) continue;
-    const auto range = std::equal_range(hashes.begin(), hashes.end(), set_hash(r));
-    if (static_cast<size_t>(range.second - range.first) >= (size_t{1} << (r.n - 1))) rows.push_back(r);
+    if (filter.count(set_hash(r)) >= (1u << (r.n - 1))) rows.push_back(r);
   }
-  std::vector<uint64_t>().swap(hashes);
+  budget += candidates;
   budget += rows.size();
   std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
     if (a.n != b.n) return a.n < b.n;
@@ -333,13 +391,41 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
 uint32_t Solver::congruent_ites(uint64_t& budget) {
   // Live irredundant ternary clauses without assigned literals: a sorted set of sorted triples,
   // and their occurrence lists (CSR).
+  // The four clauses of an ITE gate all contain the condition and the output variable: only
+  // ternary clauses with a pair of variables in at least four of them are kept (CountFilter).
   using Triple = std::array<Lit, 3>;
-  std::vector<Triple> tri;
+  auto live_triple = [&](const Clause& c, Triple& t) {
+    if (c.garbage || c.redundant || c.size != 3) return false;
+    t = Triple{c.lits()[0], c.lits()[1], c.lits()[2]};
+    return !vals_[t[0]] && !vals_[t[1]] && !vals_[t[2]];
+  };
+  auto pair_key = [](Lit a, Lit b) {
+    const Var x = var_of(a), y = var_of(b);
+    return x < y ? (uint64_t{x} << 32) | y : (uint64_t{y} << 32) | x;
+  };
+  size_t ternary = 0;
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
-    if (c.garbage || c.redundant || c.size != 3) continue;
-    Triple t{c.lits()[0], c.lits()[1], c.lits()[2]};
-    if (vals_[t[0]] || vals_[t[1]] || vals_[t[2]]) continue;
+    if (!c.garbage && !c.redundant && c.size == 3) ++ternary;
+  }
+  if (ternary < 8) return 0;
+  CountFilter pairs(3 * ternary);
+  for (const uint32_t ref : clauses_) {
+    Triple t;
+    if (!live_triple(clause(ref), t)) continue;
+    pairs.add(pair_key(t[0], t[1]));
+    pairs.add(pair_key(t[0], t[2]));
+    pairs.add(pair_key(t[1], t[2]));
+  }
+  budget += 2 * ternary + pairs.size() / 64;
+  std::vector<Triple> tri;
+  for (const uint32_t ref : clauses_) {
+    Triple t;
+    if (!live_triple(clause(ref), t)) continue;
+    if (pairs.count(pair_key(t[0], t[1])) < 4 && pairs.count(pair_key(t[0], t[2])) < 4 &&
+        pairs.count(pair_key(t[1], t[2])) < 4) {
+      continue;
+    }
     small_sort(t.data(), 3);
     tri.push_back(t);
   }

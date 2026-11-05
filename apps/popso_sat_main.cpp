@@ -27,7 +27,10 @@ std::atomic<bool> g_interrupt{false};
 std::atomic<int> g_signals{0};
 
 extern "C" void on_signal(int sig) {
-  if (g_signals.fetch_add(1) > 0) std::_Exit(128 + sig);  // second signal: give up immediately
+  // A second Ctrl-C gives up immediately. A repeated SIGTERM does not: GNU timeout (and other
+  // runners) send it to the process and to its process group, so it often arrives twice at once,
+  // and the solver should still stop cleanly with its answer line and statistics.
+  if (sig == SIGINT && g_signals.fetch_add(1) > 0) std::_Exit(128 + sig);
   g_interrupt.store(true);
 }
 

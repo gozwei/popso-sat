@@ -1,0 +1,15 @@
+# unsat development set: unsatisfiable dev_candidates.txt instances that are neither in the dev
+# (tune) nor in the validation set, from families with no validation instance, cnf <= 50 MB.
+# For diagnosing the unsatisfiable gap without tuning on the validation set.
+gbd/files/02627689047d06fbb642eef14768d751-ps_200_300_70.cnf.xz                                                              unsat    # family=cellular-automata year=2022 filtered kissat-sc2022-bulky=29s xz=4.12MB cnf=37.7MB
+gbd/files/5d357f1e4b5abc96c90d305f629edd5c-ps_200_323_70.cnf.xz                                                              unsat    # family=cellular-automata year=2022 filtered kissat-sc2022-bulky=35s xz=4.42MB cnf=40.8MB
+gbd/files/fe800e62b55609cb152965c223e72280-div-mitern171.cnf.xz                                                              unsat    # family=circuit-equivalence-checking year=2022 filtered kissat-sc2022-bulky=121s xz=0.05MB cnf=0.2MB
+gbd/files/07b7859003d84402cbb1ebdc37655d55-6s186_Iter20.cnf.xz                                                               unsat    # family=hardware-model-checking year=2022 filtered kissat-sc2022-bulky=174s xz=0.14MB cnf=0.8MB
+gbd/files/a130a3f95891daed1bfd71c77bd2d8a1-SAT_dat.k80.cnf.xz                                                                unsat    # family=hardware-verification year=2022 filtered kissat-sc2022-bulky=90s xz=0.36MB cnf=3.0MB
+gbd/files/436d00b6d41912e800e9855d08c75139-manol-pipe-f7nidw.cnf.xz                                                          unsat    # family=hardware-verification year=2022 filtered kissat-sc2022-bulky=61s xz=2.22MB cnf=16.3MB
+gbd/files/81b674a2aa6fbda9b06cf8ea334ddc44-beempgsol2b1.cnf.xz                                                               unsat    # family=miter year=2022 filtered kissat-sc2022-bulky=125s xz=0.15MB cnf=0.9MB
+gbd/files/4282ea42fd414bfd2c4bf81fe8a43e24-DivU_1520_10.cnf.sanitized.cnf.xz                                                 unsat    # family=subsumptiontest year=2023 filtered kissat-3.1.0=44s xz=10.98MB cnf=36.3MB
+gbd/files/da43a3ef0ef5d34143e765d480dedc7a-DivU_624_11.cnf.sanitized.cnf.xz                                                  unsat    # family=subsumptiontest year=2023 filtered kissat-3.1.0=42s xz=8.39MB cnf=28.8MB
+gbd/files/fae08ac5b6d7eeb4f56f1cfac6c51703-j3045_4_mdd_bm1.cnf.xz                                                            unsat    # family=scheduling year=2024 unfiltered xz=0.11MB cnf=0.8MB
+gbd/files/dafc03ea784fee849febca7b64230558-pcmax-scheduling-m30-14113-167638-UNSAT.sanitized.cnf.xz                          unsat    # family=scheduling year=2024 unfiltered xz=0.15MB cnf=2.7MB
+gbd/files/d672bdbca3b1fb26d585e78add79537e-velev-pipe-o-uns-1.1-6.cnf.xz                                                     unsat    # family=hardware-verification year=2025 unfiltered xz=0.36MB cnf=5.4MB

@@ -9,6 +9,7 @@
 namespace psat {
 
 bool Solver::lucky() {
+  const PassTimer pass_timer(*this, kPassLucky);
   if (inconsistent_ || level() > 0) return false;
   if (!propagate_vivify(kNoReason)) return false;  // root conflicts are left to search
   for (int attempt = 0; attempt < 4; ++attempt) {

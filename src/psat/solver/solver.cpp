@@ -276,12 +276,11 @@ int Solver::solve() {
 int Solver::search() {
   for (;;) {
     if (!propagate()) {
-      if (level() == 0) {
+      if (level() == 0 || !analyze()) {  // (analyze: the conflict can be at the root)
         inconsistent_ = true;
         if (proof_) proof_->add_empty();
         return kUnsat;
       }
-      analyze();
     } else if (trail_.size() + inactive_ == num_vars_) {
       extend_model();
       return kSat;
@@ -409,6 +408,16 @@ bool Solver::restarting() const {
   if (stats_.conflicts < restart_limit_) return false;
   const double margin = 1.0 + static_cast<double>(opts_.restartmargin) / 100.0;
   return ema_fast_.value > margin * ema_slow_.value;
+}
+
+bool Solver::backtrack_to_root() {
+  backtrack(0);
+  if (propagated_ < trail_.size() && !propagate()) {
+    inconsistent_ = true;
+    if (proof_) proof_->add_empty();
+    return false;
+  }
+  return true;
 }
 
 void Solver::restart() {
@@ -550,6 +559,8 @@ void Solver::print_statistics(std::FILE* out) const {
   std::fprintf(out, "c ticks          %14llu\n", ull(stats_.ticks));
   std::fprintf(out, "c restarts       %14llu  reused levels %llu  rephased %llu  mode switches %llu\n",
                ull(stats_.restarts), ull(stats_.reused_levels), ull(stats_.rephased), ull(stats_.switched));
+  std::fprintf(out, "c chronological  %14llu  backtracks to the conflict level %llu  missed implications %llu\n",
+               ull(stats_.chrono_backtracks), ull(stats_.chrono_conflict_backtracks), ull(stats_.chrono_missed));
   std::fprintf(out, "c reductions     %14llu  reduced %llu  root simplifications %llu\n", ull(stats_.reductions),
                ull(stats_.reduced_clauses), ull(stats_.simplified_root));
   std::fprintf(out, "c collections    %14llu  full %llu  arena %.1f MB, collected %.1f MB\n", ull(stats_.collections),
@@ -565,27 +576,50 @@ void Solver::print_statistics(std::FILE* out) const {
                "strengthened %llu\n",
                ull(stats_.eliminations), ull(stats_.eliminated), ull(stats_.substituted), ull(stats_.resolvents),
                ull(stats_.subsumed), ull(stats_.strengthened));
-  std::fprintf(out, "c vivifications  %14llu  checked %llu  vivified %llu  removed literals %llu  ticks %llu\n",
+  std::fprintf(out, "c vivifications  %14llu  checked %llu  vivified %llu  removed literals %llu  instantiated %llu  "
+                    "implied deleted %llu  asym deleted %llu  ticks %llu\n",
                ull(stats_.vivifications), ull(stats_.vivify_checked), ull(stats_.vivified),
-               ull(stats_.vivified_literals), ull(stats_.vivify_ticks));
+               ull(stats_.vivified_literals), ull(stats_.vivify_instantiated), ull(stats_.vivify_implied_deleted),
+               ull(stats_.vivify_asym), ull(stats_.vivify_ticks));
   std::fprintf(out, "c probing        %14llu  failed literals %llu\n", ull(stats_.probes), ull(stats_.failed_literals));
-  std::fprintf(out, "c sweeping       %14llu  variables %llu  units %llu  equivalences %llu  ticks %llu\n",
+  std::fprintf(out, "c unhiding       %14llu  units %llu  transitive %llu  hidden tautologies %llu  strengthened %llu  "
+                    "removed literals %llu  ticks %llu\n",
+               ull(stats_.unhides), ull(stats_.unhide_units), ull(stats_.unhide_transitive), ull(stats_.unhide_tautologies),
+               ull(stats_.unhide_strengthened), ull(stats_.unhide_literals), ull(stats_.unhide_ticks));
+  std::fprintf(out, "c sweeping       %14llu  variables %llu  units %llu  equivalences %llu  flips %llu  ticks %llu  "
+                    "limits %u vars / %u clauses / depth %u (growth %u)\n",
                ull(stats_.sweeps), ull(stats_.swept_vars), ull(stats_.sweep_units), ull(stats_.sweep_equivalences),
-               ull(stats_.sweep_ticks));
+               ull(stats_.sweep_flips), ull(stats_.sweep_ticks), sweep_lim_vars_, sweep_lim_clauses_, sweep_lim_depth_,
+               sweep_growth_);
   std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu; xor merges skipped %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
                ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions),
                ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites));
   std::fprintf(out, "c lucky          %14llu\n", ull(stats_.lucky));
   std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu\n", ull(stats_.walks), ull(stats_.walk_flips),
                ull(stats_.walk_ticks));
-  std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu\n", ull(stats_.bva_vars),
-               ull(stats_.bva_removed), ull(stats_.bva_added));
+  std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu, 3-hop tie-breaks %llu\n",
+               ull(stats_.bva_vars), ull(stats_.bva_removed), ull(stats_.bva_added), ull(stats_.bva_hop_ties));
   std::fprintf(out, "c tiers          %14u  tier2 %u\n", tier1_, tier2_);
   std::fprintf(out, "c shrunk         %14llu  literals\n", ull(stats_.shrunk_literals));
   std::fprintf(out, "c fixed          %14llu  of %u variables\n", ull(stats_.fixed), num_vars_);
   std::fprintf(out, "c memory         %14.1f MB  (peak resident %.1f MB)\n", static_cast<double>(memory_bytes()) / (1 << 20),
                peak_rss_mb());
   std::fprintf(out, "c time           %14.2f s\n", t);
+  {
+    // Exclusive wall time of the passes; search is the rest (with garbage collection).
+    const double* p = pass_seconds_;
+    double passes = 0;
+    for (int k = 0; k < kPassCount; ++k) passes += p[k];
+    auto share = [t](double x) { return t > 0 ? 100.0 * x / t : 0.0; };
+    std::fprintf(out, "c profile        search %.2f s (%.0f%%)  sweep %.2f (%.0f%%)  vivify %.2f (%.0f%%)  eliminate %.2f (%.0f%%)  "
+                      "walk %.2f (%.0f%%)\n",
+                 t - passes, share(t - passes), p[kPassSweep], share(p[kPassSweep]), p[kPassVivify], share(p[kPassVivify]),
+                 p[kPassEliminate], share(p[kPassEliminate]), p[kPassWalk], share(p[kPassWalk]));
+    std::fprintf(out, "c                probe %.2f  substitute %.2f  congruence %.2f  subsume %.2f  bva %.2f  reduce %.2f  "
+                      "lucky %.2f  unhide %.2f s\n",
+                 p[kPassProbe], p[kPassSubstitute], p[kPassCongruence], p[kPassSubsume], p[kPassBva], p[kPassReduce],
+                 p[kPassLucky], p[kPassUnhide]);
+  }
 }
 
 }  // namespace psat

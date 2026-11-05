@@ -21,9 +21,11 @@ constexpr uint32_t kNotLocal = UINT32_MAX;
 constexpr uint64_t kSolveTicks = 20000;  // Kitten ticks per solve
 constexpr size_t kBackboneCandidates = 16;
 constexpr size_t kEquivalenceCandidates = 8;
+constexpr uint64_t kVariableTicks = 500000;  // Kitten ticks per swept variable (sweepclasses)
 }  // namespace
 
 void Solver::sweep(uint64_t min_budget) {
+  const PassTimer pass_timer(*this, kPassSweep);
   if (inconsistent_ || !opts_.sweep) return;
   const uint64_t search = stats_.ticks - sweep_last_ticks_;
   const uint64_t budget =
@@ -42,8 +44,9 @@ void Solver::sweep(uint64_t min_budget) {
   ++stats_.sweeps;
   sweep_last_ticks_ = stats_.ticks;
   const uint64_t found_before = stats_.sweep_units + stats_.sweep_equivalences;
-  if (level() > 0) backtrack(0);
+  if (!backtrack_to_root()) return;
   if (sweep_local_.size() < num_vars_) sweep_local_.resize(num_vars_, kNotLocal);
+  if (sweep_merged_.size() < num_vars_) sweep_merged_.resize(num_vars_, 0);
   // Occurrence lists (CSR) of the live irredundant long clauses.
   const size_t nlits = 2 * size_t{num_vars_};
   std::vector<uint32_t> start(nlits + 1, 0), occ;
@@ -64,13 +67,31 @@ void Solver::sweep(uint64_t min_budget) {
   }
   sweep_stamp_.clear();
   sweep_stamp_now_ = 0;
+  // Environment limits: with --sweepgrow they grow one step after a full cycle over the
+  // variables that found less than one unit or equivalence per 100 swept variables (twice the
+  // variables and clauses, one more level of depth up to 3).
+  {
+    const uint32_t g = opts_.sweepgrow ? sweep_growth_ : 0;
+    sweep_lim_vars_ = static_cast<uint32_t>(std::min<uint64_t>(uint64_t{static_cast<uint32_t>(opts_.sweepvars)} << g, 8192));
+    sweep_lim_clauses_ =
+        static_cast<uint32_t>(std::min<uint64_t>(uint64_t{static_cast<uint32_t>(opts_.sweepclauses)} << g, 32768));
+    const uint32_t base_depth = static_cast<uint32_t>(opts_.sweepdepth);
+    sweep_lim_depth_ = base_depth >= 3 ? base_depth : std::min<uint32_t>(base_depth + g, 3);
+  }
   uint64_t ticks = occ.size() / 4;
   for (uint32_t scanned = 0; scanned < num_vars_ && ticks < budget && !inconsistent_; ++scanned) {
     const Var v = sweep_cursor_++ % num_vars_;
+    if (sweep_cursor_ % num_vars_ == 0) {  // a full cycle over the variables ends
+      const uint64_t found = stats_.sweep_units + stats_.sweep_equivalences - sweep_cycle_found_;
+      if (100 * found < sweep_cycle_swept_ && sweep_growth_ < static_cast<uint32_t>(opts_.sweepgrowmax)) ++sweep_growth_;
+      sweep_cycle_found_ = stats_.sweep_units + stats_.sweep_equivalences;
+      sweep_cycle_swept_ = 0;
+    }
     if (eliminated_[v] || vals_[make_lit(v, false)] != 0) continue;
     const Lit p = make_lit(v, false), n = make_lit(v, true);
     if (start[p + 1] == start[p] && start[n + 1] == start[n]) continue;  // only binary occurrences
     ++stats_.swept_vars;
+    ++sweep_cycle_swept_;
     if (!sweep_variable(v, start, occ, ticks)) break;
   }
   stats_.sweep_ticks += ticks;
@@ -143,17 +164,17 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
   uint32_t nclauses = 0;
   auto local = [&](Var u, uint32_t d) -> bool {
     if (sweep_local_[u] != kNotLocal) return true;
-    if (sweep_env_.size() >= static_cast<size_t>(opts_.sweepvars)) return false;
+    if (sweep_env_.size() >= sweep_lim_vars_) return false;
     sweep_local_[u] = static_cast<uint32_t>(sweep_env_.size());
     sweep_env_.push_back(u);
     depth.push_back(d);
     return true;
   };
   local(v, 0);
-  for (size_t i = 0; i < sweep_env_.size() && nclauses < static_cast<uint32_t>(opts_.sweepclauses); ++i) {
+  for (size_t i = 0; i < sweep_env_.size() && nclauses < sweep_lim_clauses_; ++i) {
     const Var u = sweep_env_[i];
     const uint32_t d = depth[i];
-    if (d >= static_cast<uint32_t>(opts_.sweepdepth)) continue;
+    if (d >= sweep_lim_depth_) continue;
     for (int sign = 0; sign < 2; ++sign) {
       const Lit l = make_lit(u, sign != 0);
       // Binary clauses (l v b): added when b's variable has not been expanded before (else the
@@ -164,15 +185,15 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
         const Lit b = w.blit;
         if (vals_[b] != 0 || vals_[l] != 0) continue;
         const uint32_t lb = sweep_local_[var_of(b)];
-        if (lb != kNotLocal && lb < i && depth[lb] < static_cast<uint32_t>(opts_.sweepdepth)) continue;
+        if (lb != kNotLocal && lb < i && depth[lb] < sweep_lim_depth_) continue;
         if (!local(var_of(b), d + 1)) continue;
-        if (nclauses >= static_cast<uint32_t>(opts_.sweepclauses)) break;
+        if (nclauses >= sweep_lim_clauses_) break;
         flat.push_back(2);
         flat.push_back(l);
         flat.push_back(b);
         ++nclauses;
       }
-      for (uint32_t o = start[l]; o < start[l + 1] && nclauses < static_cast<uint32_t>(opts_.sweepclauses); ++o) {
+      for (uint32_t o = start[l]; o < start[l + 1] && nclauses < sweep_lim_clauses_; ++o) {
         const uint32_t ref = occ[o];
         uint32_t& stamp = sweep_stamp_[ref / 4];
         if (stamp == sweep_stamp_now_) continue;
@@ -220,6 +241,8 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
   if (r == Kitten::kUnsat) {  // the environment, hence the formula, is unsatisfiable
     sweep_emit_learned();
     ok = sweep_add(nullptr, 0);
+  } else if (r == Kitten::kSat && opts_.sweepclasses) {
+    ok = sweep_classes(n);
   } else if (r == Kitten::kSat) {
     // first: the first model; backbone candidates keep their value in every model, equivalence
     // candidates (for v, local 0) keep their relation to v.
@@ -323,6 +346,179 @@ bool Solver::sweep_variable(Var v, const std::vector<uint32_t>& start, const std
     }
   }
   for (const Var u : sweep_env_) sweep_local_[u] = kNotLocal;
+  return ok;
+}
+
+// Candidates as in Kissat's sweeping (--sweepclasses): backbone candidates are the literals true
+// in the first model, equivalence candidates a partition of them into classes whose literals had
+// equal values in every model so far. Every model, from a Kitten call or from flipping a literal
+// of the current one, refines both. Equivalences are checked for two literals of the last class
+// (two Kitten calls), so they are found between any two variables of the environment, not only
+// with the swept one; the second literal then leaves its class. Kitten decides with random
+// phases: diverse models split classes faster. False on a conflict at the root.
+bool Solver::sweep_classes(uint32_t n) {
+  using KLit = Kitten::KLit;
+  constexpr KLit kSep = UINT32_MAX;
+  auto glit = [&](KLit k) -> Lit { return make_lit(sweep_env_[k >> 1], (k & 1u) != 0); };
+  auto fixed = [&](KLit k) { return vals_[glit(k)] != 0; };
+  auto solve = [&]() {
+    kitten_.randomize_phases(rng_);
+    return kitten_.solve(kSolveTicks);
+  };
+  const uint64_t limit = kitten_.ticks() + kVariableTicks;
+  std::vector<KLit>& backbone = sweep_backbone_;
+  std::vector<KLit>& part = sweep_partition_;  // classes, each closed by kSep
+  std::vector<KLit>& next = sweep_next_;
+  backbone.clear();
+  part.clear();
+  for (uint32_t i = 0; i < n; ++i) {
+    const int8_t val = kitten_.value(2 * i);
+    if (!val) continue;
+    const KLit l = 2 * i + (val > 0 ? 0u : 1u);
+    if (fixed(l)) continue;
+    // Equivalent to another literal since this round started: proven already (the binary
+    // clauses are in the formula, substitution removes the variable after the round).
+    if (sweep_merged_[sweep_env_[i]] == stats_.sweeps) continue;
+    backbone.push_back(l);
+    part.push_back(l);
+  }
+  part.push_back(kSep);
+  if (part.size() < 3) part.clear();
+  // The current assignment is a model: candidates false in it are refuted.
+  auto refine = [&]() {
+    size_t j = 0;
+    for (const KLit l : backbone) {
+      if (!fixed(l) && kitten_.value(l) > 0) backbone[j++] = l;
+    }
+    backbone.resize(j);
+    next.clear();
+    for (size_t p = 0; p < part.size();) {
+      size_t q = p;
+      while (part[q] != kSep) ++q;
+      for (int polarity = 1; polarity >= -1; polarity -= 2) {
+        const size_t mark = next.size();
+        for (size_t k = p; k < q; ++k) {
+          if (!fixed(part[k]) && kitten_.value(part[k]) == polarity) next.push_back(part[k]);
+        }
+        if (next.size() - mark >= 2) {
+          next.push_back(kSep);
+        } else {
+          next.resize(mark);
+        }
+      }
+      p = q + 1;
+    }
+    part.swap(next);
+  };
+  // Flipping a candidate in the current model (when every clause stays satisfied) is a model
+  // too; one round over all candidates, then one refinement.
+  auto flip_candidates = [&](const std::vector<KLit>& cands) {
+    bool flipped = false;
+    for (const KLit l : cands) {
+      if (l == kSep || kitten_.value(l) <= 0) continue;
+      if (kitten_.flip(l)) {
+        ++stats_.sweep_flips;
+        flipped = true;
+      }
+    }
+    if (flipped) refine();
+  };
+  auto last_class_start = [&]() {
+    size_t start = part.size() - 1;
+    while (start > 0 && part[start - 1] != kSep) --start;
+    return start;
+  };
+  bool ok = true;
+  // Backbone literals: l is implied if the environment with -l is unsatisfiable.
+  while (ok && !backbone.empty() && kitten_.ticks() <= limit) {
+    flip_candidates(backbone);
+    if (backbone.empty()) break;
+    const KLit l = backbone.back();
+    backbone.pop_back();
+    if (fixed(l)) continue;
+    kitten_.assume(l ^ 1u);
+    const int r = solve();
+    if (r == Kitten::kUnknown) return ok;
+    if (r == Kitten::kSat) {
+      refine();
+      continue;
+    }
+    sweep_emit_learned();
+    if (kitten_.inconsistent()) return sweep_add(nullptr, 0);
+    const Lit u = glit(l);
+    ok = sweep_add(&u, 1);
+    kitten_.add_clause(&l, 1);
+  }
+  // Equivalences x = y for two literals of the last class: (-x & y) and (x & -y) unsatisfiable.
+  std::vector<Lit> implied[2];
+  while (ok && !part.empty() && kitten_.ticks() <= limit) {
+    {  // fixed literals leave the last class
+      const size_t start = last_class_start();
+      size_t j = start;
+      for (size_t k = start; k + 1 < part.size(); ++k) {
+        if (!fixed(part[k])) part[j++] = part[k];
+      }
+      part.resize(j);
+      if (j - start >= 2) {
+        part.push_back(kSep);
+      } else {
+        part.resize(start);
+        continue;
+      }
+    }
+    flip_candidates(part);
+    if (part.empty()) break;
+    const size_t end = part.size();
+    if (end < 3 || part[end - 1] != kSep || part[end - 2] == kSep || part[end - 3] == kSep) {
+      part.clear();  // (cannot happen: classes have two literals or more)
+      break;
+    }
+    const KLit x = part[end - 3], y = part[end - 2];
+    bool proved = true;
+    int r = Kitten::kUnsat;
+    for (int dir = 0; dir < 2 && proved; ++dir) {
+      kitten_.assume(dir == 0 ? x ^ 1u : x);
+      kitten_.assume(dir == 0 ? y : y ^ 1u);
+      r = solve();
+      if (r != Kitten::kUnsat) {
+        proved = false;
+        break;
+      }
+      implied[dir].clear();
+      for (const KLit k : kitten_.final_clause()) implied[dir].push_back(glit(k));
+      if (kitten_.inconsistent()) implied[dir].clear();
+    }
+    if (r == Kitten::kUnknown) break;
+    if (!proved) {
+      refine();  // x and y differ in the model
+      continue;
+    }
+    sweep_emit_learned();
+    for (int dir = 0; dir < 2 && ok; ++dir) {
+      ok = sweep_add(implied[dir].data(), static_cast<uint32_t>(implied[dir].size()));
+    }
+    if (!ok) break;
+    if (implied[0].size() == 2 && implied[1].size() == 2) {
+      ++stats_.sweep_equivalences;
+      const KLit b1[2] = {x, y ^ 1u}, b2[2] = {x ^ 1u, y};
+      kitten_.add_clause(b1, 2);
+      kitten_.add_clause(b2, 2);
+      sweep_merged_[sweep_env_[y >> 1]] = static_cast<uint32_t>(stats_.sweeps);
+    }
+    // y leaves its class (x represents it); a class of one literal is dropped.
+    part.erase(part.begin() + static_cast<std::ptrdiff_t>(end - 2));
+    const size_t start = last_class_start();
+    if (part.size() - 1 - start < 2) part.resize(start);
+  }
+  if (ok) {
+    // Kitten's learned units are implied by the formula: backbone literals for free.
+    sweep_emit_learned();
+    for (size_t i = 0; i < kitten_.num_learned() && ok; ++i) {
+      if (kitten_.learned_size(i) != 1) continue;
+      const Lit u = glit(kitten_.learned_lits(i)[0]);
+      ok = sweep_add(&u, 1);
+    }
+  }
   return ok;
 }
 

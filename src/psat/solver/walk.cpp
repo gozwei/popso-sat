@@ -38,6 +38,7 @@ struct Rng {
 }  // namespace
 
 void Solver::walk() {
+  const PassTimer pass_timer(*this, kPassWalk);
   ++stats_.walks;
   if (level() > 0) backtrack(0);
   // Root-simplified irredundant clauses in CSR form.

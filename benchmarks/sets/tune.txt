@@ -1,0 +1,34 @@
+# tune set: the 36 downloaded dev instances (dev_candidates.txt) without the 7 that no popso-sat
+# configuration and not Kissat 4.0.4 solved in 120 s (myciel6, pcmax-m13, tseitin_grid_n12_m12,
+# WS_500_16_90_70, bivium-39-200, lec_mult_CvK_11x10, lockchart-group3): 29 instances. For A/B
+# runs over several seeds; a configuration that only reorders ties moves the 36-instance result
+# by about 2 solved and 15 s PAR-2 (120 s), so single runs on it decide nothing.
+gbd/files/02223564bd2f5c20768e63cf28c785e3-mp1-squ_ali_s10x10_c39_abio_SAT.cnf.xz                                            sat      # family=cardinality-constraints year=2022 filtered kissat-sc2022-bulky=271s xz=0.01MB cnf=0.1MB
+gbd/files/6965d5369d3ab26daaf074303c3d1739-mp1-squ_ali_s10x10_c39_abix_SAT.cnf.xz                                            sat      # family=cardinality-constraints year=2022 filtered kissat-sc2022-bulky=142s xz=0.01MB cnf=0.1MB
+gbd/files/e01c39b7b41c9ff1621579b747254fab-ncc_none_3001_7_3_3_1_31_435991723.cnf.xz                                         sat      # family=core-based-generator year=2022 filtered kissat-sc2022-bulky=115s xz=17.22MB cnf=139.3MB
+gbd/files/fb5cf4ad3c46dd294eb8253218524ba6-cfi-rigid-r2-0072-01-or_3.cnf.xz                                                  sat      # family=graph-isomorphism year=2022 filtered kissat-sc2022-bulky=43s xz=11.01MB cnf=219.9MB
+gbd/files/cfa14a7015b0f7fecd98e898f3c95896-velev-vliw-sat-4.0-b8.cnf.xz                                                      sat      # family=hardware-verification year=2022 filtered kissat-sc2022-bulky=26s xz=16.93MB cnf=296.1MB
+gbd/files/5457c05649be6f3bc4f743c5e6086a18-mdp-28-10-sat.cnf.xz                                                              sat      # family=minimum-disagreement-parity year=2022 filtered kissat-sc2022-bulky=265s xz=0.01MB cnf=0.1MB
+gbd/files/cd36b290c27ed9bafedfb2ca88469f01-mdp-28-12-sat.cnf.xz                                                              sat      # family=minimum-disagreement-parity year=2022 filtered kissat-sc2022-bulky=293s xz=0.01MB cnf=0.1MB
+gbd/files/29bab0de14e56e526be9683131005cb2-stb_588_138.apx_2_DS-ST.cnf.xz                                                    sat      # family=argumentation year=2023 filtered kissat-3.1.0=231s xz=0.03MB cnf=0.2MB
+gbd/files/74931e82fd208ed949fa44bccd80df6b-DivS_862_11.cnf.sanitized.cnf.xz                                                  sat      # family=subsumptiontest year=2023 filtered kissat-3.1.0=109s xz=12.34MB cnf=40.8MB
+gbd/files/accf33a84bdf211bebbd2111fb7f6b91-DivS_942_11.cnf.sanitized.cnf.xz                                                  sat      # family=subsumptiontest year=2023 filtered kissat-3.1.0=111s xz=13.7MB cnf=44.7MB
+gbd/files/7083b70c1976162e2693d7a493717ffd-battleship-14-26-sat.cnf.xz                                                       sat      # family=battleship year=2024 unfiltered xz=0.01MB cnf=0.0MB
+gbd/files/9276ce38c625b2d00de247f8588f1542-combined-crypto1-wff-seed-102-wffvars-500-cryptocplx-31-overlap-2.cnf.xz          sat      # family=cryptography year=2024 unfiltered xz=0.04MB cnf=0.4MB
+gbd/files/04e219c640ed59dc68ea2d50493de5b5-mp1-Nb5T15.cnf.xz                                                                 sat      # family=polynomial-multiplication year=2024 unfiltered xz=0.04MB cnf=0.4MB
+gbd/files/416e33a8463911546e4cd87d282a7e1e-case10.cnf.xz                                                                     sat      # family=unknown-cases year=2025 unfiltered xz=0.01MB cnf=0.1MB
+gbd/files/fab2022deb130fe3ad1136a5c71b4109-case9.cnf.xz                                                                      sat      # family=unknown-cases year=2025 unfiltered xz=0.01MB cnf=0.1MB
+gbd/files/c1b30b4e03c3024ad9d084e29e79aa46-BubbleVsPancakeSort_6_6.cnf.xz                                                    unsat    # family=algorithm-equivalence-checking year=2022 filtered kissat-sc2022-bulky=53s xz=0.02MB cnf=0.1MB
+gbd/files/004b0f451f7d96f6a572e9e76360f51a-spg_420_280.cnf.xz                                                                unsat    # family=cellular-automata year=2022 filtered kissat-sc2022-bulky=78s xz=9.4MB cnf=88.8MB
+gbd/files/bb80971144a5423532aea9424dade891-div-mitern174.cnf.xz                                                              unsat    # family=circuit-equivalence-checking year=2022 filtered kissat-sc2022-bulky=39s xz=0.03MB cnf=0.2MB
+gbd/files/5e04f38ff11cee5d75fb98e12f6a14fc-sqrt-mitern172.cnf.xz                                                             unsat    # family=circuit-equivalence-checking year=2022 filtered kissat-sc2022-bulky=78s xz=0.04MB cnf=0.2MB
+gbd/files/a1158a2d8c8a1c6da02c2c4fcb32337f-6s158_Iter2.cnf.xz                                                                unsat    # family=hardware-model-checking year=2022 filtered kissat-sc2022-bulky=15s xz=0.04MB cnf=0.3MB
+gbd/files/01d142c43f3ce9a8c5ef7a1ecdbb6cba-urquhart3_25bis.shuffled.cnf.xz                                                   unsat    # family=tseitin-formulas year=2022 filtered kissat-sc2022-bulky=83s xz=0.0MB
+gbd/files/3ff114cc7bee4f39fa56a0325e605c2d-stb_588_138.apx_2_DC-ST.cnf.xz                                                    unsat    # family=argumentation year=2023 filtered kissat-3.1.0=219s xz=0.03MB cnf=0.2MB
+gbd/files/112b0ac22b2a567cd3badfed3a5497fd-mchess16-mixed-35percent-blocked.cnf.xz                                           unsat    # family=mutilated-chessboard year=2023 filtered kissat-3.1.0=82s xz=0.0MB cnf=0.0MB
+gbd/files/8d458780fb74c28c01a5fe89990ad521-mchess16-mixed-45percent-blocked.cnf.xz                                           unsat    # family=mutilated-chessboard year=2023 filtered kissat-3.1.0=15s xz=0.0MB cnf=0.0MB
+gbd/files/44092fcc83a5cba81419e82cfd18602c-php-010-009.shuffled-as.sat05-1185.cnf.xz                                         unsat    # family=pigeon-hole year=2023 filtered kissat-3.1.0=13s xz=0.0MB
+gbd/files/02066c116dbacc40ec5cca2067db26c0-mrpp_4x4_12_12.cnf.xz                                                             unsat    # family=planning year=2023 filtered kissat-3.1.0=14s xz=0.03MB cnf=0.2MB
+gbd/files/26114429758a203d651f4df87c94de4c-sgen1-unsat-97-100.cnf.mis-72.debugged.cnf.xz                                     unsat    # family=sgen year=2023 filtered kissat-3.1.0=11s xz=0.01MB cnf=0.2MB
+gbd/files/d88c6afc13cdad0e2c8371a879692b39-battleship-13-13-unsat.cnf.xz                                                     unsat    # family=battleship year=2025 unfiltered xz=0.0MB cnf=0.0MB
+gbd/files/ad9eb96bac59319fc2f7daffd1f961f8-AProVE07-21.cnf.xz                                                                unsat    # family=termination-analysis year=2025 unfiltered xz=0.03MB cnf=0.2MB

@@ -16,6 +16,7 @@
 namespace psat {
 
 void Solver::subsume_round(uint64_t& budget) {
+  const PassTimer pass_timer(*this, kPassSubsume);
   const uint64_t limit = budget + (eliminate_rounds_ <= 1 ? std::max<uint64_t>(1'000'000, arena_.size() / 4)
                                                          : std::max<uint64_t>(100'000, arena_.size() / 32)) *
                                       static_cast<uint64_t>(opts_.subsumeeffort) / 100;

@@ -19,6 +19,7 @@ void Kitten::clear() {
   final_.clear();
   propagated_ = 0;
   conflict_ = kNone;
+  status_ = kUnknown;
   inconsistent_ = false;
   inc_ = 1.0;
   nvars_ = 0;
@@ -61,6 +62,7 @@ uint32_t Kitten::new_clause(const KLit* lits, uint32_t size, uint32_t aux, bool 
 }
 
 void Kitten::add_clause(const KLit* lits, uint32_t size, uint32_t id) {
+  status_ = kUnknown;
   backtrack(0);
   if (inconsistent_) return;
   learned_.clear();
@@ -143,13 +145,58 @@ void Kitten::backtrack(uint32_t lvl) {
   for (size_t t = trail_.size(); t-- > start;) {
     const KLit l = trail_[t];
     const uint32_t v = var(l);
-    phase_[v] = (l & 1u) ? -1 : 1;
+    phase_[v] = vals_[2 * v] > 0 ? 1 : -1;  // (the value: flip() can change it after a model)
     vals_[l] = vals_[neg(l)] = 0;
     if (heap_pos_[v] == kNone) heap_push(v);
   }
   trail_.resize(start);
   control_.resize(lvl);
   if (propagated_ > start) propagated_ = start;
+}
+
+bool Kitten::flip(KLit lit) {
+  if (status_ != kSat || vals_[lit] <= 0 || levels_[var(lit)] == 0) return false;
+  std::vector<uint32_t>& ws = watches_[lit];
+  size_t i = 0, j = 0;
+  bool ok = true;
+  while (i < ws.size()) {
+    const uint32_t ref = ws[i++];
+    ++ticks_;
+    const uint32_t size = arena_[ref];
+    KLit* c = &arena_[ref + 2];
+    if (c[0] == lit) std::swap(c[0], c[1]);  // c[1] is lit
+    if (vals_[c[0]] > 0) {
+      ws[j++] = ref;
+      continue;
+    }
+    uint32_t k = 2;
+    while (k < size && vals_[c[k]] <= 0) ++k;
+    if (k < size) {
+      std::swap(c[1], c[k]);
+      watches_[c[1]].push_back(ref);
+      continue;
+    }
+    ws[j++] = ref;  // only lit satisfies the clause: no flip (watches moved so far are true)
+    ok = false;
+    break;
+  }
+  while (i < ws.size()) ws[j++] = ws[i++];
+  ws.resize(j);
+  if (!ok) return false;
+  vals_[lit] = -1;
+  vals_[neg(lit)] = 1;
+  return true;
+}
+
+void Kitten::randomize_phases(uint64_t& state) {
+  backtrack(0);  // (solve() would otherwise save the current values as phases first)
+  status_ = kUnknown;
+  for (uint32_t v = 0; v < nvars_; ++v) {
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    phase_[v] = (state >> 32) & 1 ? 1 : -1;
+  }
 }
 
 void Kitten::bump(uint32_t v) {
@@ -323,6 +370,7 @@ int Kitten::solve(uint64_t ticks_limit) {
   }
   if (result == kUnsat && inconsistent_) final_.clear();
   assumptions_.clear();
+  status_ = result;
   return result;
 }
 

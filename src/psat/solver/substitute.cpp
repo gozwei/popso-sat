@@ -12,6 +12,7 @@
 // are still present, so all rewritten clauses are added before any old clause is deleted.
 
 #include <algorithm>
+#include <cstdio>
 
 #include "psat/io/proof.hpp"
 #include "psat/solver/solver.hpp"
@@ -19,6 +20,7 @@
 namespace psat {
 
 bool Solver::substitute() {
+  const PassTimer pass_timer(*this, kPassSubstitute);
   const size_t nlits = 2 * size_t{num_vars_};
   constexpr uint32_t kUnvisited = UINT32_MAX;
   std::vector<uint32_t> index(nlits, kUnvisited), low(nlits, 0);
@@ -247,6 +249,23 @@ bool Solver::substitute() {
     ++stats_.substituted;
   }
   return true;
+}
+
+// Equivalences found outside elimination rounds (by sweeping) are substituted right away, in a
+// round of their own at the root: long watches detached, garbage collected, root trail
+// propagated again over the new watches.
+void Solver::substitute_now() {
+  const uint32_t inactive_before = inactive_;
+  disconnect_long_watches();
+  substitute();
+  if (inactive_ != inactive_before) drop_inactive_decisions();
+  if (opts_.verbose >= 2) std::printf("c [%.2f s] substitution after sweeping: %u substituted (equivalences so far %llu, sweeps %llu)\n", seconds(), inactive_ - inactive_before, static_cast<unsigned long long>(stats_.sweep_equivalences), static_cast<unsigned long long>(stats_.sweeps));
+  collect_garbage();
+  reconnect_long_watches();
+  if (!inconsistent_ && !propagate_vivify(kNoReason)) {
+    inconsistent_ = true;
+    if (proof_) proof_->add_empty();
+  }
 }
 
 }  // namespace psat

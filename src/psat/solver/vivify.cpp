@@ -18,21 +18,31 @@
 namespace psat {
 
 void Solver::vivify() {
+  const PassTimer pass_timer(*this, kPassVivify);
   ++stats_.vivifications;
   ++vivify_rounds_;
-  backtrack(0);
+  if (!backtrack_to_root()) return;
   if (fixed_ > last_simplify_fixed_) simplify_root();
   maybe_collect_garbage();
   const std::vector<int8_t> saved = saved_;
   const uint64_t search = stats_.ticks - vivify_last_ticks_;
   const uint64_t effort =
       std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.vivifyeffort / 1000.0), 20000);
+  if (opts_.unhide) {
+    unhide(std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.unhideeffort / 1000.0), 100000));
+    if (inconsistent_) return;
+  }
   const uint64_t start = stats_.vivify_ticks;
   if (opts_.probe) probe_failed_literals(start + effort / 5);
   if (inconsistent_) return;
   if (opts_.sweep) {
+    const uint64_t equivalences = stats_.sweep_equivalences;
     sweep();
     if (inconsistent_) return;
+    if (opts_.sweepsubst && stats_.sweep_equivalences != equivalences) {
+      substitute_now();
+      if (inconsistent_) return;
+    }
   }
   vivify_clauses(true, stats_.vivify_ticks + (opts_.vivifyirred ? 2 * effort / 3 : effort));
   if (opts_.vivifyirred && !inconsistent_) vivify_clauses(false, start + effort);
@@ -54,7 +64,7 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
     if (c.garbage || c.redundant != redundant) continue;
-    if (redundant && c.glue > tier2_) continue;
+    if (redundant && c.glue > tier2_ && !opts_.vivifytier3) continue;
     if (c.vivified) {
       ++done;
       continue;
@@ -138,6 +148,7 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
 // propagation conflicts is false, giving the unit -root (RUP). Probes run at level 1 and book
 // their ticks with vivification.
 void Solver::probe_failed_literals(uint64_t ticks_limit) {
+  const PassTimer pass_timer(*this, kPassProbe);
   std::vector<Lit> roots;
   for (Lit l = 0; l < 2 * num_vars_; ++l) {
     if (vals_[l] != 0 || eliminated_[var_of(l)]) continue;
@@ -239,10 +250,52 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
     }
   }
   // Keep only the decisions the conflict (or the implication of the true literal) depends on.
-  if (conflict || implied != kNoLit) vivify_analyze(conflict ? kNoLit : implied);
+  const bool track = opts_.vivifyasym && !clause(ref).redundant;
+  if (conflict || implied != kNoLit) vivify_analyze(conflict ? kNoLit : implied, track);
   if (conflict) backtrack(level() - 1);  // back to a consistent state
   const uint32_t old_size = n;
-  if (viv_decided_.size() >= old_size) return false;
+  // Instantiation (Kissat): every literal false without a conflict. Flip the last decision: if
+  // its literal x true (with the others false) conflicts too, x can go, since C without x is RUP
+  // (falsifying it makes C unit on x, which propagates to that conflict).
+  if (!conflict && implied == kNoLit && opts_.vivifyinst && n >= 3 && viv_decided_.size() == n && level() > 0) {
+    const Lit x = viv_decided_.back();
+    if (trail_[control_[level() - 1]] == negate(x)) {
+      backtrack(level() - 1);
+      control_.push_back(static_cast<uint32_t>(trail_.size()));
+      assign(x, kNoReason);
+      const bool inst_conflict = !propagate_vivify(ref);
+      backtrack(level() - 1);
+      if (inst_conflict) {
+        viv_decided_.pop_back();
+        ++stats_.vivify_instantiated;
+      }
+    }
+  }
+  if (viv_decided_.size() >= old_size) {
+    // Implied by other clauses (a literal true under the negation of the others) and not
+    // shorter: a learned clause adds nothing, delete it.
+    if (implied != kNoLit && opts_.vivifyimplied && clause(ref).redundant) {
+      backtrack(0);
+      Clause& c = clause(ref);
+      delete_clause_proof(c);
+      c.garbage = 1;
+      note_garbage(c);
+      garbage_words_ += kHeaderWords + c.size;
+      --redundant_;
+      ++stats_.vivify_implied_deleted;
+      return true;
+    }
+    // An irredundant clause implied by the other irredundant clauses alone (an asymmetric
+    // tautology): the formula without it is equivalent, so it goes. Its variables lose an
+    // occurrence, which can make them eliminable.
+    if (track && (conflict || implied != kNoLit) && !viv_used_redundant_) {
+      backtrack(0);
+      delete_irredundant(ref);
+      ++stats_.vivify_asym;
+      return true;
+    }
+    return false;
+  }
   backtrack(0);  // the replacement is added at the root
   viv_lits_.assign(lits, lits + n);
 
@@ -295,8 +348,10 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
 // being vivified. viv_decided_ becomes the clause literals of the involved decisions (plus the
 // implied literal): assigning their negations propagates to the same conflict, so the clause is
 // RUP, and it is often much shorter than all decisions taken (as in CaDiCaL and Kissat).
-void Solver::vivify_analyze(Lit implied) {
+// With track_redundant, viv_used_redundant_ tells whether a learned clause took part.
+void Solver::vivify_analyze(Lit implied, bool track_redundant) {
   viv_decided_.clear();
+  viv_used_redundant_ = false;
   auto mark = [&](Lit l) {
     const Var v = var_of(l);
     if ((flags_[v] & kSeen) || vdata_[v].level == 0) return;
@@ -308,8 +363,10 @@ void Solver::vivify_analyze(Lit implied) {
   } else if (conflict_ref_ == kNoReason) {
     mark(conflict_bin_[0]);
     mark(conflict_bin_[1]);
+    if (track_redundant && !irredundant_binary(conflict_bin_[0], conflict_bin_[1])) viv_used_redundant_ = true;
   } else {
     const Clause& c = clause(conflict_ref_);
+    viv_used_redundant_ = viv_used_redundant_ || c.redundant;
     for (uint32_t k = 0; k < c.size; ++k) mark(c.lits()[k]);
   }
   size_t open = viv_marked_.size();
@@ -325,9 +382,12 @@ void Solver::vivify_analyze(Lit implied) {
     }
     const size_t before = viv_marked_.size();
     if (r & kBinaryTag) {
-      mark(static_cast<Lit>(r & ~kBinaryTag));
+      const Lit o = static_cast<Lit>(r & ~kBinaryTag);  // the reason is the binary (l o)
+      if (track_redundant && !viv_used_redundant_ && !irredundant_binary(o, l)) viv_used_redundant_ = true;
+      mark(o);
     } else {
       const Clause& c = clause(r);
+      viv_used_redundant_ = viv_used_redundant_ || c.redundant;
       for (uint32_t k = 0; k < c.size; ++k) {
         if (c.lits()[k] != l) mark(c.lits()[k]);
       }
@@ -337,6 +397,17 @@ void Solver::vivify_analyze(Lit implied) {
   for (const Var v : viv_marked_) flags_[v] &= static_cast<uint8_t>(~kSeen);
   viv_marked_.clear();
   if (implied != kNoLit) viv_decided_.push_back(implied);
+}
+
+// Whether an irredundant copy of the binary clause (a b) exists; it is watched in watches_[a]
+// with blocking literal b. The scan is charged to vivification.
+bool Solver::irredundant_binary(Lit a, Lit b) {
+  const std::vector<Watch>& ws = watches_[a];
+  stats_.vivify_ticks += 1 + (ws.size() >> 3);
+  for (const Watch& w : ws) {
+    if (w.binary() && w.blit == b && !w.redundant_binary()) return true;
+  }
+  return false;
 }
 
 }  // namespace psat
