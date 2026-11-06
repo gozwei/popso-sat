@@ -1,0 +1,118 @@
+# Every solver option of src/psat/core/options.hpp with its valid range, for
+#   fuzz.py --option-ranges benchmarks/fuzz/all_options.txt --option-prob 0.3
+# Left out: seed (fuzz.py passes --seed), verbose (output only), check (the final model check
+# must stay on: it is what turns a wrong model into an error instead of a wrong answer).
+# Options whose valid range is huge get a sub-range sized for fuzz formulas (a few hundred
+# variables, up to some thousand conflicts): small intervals, budgets and limits run the
+# inprocessing passes often and hit their limits, which stresses more code paths than the
+# defaults do. Each line is added with probability --option-prob, so defaults stay covered.
+
+# search modes, restarts
+--invariants=0..1
+--stable=0..2
+--modeinit=10..3000
+--modegrowth=100..1000
+--modeschedule=0..1
+--restartint=1..100
+--restartgrow=0..1
+--restartmargin=0..100
+--reusetrail=0..1
+--emafast=1..1000
+--emaslow=100..200000
+--reluctant=0..1
+--reluctantint=1..2048
+--reluctantlim=1..1048576
+
+# learned clauses
+--reduceint=10..3000
+--reducefraction=10..100
+--tier1=1..100
+--tier2=1..1000
+--dynamictiers=0..1
+--tier1quantile=1..99
+--tier2quantile=1..99
+--minimize=0..1
+--minimizedepth=1..2000
+--shrink=0..2
+--eagersubsume=0..100
+
+# phases, decisions, backtracking
+--phase=0..1
+--target=0..2
+--rephase=0..1
+--rephaseint=10..3000
+--walk=0..1
+--walkeffort=1..2000
+--lucky=0..1
+--decay=1..200
+--bumpreasons=0..1
+--bumpreasonslimit=1..200
+--chrono=0..1
+--chronolevels=0..200
+
+# elimination, subsumption, substitution
+--eliminate=0..1
+--eliminateinit=0..3000
+--eliminateint=10..5000
+--eliminatebound=0..1024
+--eliminateclslim=2..200
+--eliminategates=0..1
+--eliminatexorlim=0..16
+--definitions=0..1
+--definitionticks=10..20000
+--eliminateocclim=1..2000
+--eliminateeffort=1..5000
+--subsume=0..1
+--subsumeeffort=1..5000
+--substitute=0..1
+
+# bounded variable addition
+--bva=0..1
+--bvavars=1..2000
+--bvahops=0..1
+--bvafirst=0..1
+--bvaevery=0..1
+--bvaprotect=0..1
+--bvamin=0..1000
+--bvaticks=1000..2000000
+
+# congruence closure, simulation
+--congruence=0..1
+--congruenceclosure=0..1
+--simeq=0..1
+--simeqticks=1..100000
+--simeqconst=0..1
+--simeqite=0..1
+--simeqdepth=1..64
+
+# cardinality detection (statistics only)
+--cardinality=0..2
+--cardinalityeffort=1..1000
+
+# vivification, probing, unhiding
+--vivify=0..1
+--vivifyint=10..5000
+--vivifyeffort=1..5000
+--vivifyirred=0..1
+--vivifytier3=0..1
+--vivifyinst=0..1
+--vivifyimplied=0..1
+--vivifyasym=0..1
+--probe=0..1
+--unhide=0..1
+--unhideeffort=1..5000
+
+# sweeping
+--sweep=0..1
+--sweepeffort=1..5000
+--sweepdepth=0..8
+--sweepvars=2..8192
+--sweepclauses=2..65536
+--sweepgrow=0..1
+--sweepgrowmax=0..8
+--sweepsubst=0..1
+--sweepclasses=0..1
+
+# input and proof format
+--binaryproof=0..1
+--strict=0..1

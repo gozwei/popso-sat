@@ -20,7 +20,7 @@ namespace psat {
   X(modegrowth, 200, 100, 1000, "growth of the mode length in ticks per focused+stable pair (%)") \
   X(modeschedule, 1, 0, 1, "mode lengths: 0 = geometric (modegrowth), 1 = quadratic in the pair count") \
   X(restartint, 1, 1, 10000, "minimum conflicts between focused-mode restarts")                   \
-  X(restartgrow, 0, 0, 1, "focused restart interval grows with log10 of the restart count")      \
+  X(restartgrow, 1, 0, 1, "focused restart interval grows with log10 of the restart count")      \
   X(restartmargin, 10, 0, 100, "fast glue average above slow one by this much restarts (%)")      \
   X(reusetrail, 1, 0, 1, "restarts keep the decisions that would be taken again")               \
   X(emafast, 33, 1, 1000, "window of the fast glue moving average (conflicts)")                   \
@@ -37,7 +37,7 @@ namespace psat {
   X(tier2quantile, 90, 1, 99, "dynamic tier2: share of used clauses with glue <= tier2 (%)")      \
   X(minimize, 1, 0, 1, "recursive learned clause minimization")                                   \
   X(minimizedepth, 1000, 1, 100000, "recursion depth limit of minimization")                      \
-  X(shrink, 0, 0, 2, "shrink learned clauses to block UIPs (1; 2: lower-level reason literals may be implied)")     \
+  X(shrink, 2, 0, 2, "shrink learned clauses to block UIPs (1; 2: lower-level reason literals may be implied)")     \
   X(phase, 1, 0, 1, "initial decision phase (1 = true)")                                          \
   X(target, 1, 0, 2, "target phases: 0 = off, 1 = stable mode, 2 = always")                       \
   X(rephase, 1, 0, 1, "periodic rephasing (best / original / inverted phases)")                   \
@@ -66,20 +66,40 @@ namespace psat {
   X(eagersubsume, 20, 0, 100, "learned clauses checked for subsumption by each new learned clause") \
   X(substitute, 1, 0, 1, "equivalent literal substitution (SCCs of binary implications)")         \
   X(bva, 1, 0, 1, "bounded variable addition in elimination rounds")                             \
-  X(bvavars, 1000, 1, 1000000, "BVA adds at most max(bvavars, variables / 10) variables per round")  \
+  X(bvavars, 1000000, 1, 1000000, "BVA adds at most max(bvavars, variables / 10) variables per round")  \
   X(bvahops, 0, 0, 1, "BVA ties: most 3-hop paths to the factored literal (SBVA), else smaller")     \
   X(bvafirst, 1, 0, 1, "BVA before (1) or after (0) the eliminations of the first round")            \
   X(bvaevery, 0, 0, 1, "BVA in every elimination round (not only the first)")                           \
   X(bvaprotect, 0, 0, 1, "variables added by BVA are not elimination candidates")                      \
   X(bvamin, 200, 0, 1000, "BVA only if a trial round removes this many per mille of the clauses (0: always)") \
-  X(bvaticks, 1000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
+  X(bvaticks, 100000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
   X(congruence, 1, 0, 1, "congruence closure on AND gates in elimination rounds")                 \
   X(simeq, 1, 0, 1, "equivalences proposed by random simulation of AND gates, proven by Kitten")   \
   X(simeqticks, 50000, 1, INT32_MAX, "simulation pass budget (thousands of ticks)")             \
   X(simeqconst, 1, 0, 1, "simulation: also check variables that were constant in every vector")      \
   X(simeqite, 0, 0, 1, "simulation: if-then-else gates too")                                   \
   X(simeqdepth, 16, 1, 64, "depth of the fan-in windows that prove simulation candidates")          \
+  X(cardinality, 0, 0, 2, "detect cardinality constraints, statistics only (1: before search, 2: also after the first elimination round)") \
+  X(cardinalityeffort, 100, 1, 100000, "cardinality detection budget per phase in millions of work units") \
+  X(counting, 1, 0, 1, "counting certificates before search: pigeonhole / parity / Count^3 / clique-colouring get PR clauses (DPR proof)") \
+  X(countingeffort, 2000, 1, 1000000, "counting certificates: budget of a structure in millions of work units") \
+  X(countingfault, 0, 0, INT32_MAX, "debugging: the k-th counting PR step gets a wrong witness (its check must refuse it)") \
   X(congruenceclosure, 1, 0, 1, "AND gate congruence to a fixpoint per call (union-find, re-hashing)")   \
+  X(gauss, 1, 0, 1, "XORs from complete clause encodings: a detached Gauss-Jordan solver (no proof) looks for a model") \
+  X(gaussmin, 100, 0, 1000, "Gauss-Jordan only if XOR encodings cover this many per mille of the clauses") \
+  X(gaussxors, 16, 1, INT32_MAX, "Gauss-Jordan only with at least this many XORs")                      \
+  X(gaussmaxsize, 6, 2, 8, "largest XOR extracted (its encoding has 2^(size-1) clauses)")              \
+  X(gausseffort, 1000, 1, 100000, "largest detached Gauss-Jordan solver effort relative to search ticks (per mille)") \
+  X(gaussadapt, 1, 0, 1, "adaptive detached solver share: from 1/8 of gausseffort, doubled or halved by its Gauss-Jordan conflicts, stopped below 1/64") \
+  X(gaussgrow, 100, 0, 1000, "double the share when this many per mille of the detached solver's conflicts are Gauss-Jordan conflicts") \
+  X(gaussshrink, 10, 0, 1000, "halve the share when fewer than this many per mille are") \
+  X(gaussinit, 20000, 0, INT32_MAX, "detached solver budget before search (thousands of ticks)")      \
+  X(gaussint, 20000, 1, INT32_MAX, "search ticks between detached solver rounds (thousands)")         \
+  X(gaussproof, 1, 0, 1, "refute inconsistent XORs before search (Gaussian elimination, DRAT proof with extension variables)") \
+  X(gaussproofsize, 1000, 0, INT32_MAX, "largest refutation (thousands of chain positions; about 250 bytes of proof each)") \
+  X(gaussdecide, 1, 0, 1, "detached solver: decide variables outside the XOR matrices first (the rest is linear)") \
+  X(gaussmatrix, 64, 1, 4096, "largest Gauss-Jordan matrix (millions of bits, rows x columns)")        \
+  X(gausswords, 64, 1, 4096, "copy the formula for the detached solver only up to this size (millions of words)") \
   X(vivify, 1, 0, 1, "vivification of learned and irredundant clauses")                         \
   X(vivifyint, 2000, 10, INT32_MAX, "base interval between vivification rounds (conflicts)")      \
   X(vivifyeffort, 100, 1, 100000, "vivification effort relative to search ticks (per mille)")     \
@@ -89,6 +109,7 @@ namespace psat {
   X(vivifyimplied, 0, 0, 1, "vivification deletes learned clauses implied by others (Kissat)")        \
   X(vivifyasym, 0, 0, 1, "vivification deletes irredundant clauses implied by the other irredundant ones") \
   X(probe, 1, 0, 1, "failed literal probing on binary implication graph roots (vivify rounds)")  \
+  X(probeuip, 0, 0, 1, "a failed probe learns its first unique implication point (not the probe)")   \
   X(unhide, 0, 0, 1, "unhiding: binary implication graph stamps (failed literals, transitive, hidden tautologies and literals)") \
   X(unhideeffort, 20, 1, 100000, "unhiding effort in per mille of search ticks (vivify rounds)")       \
   X(sweep, 1, 0, 1, "sweeping: backbones and equivalences in variable environments (Kitten)")    \

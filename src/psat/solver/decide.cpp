@@ -105,7 +105,8 @@ void Solver::bump_variables() {
 // --- decisions -------------------------------------------------------------------------------
 
 bool Solver::decide() {
-  const Var v = stable_ ? next_stable() : next_focused();
+  Var v = stable_ ? next_stable() : next_focused();
+  if (gauss_on_ && gauss_mat_[v] != UINT32_MAX && opts_.gaussdecide) v = gauss_decision(v);
   int8_t phase = saved_[v];
   if (opts_.target == 2 || (opts_.target == 1 && stable_)) {
     if (target_[v]) phase = target_[v];

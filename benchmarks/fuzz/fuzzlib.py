@@ -57,16 +57,20 @@ def main_checkout() -> Path | None:
     return Path(out.stdout.strip()).parent
 
 
-def find_drat_trim() -> Path | None:
+def find_tool(name: str) -> Path | None:
     roots = [REPO]
     main = main_checkout()
     if main and main.resolve() != REPO.resolve():
         roots.append(main)
     for root in roots:
-        p = root / "benchmarks" / "tools" / "build" / "bin" / "drat-trim"
+        p = root / "benchmarks" / "tools" / "build" / "bin" / name
         if p.is_file() and os.access(p, os.X_OK):
             return p
     return None
+
+
+def find_drat_trim() -> Path | None:
+    return find_tool("drat-trim")
 
 
 def default_solver() -> str:
@@ -75,9 +79,16 @@ def default_solver() -> str:
 
 def resolve_checker(spec: str) -> tuple[list[str] | None, str]:
     """Checker command prefix (called as `<cmd> <cnf> <proof>`) and a label.
-    spec: auto (drat-trim if built, else none) | none | drat-trim | rupcheck | <command>."""
+    spec: auto (dpr-trim if built, else drat-trim, else none) | none | dpr-trim | drat-trim |
+    rupcheck | <command>. dpr-trim also reads the PR lines of --counting (drat-trim rejects them)."""
     if spec == "none":
         return None, "none"
+    if spec in ("auto", "dpr-trim"):
+        p = find_tool("dpr-trim")
+        if p:
+            return [str(p)], "dpr-trim"
+        if spec == "dpr-trim":
+            raise SystemExit("dpr-trim not found under benchmarks/tools/build/bin (worktree or main checkout)")
     if spec in ("auto", "drat-trim"):
         p = find_drat_trim()
         if p:
@@ -304,7 +315,7 @@ def check_proof(cfg: Config, cnf: Path, proof: Path) -> tuple[str, str]:
     """('verified' | 'rejected' | 'timeout', detail)."""
     cmd = cfg.checker + [str(cnf), str(proof)]
     limit = max(10.0, 4 * cfg.time_limit)
-    if cfg.checker_label == "drat-trim":
+    if cfg.checker_label in ("drat-trim", "dpr-trim"):
         cmd += ["-t", str(int(limit))]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=limit + 5)

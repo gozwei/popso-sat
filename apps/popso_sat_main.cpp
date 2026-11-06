@@ -25,6 +25,7 @@ namespace {
 
 std::atomic<bool> g_interrupt{false};
 std::atomic<int> g_signals{0};
+bool g_quiet = false;
 
 extern "C" void on_signal(int sig) {
   // A second Ctrl-C gives up immediately. A repeated SIGTERM does not: GNU timeout (and other
@@ -46,7 +47,7 @@ void usage(std::FILE* out) {
                "  --proof=<file>        write a DRAT proof (binary; --proof-text for text format)\n"
                "  --proof-text          text DRAT proof\n"
                "  -t <s>, --time-limit=<s>  wall-clock limit in seconds\n"
-               "  --mem-limit=<MB>      memory limit (approximate, internal accounting)\n"
+               "  --mem-limit=<MB>      memory limit: s UNKNOWN once the peak resident size reaches 7/8 of it\n"
                "  --conflicts=<n>       conflict limit\n"
                "  --threads=<n>         accepted for compatibility; popso-sat is single-threaded for now\n"
                "  --relaxed             accept malformed-but-unambiguous DIMACS (same as --strict=0)\n"
@@ -87,24 +88,44 @@ struct Loader : psat::DimacsHandler {
   }
 };
 
+// 'v' lines of at most 78 characters (plus the final " 0"), written through a fixed buffer: the
+// model is printed after 's SATISFIABLE', so it must not allocate (running out of memory there
+// would leave the answer without its model; a string of the whole model takes hundreds of MB on
+// the largest formulas).
 void print_model(const psat::Solver& solver, int max_var) {
-  std::string out;
-  out.reserve(static_cast<size_t>(max_var) * 8 + 16);
-  std::string line = "v";
+  static char out[1 << 16];
+  size_t pos = 0, line = 1;  // line: length of the current line
+  out[pos++] = 'v';
   char buf[16];
   for (int v = 1; v <= max_var; ++v) {
-    const int lit = solver.val(v);
-    const int len = std::snprintf(buf, sizeof(buf), " %d", lit);
-    if (line.size() + static_cast<size_t>(len) > 78) {
-      out += line;
-      out += '\n';
-      line = "v";
+    const int len = std::snprintf(buf, sizeof(buf), " %d", solver.val(v));
+    if (pos + sizeof(buf) + 2 > sizeof(out)) {
+      std::fwrite(out, 1, pos, stdout);
+      pos = 0;
     }
-    line.append(buf, static_cast<size_t>(len));
+    if (line + static_cast<size_t>(len) > 78) {
+      out[pos++] = '\n';
+      out[pos++] = 'v';
+      line = 1;
+    }
+    std::memcpy(out + pos, buf, static_cast<size_t>(len));
+    pos += static_cast<size_t>(len);
+    line += static_cast<size_t>(len);
   }
-  line += " 0\n";
-  out += line;
-  std::fwrite(out.data(), 1, out.size(), stdout);
+  if (pos + 3 > sizeof(out)) {
+    std::fwrite(out, 1, pos, stdout);
+    pos = 0;
+  }
+  std::memcpy(out + pos, " 0\n", 3);
+  std::fwrite(out, 1, pos + 3, stdout);
+}
+
+// Out of memory before an answer: 's UNKNOWN' (exit 0), not an error exit or an abort.
+int out_of_memory(bool quiet) {
+  if (!quiet) std::printf("c out of memory\n");
+  std::printf("s UNKNOWN\n");
+  std::fflush(stdout);
+  return 0;
 }
 
 // Index of the first clause the model falsifies, or -1.
@@ -125,9 +146,7 @@ long long check_model(const psat::Solver& solver, const Original& original) {
   return -1;
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
   psat::Options opts;
   std::string input, proof_path;
   bool quiet = false, print_model_lines = true, proof_text = false;
@@ -199,12 +218,15 @@ int main(int argc, char** argv) {
       if (!proof_path.empty()) throw std::invalid_argument("proof file given twice");
       proof_path = positional[1];
     }
+  } catch (const std::bad_alloc&) {
+    throw;
   } catch (const std::exception& e) {
     std::fprintf(stderr, "c ERROR: %s\n", e.what());
     return 1;
   }
   if (verbose > opts.verbose) opts.verbose = verbose;
   if (proof_text) opts.binaryproof = 0;
+  g_quiet = quiet;
 
   std::signal(SIGINT, on_signal);
   std::signal(SIGTERM, on_signal);
@@ -250,6 +272,8 @@ int main(int argc, char** argv) {
                   static_cast<long long>(parser.clauses()), solver.seconds());
       std::fflush(stdout);
     }
+  } catch (const std::bad_alloc&) {
+    return out_of_memory(quiet);
   } catch (const std::exception& e) {
     std::fprintf(stderr, "c ERROR: %s\n", e.what());
     return 1;
@@ -303,4 +327,26 @@ int main(int argc, char** argv) {
   }
   std::fflush(stdout);
   return res;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  // The C++ runtime allocates a thread's exception state when the thread throws for the first
+  // time; if that is the std::bad_alloc of an exhausted heap, the throw itself crashes (SIGSEGV in
+  // __cxa_throw with macOS libc++abi). One exception at startup sets it up while memory is free.
+  try {
+    throw std::bad_alloc();
+  } catch (const std::bad_alloc&) {
+  }
+  // Running out of memory before the answer (setup, parsing, search) gives 's UNKNOWN'; nothing
+  // after the 's' line allocates.
+  try {
+    return run(argc, argv);
+  } catch (const std::bad_alloc&) {
+    return out_of_memory(g_quiet);
+  } catch (const std::exception& e) {
+    std::fprintf(stderr, "c ERROR: %s\n", e.what());
+    return 1;
+  }
 }

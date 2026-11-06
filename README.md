@@ -8,9 +8,10 @@ Optimization Solver) but shares no code with popso.
 This is a side project by [Marcin Polkowski](https://marcinpolkowski.com), built with heavy
 use of AI coding agents. The goal is a fully open-source solver that holds its own against the
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
-first milestone. It is at an early stage: on 32 instances from recent SAT Competitions that were
-not used for tuning it solves 21 within 120 s, where Kissat solves 24 (see
-[BENCHMARKS.md](BENCHMARKS.md)).
+first milestone. It is at an early stage. On a sample of 168 instances of the SAT Competition 2026
+it solves 98 within 1000 s, against 67 for version 0.3.3, all of the 61 UNSAT answers checked
+with their proofs. On 32 instances from earlier SAT Competitions that were not used for tuning it
+solves 21 within 120 s, where Kissat solves 24 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -31,7 +32,7 @@ The solver is developed on macOS (Apple silicon) and Linux. Windows (MSVC) is no
 
 ```sh
 ./build/popso-sat formula.cnf                    # also .cnf.gz and .cnf.xz
-./build/popso-sat formula.cnf proof.drat         # with a DRAT proof (binary format)
+./build/popso-sat formula.cnf proof.dpr          # with a proof of unsatisfiability (binary)
 ./build/popso-sat --time-limit=60 -v formula.cnf
 ```
 
@@ -41,9 +42,9 @@ exit code is 10, 20 or 0. Main options:
 
 | option | meaning |
 |---|---|
-| `--proof=<file>` or a second file argument | write a DRAT proof of unsatisfiability (binary; `--proof-text` for text) |
+| `--proof=<file>` or a second file argument | write a proof of unsatisfiability: DRAT, plus PR lines (the DPR format) where a counting certificate is used (binary; `--proof-text` for text) |
 | `-t <s>`, `--time-limit=<s>` | wall-clock limit |
-| `--mem-limit=<MB>` | memory limit (approximate, from the solver's own accounting) |
+| `--mem-limit=<MB>` | memory limit: `s UNKNOWN` once the peak resident size reaches 7/8 of it |
 | `--seed=<n>` | random seed (shuffles the initial variable order) |
 | `-v`, `-q`, `-n` | verbose statistics / no comments / no model lines |
 | `--<name>=<value>` | any solver option, see `--help` |
@@ -54,32 +55,51 @@ default every model is checked against the original formula before it is printed
 
 ## Performance
 
-Competition instances from the main tracks of the SAT Competitions 2022 to 2025, 120 s limit,
-an otherwise idle Apple M4 Pro, every model checked (solved / PAR-2 in seconds):
+A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.txt`): 1000 s
+and 12 GB per instance, Intel i7-7700K, Linux, four instances at a time. Every model was checked,
+and every UNSAT answer of 0.4.0 was checked with its proof by dpr-trim (solved / PAR-2 in
+seconds):
 
-| set | popso-sat 0.3.4 | popso-sat 0.3.3 | popso-sat 0.3.0 | Kissat 4.0.4 |
-|---|---|---|---|---|
-| 26 unsatisfiable instances (A/B set) | 22 / 56.2 | 21 / 63.3 | 20 / 73.4 | 22 / 52.9 |
-| 29 tuning instances (mixed) | 25 / 47.3 | 23 / 61.6 | 23 / 65.0 | 26 / 45.5 |
-| 32 held-out instances (one per family) | 21 / 104.6 | 21 / 104.6 | 22 / 99.4 | 24 / 83.9 |
+| set | popso-sat 0.4.0 | popso-sat 0.3.3 |
+|---|---|---|
+| sc2026 (168) | 98 / 926.4 | 67 / 1303.8 |
+
+0.4.0 solves 35 of these instances that 0.3.3 does not, and loses 4 (all satisfiable).
+- 25 of the 35 are refuted by counting certificates within 2.5 s: pigeonhole-like, parity and
+  counting formulas whose resolution proofs are exponentially long.
+- 7 more are solved with Gauss-Jordan elimination: lights-out and parity formulas.
+
+The 0.4.0 defaults were chosen on this set, so it is no longer a held-out test. Kissat 4.0.4 is
+being run on it for the next release.
+
+Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
+0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of
+BENCHMARKS.md):
+
+| set | popso-sat 0.4.0 | popso-sat 0.3.4 | Kissat 4.0.4 (idle machine) |
+|---|---|---|---|
+| 26 unsatisfiable instances (A/B set) | 22 / 57.2 | 22 / 55.2 | 22 / 52.9 |
+| 29 tuning instances (mixed) | 25 / 47.4 | 25 / 45.7 | 26 / 45.5 |
+| 32 held-out instances (one per family) | 21 / 103.7 | 20 / 109.9 | 24 / 83.9 |
 
 The first two sets were used for tuning decisions, so they are not an independent test; the
-held-out set is. 0.3.4 searches the held-out instances exactly as 0.3.3 does (its new BVA trial
-passes on none of them). On the 16 of 168 instances of a held-out SAT Competition 2026 sample
-where the trial passes, 0.3.4 solves 8 within 300 s and 0.3.3 4. Satisfiable instances vary a lot from run to run. On 25 generated formulas
+held-out set is. Satisfiable instances vary a lot from run to run. On 25 generated formulas
 (coloring, Tseitin, pigeonhole, random k-SAT, xor chains, multiplier equivalence, ...)
-popso-sat 0.3.4 solves all 25 within 60 s (PAR-2 3.7 s on the M4), as Kissat does. Setup, per-instance times and plots, and the
-earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
+popso-sat 0.4.0 solves all 25 within 60 s (PAR-2 2.7 s on the M4), as Kissat does. Setup,
+per-instance times and plots, and the earlier measurements, are in
+[BENCHMARKS.md](BENCHMARKS.md).
 
 ## What's inside
 
 - DIMACS push parser (strict by default, `--relaxed` for malformed-but-unambiguous files).
 - Two-watched-literal propagation with blocking literals; binary clauses live in the watch
   lists only; long clauses in one compact arena with a compacting garbage collector.
-- First-UIP conflict analysis with recursive clause minimization, glue (LBD) computation and
+- First-UIP conflict analysis with recursive clause minimization and shrinking (learned clauses
+  are shrunk to block UIPs, lower-level reason literals included), glue (LBD) computation and
   glue updates of learned clauses used in later conflicts, reason-side variable bumping.
 - Two search modes, switched on a deterministic effort measure with phases growing
-  quadratically: *focused* (VMTF decision queue, restarts on glue moving averages) and *stable*
+  quadratically: *focused* (VMTF decision queue, restarts on glue moving averages at intervals
+  growing with the logarithm of the restart count) and *stable*
   (EVSIDS scores, reluctant-doubling restarts, target phases), as in Kissat. Restarts keep the
   decisions that would be taken again (trail reuse).
 - Phase saving, target and best phases, periodic rephasing.
@@ -100,9 +120,24 @@ earlier measurements on a Linux machine, are in [BENCHMARKS.md](BENCHMARKS.md).
 - Bounded variable addition (re-encoding at-most-one cliques and similar structure with new
   variables) behind a trial: the matching runs once without changing the formula, and the
   replacements are made only if they remove at least a fifth of the clauses.
+- Counting certificates before search: pigeonhole, functional pigeonhole and clique formulas,
+  parity (perfect matchings of an odd complete graph), Count^3, clique-colouring and
+  relativized pigeonholes are recognized, also with shuffled polarities and, for pigeonholes
+  and cliques, inside larger formulas. Such a structure is refuted with polynomially many PR
+  clauses (symmetry-style steps, each checked by the solver before it is written) where
+  resolution needs exponentially many steps. Without a structure the search is unchanged.
+- Gauss-Jordan elimination on XOR constraints. The XORs are taken from complete clause
+  encodings. An inconsistent XOR system is refuted before search, with a DRAT proof that sums
+  the XORs as chains of extension variables. Otherwise, if the XORs cover enough of the
+  formula, a detached copy of the solver with Gauss-Jordan propagation searches besides the
+  main one. It writes no proof, and only a model can come back from it. Its share of the
+  search effort adapts: it grows while Gauss-Jordan finds a good part of the copy's conflicts,
+  and the copy is stopped where Gauss-Jordan adds nothing to unit propagation.
 - Local search (ProbSAT with incrementally maintained break values) for rephasing, and lucky
   assignments tried before search.
-- DRAT proof output; every UNSAT answer in the test suite and the benchmark runner is checked.
+- Proofs in the DRAT format, with PR clauses (the DPR format) for counting certificates.
+  Every UNSAT answer in the test suite and the benchmark runner is checked, with dpr-trim (and
+  the formally verified cake_lpr on the competition chain).
 
 ## Correctness
 
@@ -116,8 +151,8 @@ solvers on random and structured formulas and shrink failures with delta debuggi
 
 - Several techniques are implemented but off by default because they cost more than they gain
   in our A/B runs: chronological backtracking, unhiding (transitive reduction, hidden
-  tautologies and literals), learned clause shrinking, and some vivification variants. No
-  symmetry handling.
+  tautologies and literals), and some vivification variants. No symmetry handling beyond the
+  counting certificates.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
 - Memory per variable is larger than in Kissat; very large formulas need more memory.
 

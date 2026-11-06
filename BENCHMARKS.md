@@ -3,9 +3,454 @@
 Measurements of popso-sat against established open-source solvers. Every SAT answer in these
 runs was checked against the formula by the benchmark runner
 ([benchmarks/run.py](benchmarks/run.py)); no run produced a wrong answer. Proofs were switched
-off for the timing runs; UNSAT proofs are verified separately by the correctness gate
-([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines are
-never mixed.
+off for the timing runs, except the v0.4.0 SAT Competition 2026 run, where every UNSAT answer
+was checked with its proof. Otherwise UNSAT proofs are verified separately by the correctness
+gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
+are never mixed.
+
+## v0.4.0
+
+New in 0.4.0, all on by default:
+- counting certificates (pigeonhole, parity and counting formulas refuted before search, with
+  PR proofs);
+- Gauss-Jordan elimination on XOR constraints;
+- shorter learned clauses (shrinking);
+- focused-mode restarts at growing intervals;
+- a larger BVA budget.
+
+See the [CHANGELOG](CHANGELOG.md).
+
+### SAT Competition 2026 sample (Intel i7-7700K, Linux)
+
+The 168 instances of `sets/sc2026.txt`: a sample of the SAT Competition 2026 main track, one to
+four instances per family. Setup:
+- 1000 s and 12 GB per instance, four instances at a time;
+- an Intel i7-7700K (4 cores, 8 threads, 64 GB), with no other benchmark jobs running;
+- every model checked;
+- 0.4.0 wrote its proofs, and each of its 61 UNSAT answers was verified by dpr-trim (the
+  runner's `--proof --checker dpr-trim`; the longest check took 2983 s);
+- 0.3.3 ran without proofs.
+
+The 0.4.0 defaults were chosen on this set (300 s runs with each new technique on and off), so it
+is no longer an independent test. Kissat 4.0.4 is running on the same machine; its column
+follows with the next release.
+
+| | popso-sat 0.4.0 | popso-sat 0.3.3 |
+|---|---|---|
+| solved of 168 (SAT / UNSAT) | 98 (37 / 61) | 67 (35 / 32) |
+| solved within 300 s | 78 | 46 |
+| PAR-2 (s) | 926.4 | 1303.8 |
+| shifted geometric mean (s) | 164.1 | 416.5 |
+
+**What this shows:**
+- 0.4.0 solves 35 instances that 0.3.3 does not, and loses 4. Of the 35:
+  - 25 are refuted by counting certificates before search, in at most 2.5 s. The families are
+    chnl, count, clique-coloring, clique formulas, coloring, graph colouring, exam scheduling,
+    fpga routing, register allocation, sudoku-php and relativized pigeonhole. 0.3.3 solves
+    none of them in 1000 s: resolution proofs of these formulas are exponentially long.
+  - 7 are solved by Gauss-Jordan elimination:
+    - lights-out: two satisfiable instances in 0.03 s, and two unsatisfiable ones refuted from
+      their XORs before search;
+    - par32-4 and par32-4-c (minimal disagreement parity): 25 s and 6 s;
+    - two-trees-1023v (binary tree parity): 0.01 s.
+  - 2 are solved by BVA:
+    - or_randxor_k3_n600_m600, with the trial of 0.3.4;
+    - rpoc_xits_09 (bioinformatics), in 10 s, with the larger budget: BVA now removes 104k
+      clauses and adds 29k.
+  - 1 more is satisfiable (a school timetabling instance, 438 s).
+- All 27 counting refutations on this set also pass the competition's verified chain:
+  dpr-trim -L, then cake_lpr.
+- The 4 losses are satisfiable:
+  - abw-K-dwt (antibandwidth): 300 s → not solved;
+  - two cabp instances (cyclic antibandwidth): 258 and 951 s → not solved;
+  - jkkk-one-one-11-38-sat (ensemble computation): 353 s → not solved.
+- Satisfiable instances are slower on average: shifted geometric mean 79 → 90 s on the 31 that
+  both solve.
+  - The largest slowdowns: the hamiltonian x9 instances (58 → 212 s, 48 → 583 s), qwh.60
+    (60 → 700 s) and a van der Waerden instance (31 → 350 s).
+  - Some are faster: ntil-90d-37 528 → 129 s, QuasiGroup-4-12 642 → 285 s, sum-of-3-cubes
+    115 → 6 s, and mod2-rand3bip (random XOR-SAT) 96 → 0.01 s with Gauss-Jordan.
+  - Shrinking and the restart intervals change the search on these. The slowdowns are being
+    investigated for 0.4.1.
+- On the unsatisfiable instances that both solve, 0.4.0 is faster even though it writes a
+  proof: 118 → 104 s, shifted geometric mean of 32.
+
+<details>
+<summary>sc2026: solved per family where the two differ</summary>
+
+| family (instances) | popso-sat 0.4.0 | popso-sat 0.3.3 |
+|---|---|---|
+| antibandwidth (1) | 0 | **1** |
+| binary-tree-parity (1) | **1** | 0 |
+| bioinformatics (1) | **1** | 0 |
+| chnl (4) | **4** | 0 |
+| clique-coloring (2) | **2** | 0 |
+| clique-formulas (2) | **2** | 1 |
+| coloring (2) | **1** | 0 |
+| count (4) | **4** | 0 |
+| cyclic-anti-bandwidth (4) | 1 | **3** |
+| ensemble-computation (1) | 0 | **1** |
+| exam-scheduling (4) | **4** | 0 |
+| fpga-routing (3) | **3** | 1 |
+| graph-coloring (4) | **4** | 1 |
+| lights-out (4) | **4** | 0 |
+| minimal-disagreement-parity (2) | **2** | 0 |
+| or_randxor (1) | **1** | 0 |
+| register-allocation (1) | **1** | 0 |
+| relativized-pigeon-hole (1) | **1** | 0 |
+| school-timetabling (4) | **1** | 0 |
+| sudoku-php (2) | **2** | 0 |
+
+67 of 87 families with equal solved counts not shown
+
+</details>
+
+<details>
+<summary>sc2026: per-instance times (s); TL = not solved in 1000 s; bold = fastest</summary>
+
+![sc2026: solved vs. time](docs/benchmarks/v0.4.0-sc2026-i7.svg)
+
+| solver | solved (SAT / UNSAT) of 168 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.4.0 | 98 (37 / 61) | 926.4 | 164.08 |
+| popso-sat 0.3.3 | 67 (35 / 32) | 1303.8 | 416.48 |
+
+| instance | popso-sat 0.4.0 | popso-sat 0.3.3 |
+|---|---|---|
+| 81c36c1f55a6ee8e180f53f140ce05a3-01-integer-programming-20-30-40 | TL | TL |
+| 2b35377a7b95f24449a3b607b61fff05-bench_1278.smt2 | 63.09 | **24.68** |
+| 129162378e8ad29b5485a9c53feee4b7-hantzsche_wendt_unit_93 | 163.28 | **103.62** |
+| a42230be4432b010789b6f97b090343c-soelberg_unit_223 | TL | TL |
+| 4de5b7b3c8bf44b2e8c549128bc936a3-as-p141-l39-o0-rot-rfl-680-i.sanitized | TL | TL |
+| 0d0fabe0fbca67a8740ebe8b8621d465-as-p147-l51-o0-rot-rfl-68-i.sanitized | TL | TL |
+| 8d0d8518a438d93428257d9a38863c3c-as-p31-l12-o9-56.sanitized | 70.78 | **49.11** |
+| ca18feb7d2bb6bee7a8ab28673fe1d62-as-p75-l27-o6-rot-4568.sanitized | TL | TL |
+| d8225a58e2ca7c2fb93c533f406c02d5-abw-K-dwt__234.mtx-w50 | TL | **299.81** |
+| b358bf7111086fd6d60b11c2f01465b8-crn_40_1521_s | TL | TL |
+| 180e6d8b61fe6bab26126b78591e324e-baseballcover11with22_and2positions | **227.23** | 390.34 |
+| b54b26f38d40a687b6277c49cf85de69-baseballcover11with25_and6positions | **625.05** | 671.61 |
+| c8cde50f32ca3f78a4c74a173c63449b-bp5_CSO.normalised | TL | TL |
+| 7db30d12cb06f0dc2f30abff80d96d6a-two-trees-1023v.sanitized | **0.01** | TL |
+| c62a1855a4db8ae0b4bd625455332a4c-1x1x14_1x2x9_pair_2_2_0_3_2_1.sanitized | TL | TL |
+| e5066e18b03451d92863160ed8166bdf-1x1x14_1x2x9_pair_2_4_0_3_1_0.sanitized | TL | TL |
+| f604f43d1f5525f3dab4090190adbc66-1x1x14_1x2x9_pair_2_4_0_3_3_0.sanitized | TL | TL |
+| 2c4491c50d4df86e7c1838083cedc703-1x1x14_1x2x9_pair_4_3_0_2_3_1.sanitized | TL | TL |
+| a45aefde8bb26edb9634004146d0de89-Circuit_multiplier36 | TL | TL |
+| 83ced7d9ee8058c52c9a68ded7fad0a5-p160_1 | TL | TL |
+| 8390dca257561c53bf4eb6e158a2285f-mp1-klieber2017s-0490-024-t12 | 4.32 | **2.65** |
+| 2fcd8533eba981967292f1b6e41f7433-simon-r20-0.sanitized | 0.00 | **0.00** |
+| 7cbc3ce2052ba7c5b501f75af58ab3c4-simon-r22-1.sanitized | **0.01** | 0.01 |
+| da34db9ea6b524f13708357f38432bb6-cabp-V-nos6.mtx.rnd-k274.sanitized | **506.32** | 620.01 |
+| 9541d12f3e3d9201085c13f25145d2f7-cabp-V-nos6.mtx.rnd-k275.sanitized | TL | **258.28** |
+| 5e1f1759de9bf931a8e26dbe7dd5b212-cabp-V-nos6.mtx.rnd-k290.sanitized | TL | **950.59** |
+| 49644428681a87666a68fc9380dce072-cabp-X-can__715.mtx.rnd-k116.sanitized | TL | TL |
+| 1f81f7e009f501014cb23a8c2d41836f-g2-ACG-20-10p1 | **761.41** | 828.54 |
+| 9c5dd2eb0a40a150c686459a118c720a-1.xz.sanitized | **4.50** | 4.62 |
+| fca71c20202ef404349136c3a00465eb-em_8_4_5_fbc | **266.56** | 347.10 |
+| 5cae5c0629ce1c724746af890410cfc1-jkkk-one-one-11-38-sat | TL | **352.58** |
+| 45a09efb026036ff4b8d19024a7563a9-fermat-931960058139995587 | TL | TL |
+| 4ae685a11b5cecca76dc3d463481ce92-x9-10032.sat.sanitized | 212.02 | **57.60** |
+| 7d311f620f4ebc4adf8f4079899750eb-x9-11033.sat.sanitized | 583.41 | **48.42** |
+| 8117a2ac08e1acf52f660663efe2a5ca-170225812 | 0.93 | **0.93** |
+| 4551c996fc6f5fbe62b43076abb25077-knight_18 | TL | TL |
+| 01d6fa8efd18ebfecd06af408958477b-lightsout_sat_25_unbounded_direct_planted250_4_sat.sanitized | **0.01** | TL |
+| 28dcc4119e1bbb5fbd3fdd8f4140f28d-lightsout_sat_25_unbounded_totalizer_planted150_3_sat.sanitized | **0.03** | TL |
+| 8e1cdc28bad48753110be5bd578cb934-15.sanitized | TL | TL |
+| 30c6fa5c4f5910029b782b712844c93a-6.sanitized | TL | TL |
+| fed3f8d39738c2e935e8ed13ddeb6967-8.sanitized | TL | TL |
+| e3a132ecb8108f7d8a46b6686e686b60-9.sanitized | TL | TL |
+| 61fee64c8fc7f05b97a2bc14c0c2bf41-par32-4-c.shuffled | **6.22** | TL |
+| 1eea3d913d346b900252d77fc0cb25c8-par32-4.shuffled | **24.68** | TL |
+| 6d815089fb4095208754622b4c44a8f7-Carry_Bits_Fast_12.cnf | 8.41 | **4.79** |
+| 09e0775d2b51c49ec1ec4d214ee7c8c8-ntil-90d-37.sanitized | **129.13** | 528.27 |
+| 0e06895600b5cd0b6fadb87e17bf8145-ntil-90d-39.sanitized | 578.32 | **271.56** |
+| 2d261a19d2754d92da3ddff04fda23c8-ntil-90d-44.sanitized | TL | TL |
+| 46dc5e955b1fb541678d0634389353ac-ntil-90d-45.sanitized | TL | TL |
+| 0922feab75c35d04d9b8df69013a6df0-toughsat_22bits_0 | 83.21 | **82.92** |
+| 8da88a43b4ac226f614dd82d4519d8c6-toughsat_factoring_inf | TL | TL |
+| ddf6fff9ebbbe9ec2a02f70b3316db6d-QuasiGroup-4-12_c18 | **285.18** | 641.80 |
+| 543e67dd5abc272c37775b1b742a1d9a-qwh.60.1728.shuffled-as.sat03-1659 | 700.20 | **59.66** |
+| 75429ff7acb5acb597abe01aa745c2a6-mod2-rand3bip-sat-250-3.shuffled-as.sat05-2220 | **0.00** | 95.99 |
+| 5faba478cb08194407b5ec957ab08599-schooltt-5-7-11-2-4-1.4-2.6-0.8-0.9-seed2.sanitized | **437.93** | TL |
+| 53d23b2b464a5c041114eb1f00cc4b81-puzzle32_sat | **96.35** | 224.10 |
+| 8f5bca645bd8738eb74c2e1dc284774a-sgp_7-4-6.shuffled-as.sat05-2671 | TL | TL |
+| 626c368587dd880086afc7b3fa1e6f27-snw_16_9_CCSpre | TL | TL |
+| 67133027ab55906e3b757148ca7011dd-snw_16_9_Encpre | TL | TL |
+| c15b09b9a7ceff4d4c8fe705958f92ba-snw_16_9_preOpt_pre | TL | TL |
+| 5de866bc7ff4dfde3cd682b5aca75894-n320p5q2_n.af_239.sanitized | 3.91 | **3.08** |
+| 91860f79f079fede859034c7d76a98a2-41-119494 | 52.45 | **17.37** |
+| 510df610f94d5d57073a2c3b694dac4c-51-136961 | 812.75 | **742.70** |
+| 6793abe982f9d5f9646f6657e13ecc39-55-140792 | TL | TL |
+| b2047f327e213b5f14adb8c75ee514fb-60-135969 | TL | TL |
+| 91e0db01b254eb78f6643328045bfeb9-sted5_0x1e3-20 | TL | TL |
+| 9ef9243ff051b32795890fccd6c3f6b2-sum_of_3_cubes_50_bits_91 | **5.91** | 114.65 |
+| 7fa502dfce37c37c1cafd50b3fba263f-SDP_104_15_107.sanitized | 38.15 | **19.55** |
+| 1c0fe2ac410f3942e374ea72ec005d76-SDP_120_17_1675.sanitized | 924.52 | **644.42** |
+| 515511be3905018ae7e6eb7ba7064d72-SDP_134_18_4334.sanitized | TL | TL |
+| 654241eda3e1283f4b139192d1db055a-SDP_140_19_8786.sanitized | TL | TL |
+| b438fa464c20a19fdb7788a3f0016f32-size_5_5_5_i116_r12 | TL | TL |
+| ab17eed90e4da47767f72f518e3b4a26-vdwb_k6_n250.sanitized | **21.98** | 38.05 |
+| 782b29d2d691fdc94e0ec5b899390e10-vdwb_k6_n300.sanitized | 350.07 | **31.02** |
+| 43c298c756cac6d547a0457c2da7e468-xorshift_r14_31.sanitized | TL | TL |
+| 231f3a169120d3cda9f8feea88a20d85-xorshift_r14_42.sanitized | TL | TL |
+| ad5b80bb4d1b60bee12163df25846801-xorshift_r15_104.sanitized | TL | TL |
+| d10b8bcd1bb5977c5ffe2d1859e4335f-xorshift_r15_175.sanitized | TL | TL |
+| ac3e3bb744e258282990aa4307c08cb8-E00X23 | TL | TL |
+| ae48df6541d190c096b1e5ba22d1b534-korf-17 | **234.76** | 287.91 |
+| 123c397f55eeae78c45e8d973b8e9dce-rpoc_xits_09_UNSAT | **9.73** | TL |
+| cc436db9fe0278663ce376e068069815-minandmaxor128 | TL | TL |
+| bcdc894819cf050e57849fe84a1e8cc4-chnl-020x101.sanitized | **0.03** | TL |
+| 757d64688ac60cba697a980dfbbf5075-chnl-030x091.sanitized | **0.05** | TL |
+| 1fb646d2657b6dd5f0106dbec9fd6c27-chnl-040x041.sanitized | **0.04** | TL |
+| 2027301e88cb029e4b47b747da8a180a-chnl-050x051.sanitized | **0.08** | TL |
+| 5d06225b27017e9a703f10cb577cf3bf-clqcl_25_7_6.normalised | **1.05** | TL |
+| 4aab4f954196d3277d9ca7b17c52acca-clqcl_25_8_7.normalised | **2.49** | TL |
+| cb2e8b7fada420c5046f587ea754d052-clique_n2_k10.sanitized | **0.00** | 2.72 |
+| 15456f0d13b26f0b4b21525ef7d0d711-clique_n5_k10.sanitized | **0.02** | TL |
+| 1a3bef9e03bab1ed4e9e34506d72a451-le450_25b.col.25 | **0.04** | TL |
+| 727ebce936c010888c7f71f00885e643-count_p2_M25.sanitized | **0.01** | TL |
+| 35e0b5a19c88961d98dd806e805759f4-count_p2_M33.sanitized | **0.01** | TL |
+| fbd9968f5067604694f11f14c07c5527-count_p2_M45.sanitized | **0.04** | TL |
+| 0ec6bf97a96b9840ae84f1d1da4c4dcd-count_p3_M19.sanitized | **0.27** | TL |
+| a957fdb07df865bb4fd24a00ceb49fdb-T90.2.0 | 559.36 | **473.03** |
+| 59b585a33d30e6b7a476ed52a3f0384d-T92.2.0 | 614.31 | **509.27** |
+| cc42cc7a8022820cbd0e98595126d07e-g2-T97.2.1 | TL | TL |
+| a8dcaf436bda091dad9ca1ff58de7287-asconhashv12_opt64_H10_M2-BPHqhzNzqi_m5_6_U14.c | TL | TL |
+| 4989239fbeb6eb40fc0b664d9ba92636-asconhashv12_opt64_H7_M2-K1zfAs8_m0_3_U5.c | **441.59** | 574.63 |
+| 30e8b47741a4104c01eeea1d00bbce9e-aes_equiv_encry_3_rounds.debugged | **564.91** | 625.59 |
+| 5553fec254b32349e0e48c7ee1e2d6c7-post-cbmc-aes-ee-r2 | **210.37** | 227.53 |
+| 5ab5ac8d66c7e375037f12a536baf721-sbdp4_136_2.sanitized | TL | TL |
+| e685a5d96e1ee9e051f191eca84b0d88-sbdp4_140_2.sanitized | TL | TL |
+| 27495ba0093076d2e39a9b218e521ee2-sbdp4_61_2.sanitized | TL | TL |
+| 211b0708454f7901054f5f92f525972e-sbdp4_65.sanitized | TL | TL |
+| 8d2dfc50c1759dc11a6564d5c368c6df-FmlaImplyChain_3_7_8.sanitized | TL | TL |
+| 5314fd6ccb53b6f6af49a594ea68a273-oski15a01b15s_opt | **274.36** | 279.38 |
+| 12ac1c71ff0405cc150c2a2db6c4a255-exam_75_65.sanitized | **0.35** | TL |
+| 7b9620b5d7da55bda43595fe37867acd-exam_90_80.sanitized | **0.78** | TL |
+| 860788f93fb766e83e00a29de84180e7-mexam_17_15_2.sanitized | **0.01** | TL |
+| 0d082b8fa36f662217bee5524cd24d3a-mexam_23_20_2.sanitized | **0.03** | TL |
+| 1890f49a43a94b97828528b68c32b78e-homer11.shuffled | **0.00** | 2.31 |
+| 3c4ac805726d78a869ff8116ee3533db-homer18.shuffled | **0.00** | TL |
+| 805a742eb8b4e0df3561ca8e0670670b-homer20.shuffled | **0.00** | TL |
+| d0b5d1dc96a5bf33d2c65106c3b179a8-connm-ue-csp-sat-n600-d0.04-s1793042357.used-as.sat04-975 | 24.50 | **23.29** |
+| 8aa9ffb211d1cba850be2ee9d173b7e1-adv_gc_n300_k12_UNSAT_s42.sanitized | **0.01** | TL |
+| ba7732774961fdf7508a998a41bd5366-factorize-1022117.sanitized | **18.22** | 21.56 |
+| e5787bb4c8c29aa39b14a5e11387999d-fpsol2.i.2.29.sanitized | **0.07** | TL |
+| 043c91001968a1fbd1ef419540fcb396-miles1500.72.sanitized | **0.49** | TL |
+| c261941bfec8b89d75fee1a66a839169-manthey_single-ordered-initialized-w48-b9 | **655.49** | 893.46 |
+| 08cf53ca00dce11f5bfc02121c9bcd33-GreenTao_2-3-5_528 | **151.14** | 183.04 |
+| 40ae60a61929b6bfa2ac99ab4b9a0f7e-grs-96-192 | TL | TL |
+| 3005623c4df6f5056a41a26d0f173e70-DLTM_twitter634_77_13 | TL | TL |
+| 7a13ffe9546cc7dfabdedebb64700e8a-w19-20.0 | **132.35** | 168.97 |
+| 0efcbd10294eb001b16b4d126923372f-lightsout_sat_23_unbounded_direct_random50_2_unsat.sanitized | **0.01** | TL |
+| 32e344a5ab3af245f982678d2b751c6d-lightsout_sat_24_unbounded_totalizer_corner_0_unsat.sanitized | **0.02** | TL |
+| 29a27e97790bda6c34808f631dd0418e-linvrinv5.shuffled-as.sat05-564 | TL | TL |
+| e55a49d8065d65650f24c0f3ecef30b6-af-synthesis_stb_50_120_4_unsat | **438.57** | 648.31 |
+| a80a252b748882980d9a80ddea8c5cff-bdmdm_28_1.sanitized | TL | TL |
+| 5f81a94799858590a2bc96db917bf894-bdobwm_28_54.sanitized | TL | TL |
+| 7ac164a9d153f0a2d9bf54a98d429636-bwoawm_28_5.sanitized | TL | TL |
+| 6ad453d6174581d982c4e75e37a38d79-dobdm_14_1.sanitized | TL | TL |
+| de8c42d50f1dbf43a731f1916dc6bf01-16_16_booth_dadda_mapped_and_and_wallace_origin_bit28 | TL | TL |
+| fac2035ba83ac2d0c2d67509d3f82b94-16_16_booth_dadda_origin_and_default_mapped_ultra_bit29 | 889.56 | **837.92** |
+| 0be1e12a8e7282d1a4e389bb90f6dbc7-or_randxor_k3_n600_m600 | **19.20** | TL |
+| 22c8d6aa86d51e15ef5ab37479eda22b-xor_op_n40_d3 | TL | TL |
+| 011984fd82d62d609e776fbf5de75440-arles_thres20_p10_r7533 | 0.01 | **0.01** |
+| dd5d530ac8bf0019412d023488b075eb-arles_thres20_p20_r4109 | 0.01 | **0.01** |
+| 62060247cd0ad566a828c30571c2c774-marijn-philips | **218.88** | 257.74 |
+| 6add7e416c1126607afeb2666af330ac-constraints_16_0.5_1.sanitized | **119.73** | 195.85 |
+| f8443057c188f6c9cfb711ff3d4aa6ff-constraints_17_0.5_2.sanitized | **79.94** | 92.90 |
+| 284dec9d0d0404c8b80d8bd8064e4c68-gensys-ukn004.shuffled-as.sat05-3844 | TL | TL |
+| dc7817dfa2817916b266c1cfacd2ee66-constraints_25_4_5_12_12_0_0_0.sanitized | **241.69** | 248.80 |
+| 965ca988015c9aee5a1a7b2136c1fe5d-os_fwalk_12 | **0.00** | TL |
+| e430acf720b63044e5c825a00a76b0eb-rphp_p25_r25 | **0.02** | TL |
+| 4e64ffc14db014d5591f40865376c32a-satcoin-genesis-UNSAT-7200 | TL | TL |
+| 48432767076e402d2accbf2da7260885-schooltt-5-3-8-2-4-5-10-0.1-0.2-seed2.sanitized | TL | TL |
+| 47173e8ab499159d3aa301b0101fe170-schooltt-5-3-9-2-4-5-10-0.1-0.1-seed3.sanitized | TL | TL |
+| ad2247443454da1fbd4543dd1fa5b57c-schooltt-5-3-9-2-4-5-10-0.1-0.2-seed3.sanitized | TL | TL |
+| 5ee05ef0bcb42cb12bd698978c05178c-mp1-bsat201-707 | **355.22** | 644.47 |
+| 337ee3de87f824f99508e65faa6e1a0b-SocialGolfers-6-6-7-cp_c18 | TL | TL |
+| 878bcc11e1e243680f7946bcf428f465-linked_list_swap_contents_safety_unwind45 | 74.60 | **58.05** |
+| bfc825d1eb0670fd90805c546fea5c6b-snw_17_9_CCSpreOptEncpre | TL | TL |
+| b3c587501567db72e6e66c6930cf15ed-StConn_7_128.sanitized | 470.11 | **316.51** |
+| bf8c8761003704e761ce36db6665f741-scc_6087_19_0.3_0.1_20.af_130.sanitized | **8.06** | 14.86 |
+| c557ad9cb79983b9d429c219e3cecbb8-scc_7216_12_0.5_0.2_11.af_463.sanitized | **5.75** | 8.36 |
+| f2c6d035d0aa58cc06927af6be7a821f-scc_9630_26_0.3_0.1_17.af_516.sanitized | **24.97** | 41.51 |
+| 5f65b4cceeb01c56e037df144309b29e-SGI_30_70_21_70_7-log.shuffled-as.sat03-153 | TL | TL |
+| 3598c10125496ad7218852effc5c711f-SGI_30_70_22_70_7-dir.shuffled-as.sat03-154 | TL | TL |
+| 7fe153ced2c966dcdeb42b6714b4d6b7-sudoku-N30-11 | TL | TL |
+| 43d40ced32b5be08814ef24f97379654-php_sudoku_p15_h14.sanitized | **0.00** | TL |
+| f83424f869b61931d720f93e5a12df3c-php_sudoku_p20_h19.sanitized | **0.01** | TL |
+| 82cad197a0b7919f1f51ec51f7267e6f-ex095_8 | TL | TL |
+| bd0b055b890a9ace598a0c4aba40de30-sat-bench-trig-bhaskara | **538.57** | 615.77 |
+| 262a226a47330987f038128579967405-ais8.cnf.mis-97.debugged | **10.05** | 10.20 |
+| 66204949278cdd9d81e102eace6d4669-vdw_4_7_n109.sanitized | **174.36** | 215.45 |
+| a20f076f7fce54172e823c63ea7948f7-vdwb_k5_n260.sanitized | **23.82** | 27.21 |
+
+</details>
+
+### Small sets (Apple M4 Pro, macOS)
+
+The small sets of the earlier sections, 120 s. The machine was shared with another project
+this time, so 0.4.0 and 0.3.4 ran as pairs, one instance at a time, back to back (the order
+alternating), so that both see the same load. Kissat's times for these sets are in the v0.3.4
+section (an idle machine).
+
+| set | popso-sat 0.4.0 | popso-sat 0.3.4 |
+|---|---|---|
+| unsat26 (26 unsatisfiable) | 22 / 57.2 | 22 / 55.2 |
+| tune (29 mixed) | 25 / 47.4 | 25 / 45.7 |
+| validation (32 held out) | 21 / 103.7 | 20 / 109.9 |
+| medium (25 generated, 60 s, two at a time) | 25 / 2.7 | 25 / 3.7 (v0.3.4 section) |
+
+(solved / PAR-2 in seconds.)
+
+**What this shows:**
+- These sets have few of the structures that 0.4.0 refutes or solves directly, so the totals
+  barely move: the gains come from Gauss-Jordan and the new search defaults, case by case.
+  - urquhart3_25bis (Tseitin formulas): 4.1 s → 0.01 s, refuted from its XORs before search.
+  - mdp-28-10-sat: not solved in 120 s → 0.03 s, and mdp-28-12-sat 7.5 → 0.03 s (the detached
+    Gauss-Jordan solver).
+  - ps_200_323_70, case9, ncc_none_3001, sqrt_ineq_3, SC23_Timetable: not solved → solved.
+  - brent_51 32.8 → 2.3 s, mp1-squ_ali abix 45.5 → 7.6 s.
+- Losses:
+  - spg_420_280 (9 s → not solved within 120 s): learned clause shrinking and the restart interval
+    change its search (1.45M conflicts instead of 116k); being investigated for 0.4.1.
+  - stb_588_138 DS-ST (15 s → not solved) and mp1-squ_ali abio (21 s → not solved): satisfiable
+    instances whose times vary a lot from run to run (stb DS-ST: 35–90 s with any change of
+    the search).
+  - frb45-21-2 (27 s → not solved), satisfiable.
+
+<details>
+<summary>unsat26: per-instance times (s); TL = not solved in 120 s; bold = fastest</summary>
+
+![unsat26: solved vs. time](docs/benchmarks/v0.4.0-unsat26-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 26 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.4.0 | 22 (0 / 22) | 57.2 | 23.11 |
+| popso-sat 0.3.4 | 22 (0 / 22) | 55.2 | 21.43 |
+
+| instance | popso-sat 0.4.0 | popso-sat 0.3.4 |
+|---|---|---|
+| c1b30b4e03c3024ad9d084e29e79aa46-BubbleVsPancakeSort_6_6 | 19.55 | **19.28** |
+| 004b0f451f7d96f6a572e9e76360f51a-spg_420_280 | TL | **9.03** |
+| bb80971144a5423532aea9424dade891-div-mitern174 | **14.05** | 14.60 |
+| 5e04f38ff11cee5d75fb98e12f6a14fc-sqrt-mitern172 | 29.97 | **23.77** |
+| a1158a2d8c8a1c6da02c2c4fcb32337f-6s158_Iter2 | **4.05** | 4.44 |
+| 01d142c43f3ce9a8c5ef7a1ecdbb6cba-urquhart3_25bis.shuffled | **0.01** | 4.07 |
+| 3ff114cc7bee4f39fa56a0325e605c2d-stb_588_138.apx_2_DC-ST | **74.04** | 86.82 |
+| 112b0ac22b2a567cd3badfed3a5497fd-mchess16-mixed-35percent-blocked | 29.91 | **19.97** |
+| 8d458780fb74c28c01a5fe89990ad521-mchess16-mixed-45percent-blocked | 8.29 | **8.05** |
+| 44092fcc83a5cba81419e82cfd18602c-php-010-009.shuffled-as.sat05-1185 | **0.01** | 1.70 |
+| 02066c116dbacc40ec5cca2067db26c0-mrpp_4x4_12_12 | 6.30 | **4.34** |
+| 26114429758a203d651f4df87c94de4c-sgen1-unsat-97-100.cnf.mis-72.debugged | 10.91 | **8.51** |
+| d88c6afc13cdad0e2c8371a879692b39-battleship-13-13-unsat | 4.69 | **4.63** |
+| ad9eb96bac59319fc2f7daffd1f961f8-AProVE07-21 | 1.52 | **0.83** |
+| 02627689047d06fbb642eef14768d751-ps_200_300_70 | TL | TL |
+| 5d357f1e4b5abc96c90d305f629edd5c-ps_200_323_70 | **74.37** | TL |
+| fe800e62b55609cb152965c223e72280-div-mitern171 | **53.18** | 60.76 |
+| 07b7859003d84402cbb1ebdc37655d55-6s186_Iter20 | **107.23** | 110.26 |
+| a130a3f95891daed1bfd71c77bd2d8a1-SAT_dat.k80 | **29.69** | 31.34 |
+| 436d00b6d41912e800e9855d08c75139-manol-pipe-f7nidw | **33.23** | 36.40 |
+| 81b674a2aa6fbda9b06cf8ea334ddc44-beempgsol2b1 | **4.35** | 4.44 |
+| 4282ea42fd414bfd2c4bf81fe8a43e24-DivU_1520_10.cnf.sanitized | **6.30** | 6.39 |
+| da43a3ef0ef5d34143e765d480dedc7a-DivU_624_11.cnf.sanitized | 7.65 | **6.73** |
+| fae08ac5b6d7eeb4f56f1cfac6c51703-j3045_4_mdd_bm1 | TL | TL |
+| dafc03ea784fee849febca7b64230558-pcmax-scheduling-m30-14113-167638-UNSAT.sanitized | TL | TL |
+| d672bdbca3b1fb26d585e78add79537e-velev-pipe-o-uns-1.1-6 | **8.47** | 9.08 |
+
+</details>
+
+<details>
+<summary>tune: per-instance times (s)</summary>
+
+![tune: solved vs. time](docs/benchmarks/v0.4.0-tune-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 29 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.4.0 | 25 (12 / 13) | 47.4 | 16.65 |
+| popso-sat 0.3.4 | 25 (11 / 14) | 45.7 | 16.73 |
+
+| instance | popso-sat 0.4.0 | popso-sat 0.3.4 |
+|---|---|---|
+| 02223564bd2f5c20768e63cf28c785e3-mp1-squ_ali_s10x10_c39_abio_SAT | TL | **20.67** |
+| 6965d5369d3ab26daaf074303c3d1739-mp1-squ_ali_s10x10_c39_abix_SAT | **7.58** | 45.47 |
+| e01c39b7b41c9ff1621579b747254fab-ncc_none_3001_7_3_3_1_31_435991723 | **38.04** | TL |
+| fb5cf4ad3c46dd294eb8253218524ba6-cfi-rigid-r2-0072-01-or_3 | **5.94** | 9.85 |
+| cfa14a7015b0f7fecd98e898f3c95896-velev-vliw-sat-4.0-b8 | 15.22 | **12.31** |
+| 5457c05649be6f3bc4f743c5e6086a18-mdp-28-10-sat | **0.03** | TL |
+| cd36b290c27ed9bafedfb2ca88469f01-mdp-28-12-sat | **0.03** | 7.54 |
+| 29bab0de14e56e526be9683131005cb2-stb_588_138.apx_2_DS-ST | TL | **15.36** |
+| 74931e82fd208ed949fa44bccd80df6b-DivS_862_11.cnf.sanitized | 1.54 | **0.79** |
+| accf33a84bdf211bebbd2111fb7f6b91-DivS_942_11.cnf.sanitized | 1.62 | **0.86** |
+| 7083b70c1976162e2693d7a493717ffd-battleship-14-26-sat | 1.57 | **0.43** |
+| 9276ce38c625b2d00de247f8588f1542-combined-crypto1-wff-seed-102-wffvars-500-cryptocplx-31-overlap-2 | 42.65 | **13.40** |
+| 04e219c640ed59dc68ea2d50493de5b5-mp1-Nb5T15 | **13.28** | 32.56 |
+| 416e33a8463911546e4cd87d282a7e1e-case10 | TL | TL |
+| fab2022deb130fe3ad1136a5c71b4109-case9 | **87.14** | TL |
+| c1b30b4e03c3024ad9d084e29e79aa46-BubbleVsPancakeSort_6_6 | 19.73 | **19.03** |
+| 004b0f451f7d96f6a572e9e76360f51a-spg_420_280 | TL | **9.18** |
+| bb80971144a5423532aea9424dade891-div-mitern174 | **14.05** | 14.43 |
+| 5e04f38ff11cee5d75fb98e12f6a14fc-sqrt-mitern172 | 29.31 | **23.40** |
+| a1158a2d8c8a1c6da02c2c4fcb32337f-6s158_Iter2 | **4.02** | 4.35 |
+| 01d142c43f3ce9a8c5ef7a1ecdbb6cba-urquhart3_25bis.shuffled | **0.01** | 3.99 |
+| 3ff114cc7bee4f39fa56a0325e605c2d-stb_588_138.apx_2_DC-ST | **72.32** | 86.19 |
+| 112b0ac22b2a567cd3badfed3a5497fd-mchess16-mixed-35percent-blocked | 29.15 | **18.72** |
+| 8d458780fb74c28c01a5fe89990ad521-mchess16-mixed-45percent-blocked | **7.56** | 7.57 |
+| 44092fcc83a5cba81419e82cfd18602c-php-010-009.shuffled-as.sat05-1185 | **0.01** | 1.63 |
+| 02066c116dbacc40ec5cca2067db26c0-mrpp_4x4_12_12 | 5.94 | **4.02** |
+| 26114429758a203d651f4df87c94de4c-sgen1-unsat-97-100.cnf.mis-72.debugged | 10.58 | **8.35** |
+| d88c6afc13cdad0e2c8371a879692b39-battleship-13-13-unsat | 4.58 | **4.52** |
+| ad9eb96bac59319fc2f7daffd1f961f8-AProVE07-21 | 1.50 | **0.81** |
+
+</details>
+
+<details>
+<summary>validation: per-instance times (s)</summary>
+
+![validation: solved vs. time](docs/benchmarks/v0.4.0-validation-m4.svg)
+
+| solver | solved (SAT / UNSAT) of 32 | PAR-2 (s) | shifted geomean (s) |
+|---|---|---|---|
+| popso-sat 0.4.0 | 21 (11 / 10) | 103.7 | 43.01 |
+| popso-sat 0.3.4 | 20 (10 / 10) | 109.9 | 47.13 |
+
+| instance | popso-sat 0.4.0 | popso-sat 0.3.4 |
+|---|---|---|
+| 47f5872181a581dff34eb33123fe3242-b17 | 8.89 | **8.45** |
+| 705f6075b27775e03daf6e8d781cb953-shift1add.28943 | 9.17 | **8.39** |
+| 30e680ded3b9be6be0b5baac273f2646-asconhashv12_opt64_H5_M2-A8qZX_m0_3_U23.c | TL | TL |
+| 036b541db9d0839b0591d408ff4f77ae-aes_decry_2_rounds.debugged | **97.90** | 112.58 |
+| a7aac5c83f236fd8b3de3275e3f5499d-edit_distance041_183 | 68.58 | **43.97** |
+| d6402b482a5dc102a5b09360689e2be8-jkkk-one-one-11-32-unsat | TL | TL |
+| d5928883c1e1f70764a31a83aa419eaf-oski15a01b42s_opt | TL | TL |
+| 43687a48fb119ca61b47c2fc69a71e7d-manthey_single-ordered-initialized-w42-b8 | **56.23** | 62.13 |
+| 20cae5fe475d571da703f89d5da4bb8f-grs-96-32 | 65.34 | **53.48** |
+| 0dc468413b65339fad7e4f981bf2fb1e-reconf20_61_myciel4_2 | 13.60 | **12.11** |
+| 4513c58c16e72a34f9f8518db7baeb9e-ktf_TF-3.tf_3_0.02_24 | 86.23 | **74.34** |
+| e12874b16df577b301608d03731595d8-rphp5_085_shuffled | TL | TL |
+| 6f0e236c999de0a5e3c46fd3463b1d0d-rook-56-1-1 | TL | TL |
+| 920bbe559da4ea37fd636605316a791c-SCPC-500-19 | **10.57** | 12.50 |
+| 65138afdf7eb054be5131f2b0de84369-satch2ways12u | **7.44** | 12.40 |
+| 61069e0e3339af80000b774a041b7d96-constraints_18_0.3_2.sanitized | TL | TL |
+| 96e01064ac3b644143278c21859e201f-brent_51_0.29 | **2.30** | 32.77 |
+| f02379d63678798e38dcc52b043cc51d-asconhashv12_opt64_H13_M2-axxJh7DAq767y_m4_5.c | TL | TL |
+| 0ae917c2e0c1d39cbe411c29b2f5ff08-dislog_a14_x14_n24 | TL | TL |
+| 72c0d81e16d91bcaed808efcde2e5069-Folkman-175-1251868.sanitized | **39.92** | 52.20 |
+| 0a27eb7c16c1e69ff4d087d217ac89cb-noL-11-0.sanitized | 4.78 | **3.25** |
+| f32bb347996c351bc3e9a91c58e8601d-DLTM_twitter774_83_17 | TL | TL |
+| 7acf6cf25ddaf2ab98106e0bb3b9ddb1-af-synthesis_stb_50_140_3_sat | 23.90 | **19.66** |
+| 0336f81b60baac5b8f481dd3c32861a5-mod4block_2vars_10gates_u2_autoenc-sc2009 | **12.32** | 25.40 |
+| ddd3b43476c18cf483aac233d4dc1c68-PRP_20_40 | **18.01** | 24.77 |
+| c2bfe541b7cff948fa3193e9ca0eddee-frb45-21-2.used-as.sat04-884 | TL | **26.62** |
+| e99e266b422513a2898c13898a1de501-rbsat-v760c43649gyes9 | 39.24 | **30.93** |
+| b5cede38496a803dcfa155a5f4295c47-SC23_Timetable_C_476_E_50_Cl_32_D_6_T_50 | **74.75** | TL |
+| a811388cc92def6ef2d639dc062d456c-ContextModel_output_6_3_8.bul_.dimacs | TL | TL |
+| b51583e32432c5778c7e3e996c3bfeba-sqrt_ineq_3.c | **7.73** | TL |
+| 608941b989227d93c62b3a9b4280011b-summle_X8639_steps8_I1-2-2-4-4-8-25-100 | 28.26 | **13.66** |
+| 86173292a2c6a506acf27a81db853bb5-ktf_TF-7.tf_3_0.06_113 | **2.41** | 6.17 |
+
+</details>
 
 ## v0.3.4 (Apple M4 Pro, macOS)
 

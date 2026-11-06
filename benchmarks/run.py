@@ -411,8 +411,9 @@ def main(argv=None):
                     help="ask for a DRAT proof and check UNSAT answers (default)")
     pg.add_argument("--no-proof", dest="proof", action="store_false", help="no proofs")
     ap.add_argument("--checker", default="auto",
-                    help="DRAT checker: auto (default: drat-trim from <main>/benchmarks/tools/build/bin if "
-                         "built, else pydrat for small proofs), drat-trim, pydrat, none, or a binary path")
+                    help="proof checker: auto (default: dpr-trim from <main>/benchmarks/tools/build/bin if "
+                         "built (it also reads the PR lines of --counting), else drat-trim, else pydrat for "
+                         "small proofs), dpr-trim, drat-trim, pydrat, none, or a binary path")
     ap.add_argument("--pydrat-max-mb", type=float, default=10.0,
                     help="largest proof (MB) checked with the pure-Python pydrat (default 10)")
     ap.add_argument("--proof-time-limit", type=float, help="checker time limit (default 2*T + 30 s)")

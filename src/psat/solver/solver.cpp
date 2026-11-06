@@ -119,12 +119,18 @@ void Solver::on_root_fixed(Lit l) {
 
 void Solver::add_original_clause() {
   ++stats_.original_clauses;
+  if (gauss_tried_) {  // the detached Gauss-Jordan solver has an older copy of the formula
+    gauss_sub_.reset();
+    gauss_tried_ = false;
+  }
   if (level() > 0) backtrack(0);
   model_valid_ = false;
   if (inconsistent_) return;
   int max_v = 0;
   for (int d : adding_) max_v = std::max(max_v, std::abs(d));
   if (max_v > static_cast<int>(num_vars_)) grow_vars(static_cast<uint32_t>(max_v));
+  // PR clauses are redundant for the formula they were derived from, not for an extension of it.
+  if (counting_added_) throw std::logic_error("adding a clause after counting certificates is not supported (use --no-counting)");
   for (int d : adding_) {
     if (eliminated_[static_cast<size_t>(std::abs(d) - 1)]) {
       throw std::logic_error("adding a clause on an eliminated variable is not supported yet (use --no-eliminate)");
@@ -136,9 +142,13 @@ void Solver::add_original_clause() {
   const size_t before = clause_buf_.size();
   clause_buf_.erase(std::unique(clause_buf_.begin(), clause_buf_.end()), clause_buf_.end());
   bool changed = clause_buf_.size() != before;
+  if (changed) input_irregular_ = true;  // duplicate literals
   // Sorted: a literal and its negation are adjacent.
   for (size_t i = 1; i < clause_buf_.size(); ++i) {
-    if (clause_buf_[i] == negate(clause_buf_[i - 1])) return;  // tautology
+    if (clause_buf_[i] == negate(clause_buf_[i - 1])) {  // tautology
+      input_irregular_ = true;
+      return;
+    }
   }
   size_t j = 0;
   for (size_t i = 0; i < clause_buf_.size(); ++i) {
@@ -146,6 +156,7 @@ void Solver::add_original_clause() {
     if (v > 0) return;  // satisfied by a root-level unit
     if (v < 0) {
       changed = true;
+      input_shortened_ = true;
       continue;
     }
     clause_buf_[j++] = clause_buf_[i];
@@ -258,6 +269,11 @@ int Solver::solve() {
   if (!adding_.empty()) throw std::logic_error("solve() called with an unterminated clause");
   if (inconsistent_) return kUnsat;
   connect_pending();
+  if (memory_limit_ && memory_exceeded(true)) {  // before preprocessing (the periodic check comes later)
+    unknown_reason_ = "memory limit";
+    return kUnknown;
+  }
+  if (opts_.cardinality && !card_runs_) detect_cardinality("original");
   if (opts_.lucky && !lucky_tried_) {
     lucky_tried_ = true;
     lucky_limit_ = stats_.vivify_ticks + 8 * (arena_.size() / 8 + num_vars_) + 100000;
@@ -266,6 +282,26 @@ int Solver::solve() {
       if (opts_.verbose) std::printf("c lucky assignment found\n");
       if (proof_) proof_->flush();
       return kSat;
+    }
+  }
+  // Counting certificates before search (and before the first elimination round, whose BVA and
+  // BVE would re-encode the at-most-one cliques).
+  if (opts_.counting && !counting_tried_) {
+    counting();
+    if (inconsistent_) {
+      if (proof_) proof_->flush();
+      return kUnsat;
+    }
+  }
+  if (opts_.gauss && !gauss_tried_ && level() == 0) {
+    gauss_tried_ = true;
+    if (gauss_start()) {
+      if (proof_) proof_->flush();
+      return kSat;
+    }
+    if (inconsistent_) {  // refuted (the empty clause is in the proof)
+      if (proof_) proof_->flush();
+      return kUnsat;
     }
   }
   const int res = search();
@@ -311,6 +347,8 @@ int Solver::search() {
     } else if (level() == 0 && fixed_ > last_simplify_fixed_ &&
                stats_.ticks >= simplify_ticks_limit_) {
       simplify_root();
+    } else if (gauss_due()) {
+      if (gauss_round()) return kSat;  // a model from the detached Gauss-Jordan solver
     } else {
       decide();
     }
@@ -368,16 +406,35 @@ bool Solver::check_limits() {
     unknown_reason_ = "conflict limit";
     return true;
   }
+  // (the detached Gauss-Jordan solver's rounds: checked every time, so that short rounds stay short)
+  if (ticks_limit_ && stats_.ticks >= ticks_limit_) {
+    unknown_reason_ = "ticks limit";
+    return true;
+  }
   if ((++limit_check_ & 1023) != 0) return false;
   if (time_limit_ > 0 && seconds() >= time_limit_) {
     unknown_reason_ = "time limit";
     return true;
   }
-  if (memory_limit_ && (limit_check_ & 65535) == 0 && memory_bytes() > memory_limit_) {
+  if (memory_limit_ && memory_exceeded((limit_check_ & 65535) == 0)) {
     unknown_reason_ = "memory limit";
     return true;
   }
   return false;
+}
+
+// The --mem-limit check (with the time limit, every 1024 limit checks; also before preprocessing
+// and during elimination rounds, which add clauses). The internal accounting (memory_bytes(): the
+// main structures) misses the input copy kept for the model check, the inprocessing buffers and
+// the allocator's overhead (on ncc it read 815 MB at a peak resident size of 2594 MB), so the
+// peak resident set size of the process counts too (getrusage, cheap; the accounting walks every
+// watch list and is only added when 'accounting' is set). The limit is 7/8 of --mem-limit:
+// memory grows between two checks (the end of an inprocessing round, the model extension), and a
+// watchdog enforcing --mem-limit must not kill the process first.
+bool Solver::memory_exceeded(bool accounting) const {
+  const double soft = static_cast<double>(memory_limit_ - memory_limit_ / 8);
+  if (peak_rss_mb() * (1 << 20) > soft) return true;
+  return accounting && static_cast<double>(memory_bytes()) > soft;
 }
 
 double Solver::peak_rss_mb() {
@@ -397,6 +454,11 @@ size_t Solver::memory_bytes() const {
   bytes += score_.capacity() * 8 + num_vars_ * 4 + levels_.capacity() * sizeof(LevelInfo) + level_stamp_.capacity() * 8;
   bytes += watches_.capacity() * sizeof(std::vector<Watch>);
   for (const auto& ws : watches_) bytes += ws.capacity() * sizeof(Watch);
+  bytes += extension_.capacity() * 4 + occs_.bytes() + model_.capacity() + eliminated_.capacity();
+  bytes += touched_.capacity() + marks_.capacity();
+  for (const GaussMatrix& m : gauss_mats_) bytes += m.bits.capacity() * 8 + m.ncols * 40 + m.nrows * 16;
+  bytes += gauss_reasons_.capacity() * 4;
+  if (gauss_sub_) bytes += gauss_sub_->memory_bytes();
   return bytes;
 }
 
@@ -593,7 +655,8 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.vivifications), ull(stats_.vivify_checked), ull(stats_.vivified),
                ull(stats_.vivified_literals), ull(stats_.vivify_instantiated), ull(stats_.vivify_implied_deleted),
                ull(stats_.vivify_asym), ull(stats_.vivify_ticks));
-  std::fprintf(out, "c probing        %14llu  failed literals %llu\n", ull(stats_.probes), ull(stats_.failed_literals));
+  std::fprintf(out, "c probing        %14llu  failed literals %llu (below the probe %llu)\n", ull(stats_.probes),
+               ull(stats_.failed_literals), ull(stats_.probe_uips));
   std::fprintf(out, "c unhiding       %14llu  units %llu  transitive %llu  hidden tautologies %llu  strengthened %llu  "
                     "removed literals %llu  ticks %llu\n",
                ull(stats_.unhides), ull(stats_.unhide_units), ull(stats_.unhide_transitive), ull(stats_.unhide_tautologies),
@@ -610,6 +673,18 @@ void Solver::print_statistics(std::FILE* out) const {
   std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu; xor merges skipped %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
                ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions),
                ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites));
+  if (opts_.gauss || gauss_on_) {
+    const GaussStats& g = gauss_stats_;
+    std::fprintf(out, "c gauss          %14llu  xors covering %.1f%% of %llu clauses, %llu components, %llu matrices (%llu x %llu), "
+                      "%s, rounds %llu, ticks %llu, conflicts %llu, share %llu (max %llu, grown %llu, shrunk %llu)%s, %s\n",
+                 ull(g.xors), pct(g.covered, g.clauses), ull(g.clauses), ull(g.components), ull(g.matrices),
+                 ull(g.matrix_rows), ull(g.matrix_cols), g.gated ? "gated in" : "gated out", ull(g.rounds),
+                 ull(g.sub_ticks), ull(g.sub_conflicts), ull(g.share), ull(g.max_share), ull(g.grown), ull(g.shrunk),
+                 g.stopped ? " stopped" : "",
+                 g.model ? "model found" : g.sub_result == kUnsat ? "unsatisfiable (ignored)" : "no model");
+    std::fprintf(out, "c gauss-jordan   %14llu  propagations, conflicts %llu, pivots %llu, row checks %llu, reopened %llu, root units %llu\n",
+                 ull(g.propagations), ull(g.conflicts), ull(g.pivots), ull(g.row_checks), ull(g.reopened), ull(g.root_units));
+  }
   std::fprintf(out, "c lucky          %14llu\n", ull(stats_.lucky));
   std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu\n", ull(stats_.walks), ull(stats_.walk_flips),
                ull(stats_.walk_ticks));
@@ -617,6 +692,11 @@ void Solver::print_statistics(std::FILE* out) const {
                "trials %llu (rounds made %llu)\n",
                ull(stats_.bva_vars), ull(stats_.bva_removed), ull(stats_.bva_added), ull(stats_.bva_hop_ties),
                ull(stats_.bva_trials), ull(stats_.bva_rounds));
+  std::fprintf(out, "c counting       %14llu  structures (%s)  PR clauses %llu  units %llu  lemmas %llu  abandoned %llu  "
+                    "skipped %llu  work %llu\n",
+               ull(stats_.counting_found), counting_desc_.empty() ? "-" : counting_desc_.c_str(), ull(stats_.counting_pr),
+               ull(stats_.counting_units), ull(stats_.counting_lemmas), ull(stats_.counting_failed),
+               ull(stats_.counting_skipped), ull(stats_.counting_work));
   std::fprintf(out, "c tiers          %14u  tier2 %u\n", tier1_, tier2_);
   std::fprintf(out, "c shrunk         %14llu  literals\n", ull(stats_.shrunk_literals));
   std::fprintf(out, "c fixed          %14llu  of %u variables\n", ull(stats_.fixed), num_vars_);
@@ -634,9 +714,9 @@ void Solver::print_statistics(std::FILE* out) const {
                  t - passes, share(t - passes), p[kPassSweep], share(p[kPassSweep]), p[kPassVivify], share(p[kPassVivify]),
                  p[kPassEliminate], share(p[kPassEliminate]), p[kPassWalk], share(p[kPassWalk]));
     std::fprintf(out, "c                probe %.2f  substitute %.2f  congruence %.2f  subsume %.2f  bva %.2f  reduce %.2f  "
-                      "lucky %.2f  unhide %.2f  simulate %.2f s\n",
+                      "lucky %.2f  unhide %.2f  simulate %.2f  counting %.2f  gauss %.2f s\n",
                  p[kPassProbe], p[kPassSubstitute], p[kPassCongruence], p[kPassSubsume], p[kPassBva], p[kPassReduce],
-                 p[kPassLucky], p[kPassUnhide], p[kPassSimulate]);
+                 p[kPassLucky], p[kPassUnhide], p[kPassSimulate], p[kPassCounting], p[kPassGauss]);
   }
 }
 

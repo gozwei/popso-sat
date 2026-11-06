@@ -15,6 +15,8 @@ small formulas fast:
              single-clause formulas
   php        pigeonhole (3..6 holes), mostly UNSAT
   parity     two XOR chains over the same variables, SAT or UNSAT
+  counting   (only with --family) pigeonhole / clique formulas, perfect matching of K_n,
+             partition into triples, for --counting: mostly UNSAT, scrambled or not
   circuit    miters of two copies of a random AND/OR/XOR/ITE circuit written in
              different equivalent gate forms (sometimes with one gate changed)
 
@@ -184,6 +186,170 @@ def gen_php(rng: random.Random, max_vars: int) -> Formula:
         rng.shuffle(clauses)
     return Formula(pigeons * holes, clauses, f"php{pigeons}x{holes}",
                    expected="UNSAT" if pigeons > holes else "SAT")
+
+
+def _exactly_one_pairs(lits: list[int], clauses: list[list[int]]) -> None:
+    for i in range(len(lits)):
+        for j in range(i + 1, len(lits)):
+            clauses.append([-lits[i], -lits[j]])
+
+
+def gen_counting(rng: random.Random, max_vars: int) -> Formula:
+    """Counting principles for --counting (not in the default mix): pigeonhole (plain, functional,
+    clique formulas with k variables per pair), perfect matching of K_n, partition of n points into
+    triples, clique-colouring, graph colouring with a planted clique (a pigeonhole inside a larger
+    formula), relativized pigeonhole. Sometimes satisfiable (pigeons <= holes, even n, 3 | n, clique <= colours), scrambled
+    (renamed variables, flipped polarities), or with one clause added or removed."""
+    kind = rng.choice(["php", "fphp", "clique", "matching", "triples", "clqcl", "gcol", "rphp"])
+    sat = rng.random() < 0.25
+    clauses: list[list[int]] = []
+    if kind in ("php", "fphp", "clique"):
+        if kind == "clique":
+            parts, size = rng.randint(2, 4), rng.randint(1, 3)
+        else:
+            parts, size = rng.randint(3, 6), 1
+        # (the reference needs seconds from PHP 7 -> 6 on, and 20 s for 8 -> 7)
+        pigeons = rng.randint(max(2, parts - 1), parts) if sat else parts + (1 if parts > 4 else rng.choice([1, 2]))
+        holes = parts
+        verts = parts * size
+        x = lambda p, v: p * verts + v + 1  # noqa: E731
+        for p in range(pigeons):
+            row = [x(p, v) for v in range(verts)]
+            clauses.append(row)
+            if kind != "php":
+                _exactly_one_pairs(row, clauses)
+        for p in range(pigeons):
+            for q in range(p + 1, pigeons):
+                for v in range(verts):
+                    for w in range(verts):
+                        if v // size == w // size and (kind != "php" or v == w):
+                            clauses.append([-x(p, v), -x(q, w)])
+        nvars = pigeons * verts
+        name = f"{kind}{pigeons}x{holes}" + (f"x{size}" if kind == "clique" else "")
+        unsat = pigeons > holes
+    elif kind == "matching":
+        n = rng.choice([4, 6, 8]) if sat else rng.choice([5, 7, 9])
+        e, nvars = {}, 0
+        for a in range(n):
+            for b in range(a + 1, n):
+                nvars += 1
+                e[a, b] = e[b, a] = nvars
+        for a in range(n):
+            row = [e[a, b] for b in range(n) if b != a]
+            clauses.append(row)
+            _exactly_one_pairs(row, clauses)
+        name, unsat = f"matching{n}", n % 2 == 1
+    elif kind == "clqcl":
+        n, m = rng.randint(4, 5), 3  # (the reference needs 1 s for n = 5, 10 s for n = 6)
+        k = rng.randint(2, m) if sat else rng.choice([m + 1, m + 1, m + 2])
+        e, nvars = {}, 0
+        for u in range(n):
+            for v in range(u + 1, n):
+                nvars += 1
+                e[u, v] = e[v, u] = nvars
+        q = [[nvars + i * n + u + 1 for u in range(n)] for i in range(k)]
+        nvars += k * n
+        r = [[nvars + u * m + c + 1 for c in range(m)] for u in range(n)]
+        nvars += n * m
+        for row in q:
+            clauses.append(row)
+            _exactly_one_pairs(row, clauses)
+        for u in range(n):
+            for i in range(k):
+                for j in range(i + 1, k):
+                    clauses.append([-q[i][u], -q[j][u]])
+        for i in range(k):
+            for j in range(i + 1, k):
+                for u in range(n):
+                    for v in range(n):
+                        if u != v:
+                            clauses.append([-q[i][u], -q[j][v], e[u, v]])
+        for row in r:
+            clauses.append(row)
+            _exactly_one_pairs(row, clauses)
+        for u in range(n):
+            for v in range(u + 1, n):
+                for c in range(m):
+                    clauses.append([-e[u, v], -r[u][c], -r[v][c]])
+        name, unsat = f"clqcl{n}x{k}x{m}", k > m
+    elif kind == "rphp":
+        n = rng.randint(3, 5)
+        r = n + (rng.choice([0, 0, 1, 2]) if n < 5 else 0)  # (the reference: 4 to 9 s for 5 pigeons, 7 places)
+        h = rng.randint(n, n + 1) if sat else n - 1
+        pv = lambda i, u: i * r + u + 1  # noqa: E731
+        used = lambda u: n * r + u + 1  # noqa: E731
+        qv = lambda u, k: n * r + r + u * h + k + 1  # noqa: E731
+        nvars = n * r + r + r * h
+        for i in range(n):
+            clauses.append([pv(i, u) for u in range(r)])
+        for u in range(r):
+            for i in range(n):
+                for j in range(i + 1, n):
+                    clauses.append([-pv(i, u), -pv(j, u)])
+                clauses.append([-pv(i, u), used(u)])
+            clauses.append([-used(u)] + [qv(u, k) for k in range(h)])
+        for u in range(r):
+            for v in range(u + 1, r):
+                for k in range(h):
+                    clauses.append([-used(u), -used(v), -qv(u, k), -qv(v, k)])
+        name, unsat = f"rphp{n}x{r}x{h}", n > h
+    elif kind == "gcol":
+        n, m = rng.randint(8, 14), rng.randint(3, 5)
+        clique = rng.randint(2, m) if sat else m + 1
+        p = rng.uniform(0.1, 0.3 if sat else 0.45)
+        x = lambda u, c: u * m + c + 1  # noqa: E731
+        nvars = n * m
+        amo = rng.random() < 0.5
+        for u in range(n):
+            row = [x(u, c) for c in range(m)]
+            clauses.append(row)
+            if amo:
+                _exactly_one_pairs(row, clauses)
+        for u in range(n):
+            for v in range(u + 1, n):
+                if (u < clique and v < clique) or rng.random() < p:
+                    for c in range(m):
+                        clauses.append([-x(u, c), -x(v, c)])
+        name = f"gcol{n}x{m}c{clique}"
+        unsat = clique > m
+        if not unsat:
+            sat = None  # (the random edges may still make it unsatisfiable)
+    else:
+        n = rng.choice([6]) if sat else rng.choice([4, 5, 7, 8])
+        through: list[list[int]] = [[] for _ in range(n)]
+        nvars = 0
+        for a in range(n):
+            for b in range(a + 1, n):
+                for c in range(b + 1, n):
+                    nvars += 1
+                    for p in (a, b, c):
+                        through[p].append(nvars)
+        for row in through:
+            clauses.append(row)
+            _exactly_one_pairs(row, clauses)
+        name, unsat = f"triples{n}", n % 3 != 0
+    expected = "UNSAT" if unsat else ("SAT" if sat is not None else None)
+    r = rng.random()
+    if r < 0.15:  # one more clause: still unsatisfiable if it was
+        clauses.append(_random_clause(rng, nvars, rng.randint(2, 3)))
+        name += "+1"
+        if not unsat:
+            expected = None
+    elif r < 0.25 and len(clauses) > 1:  # one clause less: may become satisfiable
+        del clauses[rng.randrange(len(clauses))]
+        name += "-1"
+        if unsat:
+            expected = None
+    if rng.random() < 0.5:
+        perm = list(range(1, nvars + 1))
+        rng.shuffle(perm)
+        flip = [rng.choice([1, -1]) for _ in range(nvars)]
+        clauses = [[perm[abs(l) - 1] * flip[abs(l) - 1] * (1 if l > 0 else -1) for l in c] for c in clauses]
+        for c in clauses:
+            rng.shuffle(c)
+        rng.shuffle(clauses)
+        name += "-scrambled"
+    return Formula(nvars, clauses, f"counting-{name}", expected=expected)
 
 
 def _xor_chain(rng: random.Random, xs: list[int], parity: int, next_var: int, clauses: list[list[int]]) -> int:
@@ -446,6 +612,7 @@ FAMILIES = {
     "php": (gen_php, 0.03),
     "parity": (gen_parity, 0.04),
     **{name: (fn, 0.13 / len(EDGE)) for name, fn in EDGE.items()},
+    "counting": (gen_counting, 0.0),  # not in the default mix (its seeds stay as they were)
 }
 
 
@@ -514,6 +681,8 @@ def _select(families: list[str] | None) -> tuple[list[str], list[float]]:
             else:
                 raise ValueError(f"unknown family {f!r}; known: edge, {', '.join(names)}")
         names = chosen
+        # Families outside the default mix get a weight when they are asked for.
+        return names, [FAMILIES[n][1] or 0.05 for n in names]
     return names, [FAMILIES[n][1] for n in names]
 
 

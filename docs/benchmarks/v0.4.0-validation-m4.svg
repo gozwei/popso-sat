@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 730 400" width="730" height="400" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<style>svg{--bg:#ffffff;--fg:#1f2328;--muted:#656d76;--grid:#d8dee4}@media (prefers-color-scheme: dark){svg{--bg:#0d1117;--fg:#e6edf3;--muted:#8d96a0;--grid:#30363d}}.s0{stroke:#2a78d6;fill:none}.t0{fill:#2a78d6}@media (prefers-color-scheme: dark){.s0{stroke:#3987e5}.t0{fill:#3987e5}}.s1{stroke:#eb6834;fill:none}.t1{fill:#eb6834}@media (prefers-color-scheme: dark){.s1{stroke:#d95926}.t1{fill:#d95926}}</style>
+<rect width="730" height="400" fill="var(--bg)"/>
+<text x="56" y="24" font-size="15" font-weight="600" fill="var(--fg)">validation (32 held out), 120 s, M4 Pro, paired</text>
+<text x="56" y="42" font-size="12" fill="var(--muted)">32 instances, time limit 120 s</text>
+<line x1="56.0" y1="58" x2="56.0" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="56.0" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">0.01</text>
+<line x1="189.9" y1="58" x2="189.9" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="189.9" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">0.1</text>
+<line x1="323.7" y1="58" x2="323.7" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="323.7" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">1</text>
+<line x1="457.6" y1="58" x2="457.6" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="457.6" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">10</text>
+<line x1="591.4" y1="58" x2="591.4" y2="354" stroke="var(--grid)" stroke-width="1"/>
+<text x="591.4" y="370" font-size="11" fill="var(--muted)" text-anchor="middle">100</text>
+<line x1="56" y1="354.0" x2="602" y2="354.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="358.0" font-size="11" fill="var(--muted)" text-anchor="end">0</text>
+<line x1="56" y1="261.5" x2="602" y2="261.5" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="265.5" font-size="11" fill="var(--muted)" text-anchor="end">10</text>
+<line x1="56" y1="169.0" x2="602" y2="169.0" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="173.0" font-size="11" fill="var(--muted)" text-anchor="end">20</text>
+<line x1="56" y1="76.5" x2="602" y2="76.5" stroke="var(--grid)" stroke-width="1"/>
+<text x="48" y="80.5" font-size="11" fill="var(--muted)" text-anchor="end">30</text>
+<text x="329.0" y="392" font-size="12" fill="var(--muted)" text-anchor="middle">time limit per instance (s, log scale)</text>
+<text x="14" y="206.0" font-size="12" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 14 206.0)">instances solved</text>
+<polyline class="s0" points="56.0,354.0 372.2,354.0 372.2,344.8 374.8,344.8 374.8,335.5 414.7,335.5 414.7,326.2 440.4,326.2 440.4,317.0 442.6,317.0 442.6,307.8 450.7,307.8 450.7,298.5 452.5,298.5 452.5,289.2 460.8,289.2 460.8,280.0 469.7,280.0 469.7,270.8 475.4,270.8 475.4,261.5 491.8,261.5 491.8,252.2 508.2,252.2 508.2,243.0 517.9,243.0 517.9,233.8 537.0,233.8 537.0,224.5 538.0,224.5 538.0,215.2 557.9,215.2 557.9,206.0 566.7,206.0 566.7,196.8 569.5,196.8 569.5,187.5 574.5,187.5 574.5,178.2 582.8,178.2 582.8,169.0 590.2,169.0 590.2,159.8 602.0,159.8" stroke-width="2" stroke-linejoin="round"/>
+<polyline class="s1" points="56.0,354.0 392.2,354.0 392.2,344.8 429.5,344.8 429.5,335.5 447.4,335.5 447.4,326.2 447.7,326.2 447.7,317.0 468.7,317.0 468.7,307.8 470.1,307.8 470.1,298.5 470.5,298.5 470.5,289.2 475.7,289.2 475.7,280.0 496.9,280.0 496.9,270.8 510.3,270.8 510.3,261.5 511.7,261.5 511.7,252.2 514.5,252.2 514.5,243.0 523.2,243.0 523.2,233.8 526.5,233.8 526.5,224.5 543.6,224.5 543.6,215.2 553.6,215.2 553.6,206.0 555.0,206.0 555.0,196.8 563.7,196.8 563.7,187.5 574.2,187.5 574.2,178.2 598.3,178.2 598.3,169.0 602.0,169.0" stroke-width="2" stroke-linejoin="round"/>
+<text x="610" y="163.8" font-size="12" font-weight="600" class="t0">popso-sat 0.4.0 (21)</text>
+<text x="610" y="177.8" font-size="12" font-weight="600" class="t1">popso-sat 0.3.4 (20)</text>
+</svg>

@@ -3,14 +3,18 @@
 //
 // The checker keeps the clause database (original clauses plus proof additions minus deletions)
 // and checks every added clause by unit propagation from its negation (RUP); failing that, by RAT
-// on its first literal p: for every clause D with -p, C v (D - {-p}) must be RUP. Propagation uses
-// occurrence lists with false-literal counters, rebuilt per check: fine for the small formulas
-// used in unit tests.
+// on its first literal p: for every clause D with -p, C v (D - {-p}) must be RUP. A line whose
+// first literal p occurs again is a PR line (DPR, as dpr-trim reads it): the clause C is the part
+// before the last repetition of p, the witness w the rest (starting with p); then every clause D
+// that w touches without satisfying it must have C v D|w RUP (D|w: D without the literals w
+// falsifies). Propagation uses occurrence lists with false-literal counters, rebuilt per check:
+// fine for the small formulas used in unit tests.
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -22,7 +26,7 @@ using ClauseList = std::vector<std::vector<int>>;
 struct RupResult {
   bool ok = false;
   bool has_empty = false;
-  size_t lemmas = 0, deletions = 0;
+  size_t lemmas = 0, deletions = 0, pr = 0;
   std::string error;
 };
 
@@ -70,8 +74,17 @@ class RupChecker {
         continue;
       }
       ++res.lemmas;
-      if (!rup(lits) && !rat(lits)) {
-        res.error = "lemma is neither RUP nor RAT: '" + line + "'";
+      std::vector<int> witness;
+      for (size_t i = lits.size(); i-- > 1;) {
+        if (lits[i] == lits[0]) {
+          witness.assign(lits.begin() + static_cast<std::ptrdiff_t>(i), lits.end());
+          lits.resize(i);
+          break;
+        }
+      }
+      if (!witness.empty()) ++res.pr;
+      if (!rup(lits) && !(witness.empty() ? rat(lits) : pr(lits, witness))) {
+        res.error = std::string("lemma is neither RUP nor ") + (witness.empty() ? "RAT" : "PR") + ": '" + line + "'";
         return res;
       }
       insert(lits);
@@ -111,6 +124,36 @@ class RupChecker {
       for (int l : d) {
         if (l != -p) r.push_back(l);
       }
+      if (!rup(r)) return false;
+    }
+    return true;
+  }
+
+  // PR with witness w: w consistent and satisfying c; for every clause D touched but not satisfied
+  // by w, c v D|w is RUP.
+  bool pr(const std::vector<int>& c, const std::vector<int>& w) {
+    std::set<int> ws(w.begin(), w.end());
+    for (int l : w) {
+      if (ws.count(-l)) return false;
+    }
+    bool satisfies = false;
+    for (int l : c) satisfies = satisfies || ws.count(l) != 0;
+    if (!satisfies) return false;
+    std::vector<std::vector<int>> todo;
+    for (const auto& kv : db_) {
+      bool sat = false, touched = false;
+      for (int l : kv.first) {
+        sat = sat || ws.count(l) != 0;
+        touched = touched || ws.count(-l) != 0;
+      }
+      if (sat || !touched) continue;
+      std::vector<int> r = c;
+      for (int l : kv.first) {
+        if (!ws.count(-l)) r.push_back(l);
+      }
+      todo.push_back(std::move(r));
+    }
+    for (const auto& r : todo) {
       if (!rup(r)) return false;
     }
     return true;

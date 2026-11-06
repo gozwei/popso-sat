@@ -11,7 +11,10 @@
 
 namespace psat {
 
-bool Solver::propagate() { return propagate_impl<false>(kNoReason); }
+bool Solver::propagate() {
+  if (gauss_on_) return propagate_with_gauss();  // (the detached Gauss-Jordan solver only)
+  return propagate_impl<false>(kNoReason);
+}
 
 // Vivification propagates without the clause being vivified, and books its ticks separately from
 // search. Both skip garbage clauses (deleted in the proof already) and drop their watches.
@@ -138,5 +141,10 @@ bool Solver::propagate_impl(uint32_t ignore) {
   }
   return !has_conflict_;
 }
+
+// Explicit instantiations: gauss.cpp calls propagate_impl<false> too, and with the calls here
+// inlined g++ -O3 emits no out-of-line copy (an undefined reference at link time).
+template bool Solver::propagate_impl<false>(uint32_t);
+template bool Solver::propagate_impl<true>(uint32_t);
 
 }  // namespace psat

@@ -55,10 +55,16 @@ def resolve_checker(spec: str | None, pydrat_max_mb: float):
     if spec in (None, "", "none"):
         return None
     if spec == "auto":
-        dt = paths.drat_trim()
-        if dt:
-            return Checker("drat-trim", [str(dt)], True)
+        # dpr-trim first: it also reads the PR lines of --counting, which drat-trim rejects.
+        for name, found in (("dpr-trim", paths.dpr_trim()), ("drat-trim", paths.drat_trim())):
+            if found:
+                return Checker(name, [str(found)], True)
         return Checker("pydrat", [sys.executable, str(PYDRAT)], False, pydrat_max_mb)
+    if spec == "dpr-trim":
+        dt = paths.dpr_trim()
+        if not dt:
+            raise FileNotFoundError(f"dpr-trim not found in {paths.strip_local(str(paths.tools_bin()))}/")
+        return Checker("dpr-trim", [str(dt)], True)
     if spec == "pydrat":
         return Checker("pydrat", [sys.executable, str(PYDRAT)], False, pydrat_max_mb)
     if spec == "drat-trim":

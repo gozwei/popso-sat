@@ -61,6 +61,9 @@ uint32_t Solver::conflict_level(Lit& forced, uint32_t& count) {
     tmp[1] = conflict_bin_[1];
     lits = tmp;
     n = 2;
+  } else if (conflict_ref_ == kGaussConflict) {
+    lits = gauss_conflict_.data();
+    n = static_cast<uint32_t>(gauss_conflict_.size());
   } else {
     Clause& c = clause(conflict_ref_);
     lits = c.lits();
@@ -79,7 +82,7 @@ uint32_t Solver::conflict_level(Lit& forced, uint32_t& count) {
       ++count;
     }
   }
-  if (conflict_ref_ != kNoReason) {
+  if (conflict_ref_ != kNoReason && conflict_ref_ != kGaussConflict) {
     for (uint32_t i = 0; i < 2; ++i) {
       const Lit lit = lits[i];
       uint32_t best = i, best_level = vdata_[var_of(lit)].level;
@@ -149,6 +152,9 @@ bool Solver::analyze() {
     tmp[1] = conflict_bin_[1];
     lits = tmp;
     n = 2;
+  } else if (conflict_ref_ == kGaussConflict) {
+    lits = gauss_conflict_.data();
+    n = static_cast<uint32_t>(gauss_conflict_.size());
   } else {
     Clause& c = clause(conflict_ref_);
     if (c.redundant) bump_reason_clause(conflict_ref_);
@@ -179,7 +185,9 @@ bool Solver::analyze() {
     } while (!(flags_[var_of(uip)] & kSeen) || vdata_[var_of(uip)].level != cur);
     if (--open == 0) break;
     const uint32_t r = vdata_[var_of(uip)].reason;
-    if (r & kBinaryTag) {
+    if (r >= kGaussTag) {  // (never kNoReason: uip is implied)
+      lits = gauss_reason(r, n);
+    } else if (r & kBinaryTag) {
       tmp[0] = r & ~kBinaryTag;
       lits = tmp;
       n = 1;
@@ -305,7 +313,14 @@ void Solver::shrink_clause() {
             if (opts_.shrink < 2 || !minimize_literal(negate(o), 1)) ok = false;
           }
         };
-        if (r & kBinaryTag) {
+        if (r >= kGaussTag) {
+          uint32_t n;
+          const Lit* lits = gauss_reason(r, n);
+          for (uint32_t k = 0; k < n && ok; ++k) {
+            if (var_of(lits[k]) != v) visit(lits[k]);
+          }
+          steps += n;
+        } else if (r & kBinaryTag) {
           visit(r & ~kBinaryTag);
         } else {
           const Clause& c = clause(r);
@@ -353,12 +368,19 @@ bool Solver::minimize_literal(Lit lit, uint32_t depth) {
   if (depth > static_cast<uint32_t>(opts_.minimizedepth)) return false;
   bool res = true;
   const uint32_t r = d.reason;
-  if (r & kBinaryTag) {
+  if ((r & kBinaryTag) && r < kGaussTag) {
     res = minimize_literal(negate(r & ~kBinaryTag), depth + 1);
   } else {
-    const Clause& c = clause(r);
-    const Lit* lits = c.lits();
-    for (uint32_t k = 0; k < c.size; ++k) {
+    uint32_t n;
+    const Lit* lits;
+    if (r >= kGaussTag) {
+      lits = gauss_reason(r, n);
+    } else {
+      const Clause& c = clause(r);
+      lits = c.lits();
+      n = c.size;
+    }
+    for (uint32_t k = 0; k < n; ++k) {
       const Lit o = lits[k];
       if (var_of(o) == v) continue;
       if (!minimize_literal(negate(o), depth + 1)) {
@@ -378,7 +400,7 @@ void Solver::bump_reason_literals() {
   for (size_t k = 1; k < learned_.size(); ++k) {
     const uint32_t r = vdata_[var_of(learned_[k])].reason;
     if (r == kNoReason) continue;
-    if (r & kBinaryTag) {
+    if ((r & kBinaryTag) && r < kGaussTag) {
       const Var u = var_of(r & ~kBinaryTag);
       if (!flags_[u] && vdata_[u].level) {
         flags_[u] = kSeen;
@@ -386,9 +408,16 @@ void Solver::bump_reason_literals() {
       }
       continue;
     }
-    const Clause& c = clause(r);
-    const Lit* lits = c.lits();
-    for (uint32_t m = 0; m < c.size; ++m) {
+    uint32_t n;
+    const Lit* lits;
+    if (r >= kGaussTag) {
+      lits = gauss_reason(r, n);
+    } else {
+      const Clause& c = clause(r);
+      lits = c.lits();
+      n = c.size;
+    }
+    for (uint32_t m = 0; m < n; ++m) {
       const Var u = var_of(lits[m]);
       if (flags_[u] || !vdata_[u].level) continue;
       flags_[u] = kSeen;
@@ -450,6 +479,7 @@ void Solver::eager_subsume() {
 
 void Solver::backtrack(uint32_t new_level) {
   if (level() <= new_level) return;
+  if (gauss_on_) gauss_backtrack(new_level);
   const uint32_t start = control_[new_level];
   size_t j = start;
   if (opts_.chrono) {

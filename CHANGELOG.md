@@ -1,5 +1,82 @@
 # Changelog
 
+## v0.4.0 — 2026-11-06
+
+Counting certificates: pigeonhole, parity and counting formulas are refuted before search, with
+proofs in the DPR format. Gauss-Jordan elimination on XOR constraints. Shorter learned clauses,
+a larger BVA budget, and focused-mode restarts without bursts. All are on by default.
+On a sample of 168 SAT Competition 2026 instances (Intel i7-7700K, Linux, 1000 s): 98 solved,
+PAR-2 926 s (0.3.3: 67, 1304 s); all 61 UNSAT answers were verified with their proofs. On the
+Apple M4 Pro (120 s, run in alternation with 0.3.4 on a shared machine): unsat26 22 solved
+(0.3.4: 22), tune 25 (25), held-out validation 21 (20). See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Counting certificates** (`--counting`, on by default):
+  - Before search (and before BVA / BVE, which re-encode the at-most-one cliques), the solver
+    looks for a pigeonhole system (PHP, functional PHP, clique formulas), a parity system
+    (perfect matching of an odd complete graph), Count^3, clique-colouring or a relativized
+    pigeonhole over the whole formula, and for pigeonhole systems inside larger formulas
+    (graph colouring with a clique larger than the number of colours, register allocation). A
+    sign map handles shuffled polarities.
+  - An embedded pigeonhole is refuted in isolation: a separate solver refutes the subsystem,
+    and the proof deletes the other clauses on its variables before the sub-proof.
+  - A structure found is refuted with symmetry-style PR clauses (2 literals, 4-literal
+    witnesses) plus RUP units: polynomially many lines where resolution needs exponentially
+    many steps.
+  - Every PR clause is checked by the solver before it is written. A failed check writes
+    nothing and abandons the structure. Inputs with duplicate literals or tautologies are left
+    alone (dpr-trim would read a different formula).
+  - Without a structure the search is unchanged; the pass costs a median of 0.000 s and at most
+    0.8 s on 265 instances.
+  - sc2026 (1000 s): 27 of the 168 instances are refuted this way, in at most 2.5 s; 0.3.3
+    solved 2 of them. The families: chnl, count, clique-coloring, clique formulas, coloring,
+    graph colouring, exam scheduling, fpga routing, register allocation, sudoku-php and
+    relativized pigeonhole. The homer instances (independent pigeonholes), which 0.3.4 solves
+    with BVA in 20-127 s (M4, 300 s runs), take 0.01 s.
+  - Proofs: PR lines are written in both the text and the binary format. Check them with
+    dpr-trim (-L, then cake_lpr for a verified check); drat-trim rejects them. All 27 sc2026
+    refutations pass the competition chain (dpr-trim -L, then the verified cake_lpr): proofs of
+    0.01-3.2 MB, checked in 0.1 s to 1 h (exam_90_80: dpr-trim 2729 s, cake_lpr 886 s).
+- **Gauss-Jordan elimination** (`--gauss`, on by default):
+  - XOR constraints are taken from complete clause encodings of up to 6 variables, also where up
+    to a quarter of an encoding is subsumed by shorter clauses.
+  - An inconsistent XOR system is refuted before search (`--gaussproof`), with a DRAT proof
+    that sums the XORs as chains of extension variables: lights-out and Tseitin formulas
+    (urquhart3_25bis 4.1 s → 0.01 s).
+  - Otherwise, if the XORs cover a tenth of the clauses (`--gaussmin`), a detached copy of the
+    solver with Gauss-Jordan propagation searches besides the main one. It writes no proof,
+    and only a model can come back from it. Its share of the search effort adapts
+    (`--gaussadapt`): it doubles while Gauss-Jordan finds a tenth of the copy's conflicts,
+    halves below 1%, and the copy stops below 1/64.
+  - Results: mdp-28-10-sat not solved in 120 s → 0.03 s; on sc2026, two satisfiable lights-out
+    instances (0.03 s), par32-4 and par32-4-c (25 and 6 s), two-trees-1023v (0.01 s) and
+    mod2-rand3bip (96 → 0.01 s).
+- **Shorter learned clauses** (`--shrink=2` by default): learned clauses are shrunk to block
+  UIPs, including lower-level reason literals that are implied.
+  - Learned clauses had been up to 3x longer than Kissat's where clauses are long
+    (battleship-14-26 157 -> 43 literals, station-repacking 72 -> 23).
+  - Propagation is faster with shorter clauses: station-repacking 41k -> 113k conflicts/s
+    (Kissat 59k), 3.2M -> 9.4M propagations/s (Kissat 9.7M).
+- **Focused-mode restarts** (`--restartgrow=1` by default): the minimum interval between restarts
+  grows with the decimal logarithm of the restart count. Restarts no longer come in bursts
+  (3.5-10 conflicts per restart before, 9-15 now). Paired M4 screening at 120 s: one more
+  instance on each small set.
+- **BVA budget** (`--bvaticks` 100M floor; `--bvavars` no cap): BVA's budget counted no binary
+  clauses and its variables were capped at a tenth of the formula's. On binary-heavy formulas
+  the trial stopped at 0.3% where Kissat's factoring removes more than half the clauses.
+  rpoc_xits_09 (bioinformatics, sc2026): BVA now removes 104k clauses and adds 29k, and the
+  instance is refuted in 10 s (not solved in 1000 s before).
+- **Robustness:**
+  - Running out of memory gives `s UNKNOWN` everywhere: setup, parsing, the xz dictionary,
+    model output (written through a fixed buffer), and the first exception thrown (macOS
+    libc++abi allocated its exception state then). Tested with allocation-failure injection
+    and heap limits (benchmarks/fuzz/oomfuzz.py), and with `ulimit -v` on Linux.
+  - `--mem-limit` counts the peak resident size of the process and stops at 7/8 of the limit,
+    also inside elimination rounds.
+  - All-options fuzzing (benchmarks/fuzz/all_options.txt): 301,555 formulas plus 16,748 under
+    ASan + UBSan, no wrong answer, crash or rejected proof.
+- **Probing:** `--probeuip` (off) learns the first UIP of a failed probe.
+- **Benchmarks:** run.py and fuzz.py check proofs with dpr-trim when it is built.
+
 ## v0.3.4 — 2026-11-05
 
 Bounded variable addition on by default, with a trial that keeps it to the formulas it helps;

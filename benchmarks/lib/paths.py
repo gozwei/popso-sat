@@ -69,6 +69,11 @@ def drat_trim() -> Path | None:
     return p if p.exists() and os.access(p, os.X_OK) else None
 
 
+def dpr_trim() -> Path | None:
+    p = tools_bin() / "dpr-trim"
+    return p if p.exists() and os.access(p, os.X_OK) else None
+
+
 def resolve_instance(rel: str) -> Path:
     """Instance path from a set file: absolute, or relative to the repository, or relative to
     the cache directory (first existing wins; the cache path is returned if neither exists)."""

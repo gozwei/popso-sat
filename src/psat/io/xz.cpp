@@ -684,12 +684,9 @@ class XzDecoder {
   }
 
   void allocate(size_t n) {
-    std::unique_ptr<unsigned char[]> w;
-    try {
-      w.reset(new unsigned char[n]);
-    } catch (const std::bad_alloc&) {
-      fail("out of memory for the LZMA2 dictionary (" + std::to_string(n >> 20) + " MiB)");
-    }
+    // Out of memory is std::bad_alloc here as elsewhere (not a decoding error: the solver answers
+    // UNKNOWN); n is at most kMaxWindow.
+    std::unique_ptr<unsigned char[]> w(new unsigned char[n]);
     if (pos_ > 0) std::memcpy(w.get(), win_.get(), pos_);
     win_ = std::move(w);
     alloc_ = n;

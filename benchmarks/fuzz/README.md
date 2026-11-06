@@ -6,13 +6,15 @@ and `python-sat` (the repo venv: `.venv/bin/python`, `pip install python-sat`).
 
 | file | what |
 |---|---|
-| `gen.py` | deterministic (seeded) CNF generators: random k-SAT, mixed lengths, cnfuzz-style layered formulas, edge cases, pigeonhole, parity |
+| `gen.py` | deterministic (seeded) CNF generators: random k-SAT, mixed lengths, cnfuzz-style layered formulas, edge cases, pigeonhole, parity; counting principles for `--counting` (`--family counting` only) |
 | `fuzz.py` | the fuzz loop: generate, solve with the reference, run the solver under test, check, save and shrink failures |
 | `ddmin.py` | delta debugging of a failing CNF (clauses, then literals, then variable renumbering) |
 | `fuzzlib.py` | shared code: solver runs, output parsing, model and proof checks, the failure classification |
 | `buggy_solver.py` | a stand-in implementing the popso-sat CLI on top of PySAT, with injectable bugs (to validate the tools) |
 | `selftest.py` | runs fuzz.py + ddmin against every injectable bug and a clean stand-in; expects each bug found, no false alarms |
 | `rupcheck.py` | minimal RUP proof checker on PySAT, a fallback when drat-trim is not built (RUP only, no RAT) |
+| `all_options.txt` | every solver option with its valid range, for `--option-ranges` |
+| `oomfuzz.py`, `oom/` | out-of-memory testing: allocation failure injection, a heap limit for macOS (see below) |
 
 Failures go to `benchmarks/fuzz/failures/` (gitignored; `--failures-dir` to change).
 
@@ -60,10 +62,12 @@ result is classified (first match wins):
 | `reference-wrong` | sanity check of the oracle: a verified model contradicts the reference or the generator's known status |
 
 An `s UNKNOWN` that arrives early (e.g. a fuzzed `--conflicts` limit) is counted, not
-flagged. Proofs: `--checker auto` (default) uses drat-trim from
-`benchmarks/tools/build/bin/drat-trim`, looked up in this checkout and in the main
-checkout (parent of `git rev-parse --git-common-dir`); without it proof checks are
-skipped and the run says so once. `--checker rupcheck` uses the slow Python fallback;
+flagged. Proofs: `--checker auto` (default) uses dpr-trim, else drat-trim, from
+`benchmarks/tools/build/bin/`, looked up in this checkout and in the main
+checkout (parent of `git rev-parse --git-common-dir`); without either, proof checks are
+skipped and the run says so once. dpr-trim also checks the PR lines that `--counting`
+writes (drat-trim rejects them); `--family counting` generates the formulas for it.
+`--checker rupcheck` uses the slow Python fallback;
 `--checker '<cmd>'` any drat-trim-compatible command (`<cmd> <cnf> <proof>`, prints
 `s VERIFIED`). `--proof always` requests proofs even without a checker (exercises the
 proof writer; only `proof-missing` is then detected). Formulas containing the empty
@@ -144,6 +148,46 @@ else the header is lowered towards the largest used variable (bisection). Result
 `-j` at a time (default 2, max 4) and the first failing one in order wins, so the result
 does not depend on `-j`; `--max-tests` (default 5000) bounds the solver runs (the
 smallest failing formula so far is kept). For `hang`/`timeout` pass a small `-t`.
+
+## All options
+
+`all_options.txt` lists every option of `src/psat/core/options.hpp` except `seed`, `verbose` and
+`check`, with its valid range (sub-ranges sized for fuzz formulas where the range is huge: small
+intervals and budgets run the inprocessing passes often). The full sweep:
+
+```sh
+.venv/bin/python benchmarks/fuzz/fuzz.py --option-ranges benchmarks/fuzz/all_options.txt --option-prob 0.3 -j 2 -t 5
+```
+
+## Out of memory (`oomfuzz.py`, `oom/`)
+
+Running out of memory must end in `s UNKNOWN`, never a crash, an error exit or a partial answer.
+Two ways to force it:
+
+- `oom/alloc_fail.cpp`, linked into the CLI, makes operator new fail at the N-th allocation
+  (`PSAT_FAIL_AT=N`, once or with `PSAT_FAIL_PERSIST=1` from then on). `oomfuzz.py` runs fuzz
+  formulas with fuzzed options at a sample of N (always 1, 2, 3 and the last) and checks every
+  run with `fuzzlib.check`:
+
+  ```sh
+  c++ -std=c++20 -O2 -DNDEBUG -DPSAT_VERSION='"oom"' -Isrc apps/popso_sat_main.cpp \
+      benchmarks/fuzz/oom/alloc_fail.cpp build/libpsat_lib.a -o build/popso-sat-oom
+  .venv/bin/python benchmarks/fuzz/oomfuzz.py --solver build/popso-sat-oom --seed 9100000 --count 200
+  ```
+
+- A real heap limit on large instances: `ulimit -v <KB>` on Linux; on macOS (where it cannot be
+  set) the malloc interposer `oom/heaplimit.c` refuses allocations once the live heap would exceed
+  `PSAT_HEAP_LIMIT_MB`, which also exercises realloc of the clause arena and the C++ runtime:
+
+  ```sh
+  cc -O2 -dynamiclib benchmarks/fuzz/oom/heaplimit.c -o build/heaplimit.dylib
+  env DYLD_INSERT_LIBRARIES=build/heaplimit.dylib PSAT_HEAP_LIMIT_MB=1300 build/popso-sat big.cnf.xz
+  ```
+
+Results 2026-11-05 (v0.3.4 + fixes): oomfuzz 200 formulas, 10372 runs, all `s UNKNOWN` (the
+base CLI: 952 error exits and 48 aborts in 3054 runs); heap limits of 100..1700 MB on two
+300+ MB sc2026 instances, all `s UNKNOWN` (before: exit 1 for the xz dictionary, SIGSEGV in the
+first throw at 1250..1350 MB).
 
 ## Validating the tools: `buggy_solver.py`
 

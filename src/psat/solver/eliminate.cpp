@@ -277,6 +277,9 @@ void Solver::eliminate() {
   size_t tried = 0;
   for (; tried < cands.size(); ++tried) {
     if (inconsistent_ || budget - elim_start > limit) break;
+    // Over the memory limit (eliminations with a bound add clauses), the round ends here and the
+    // search stops at its next limit check.
+    if (memory_limit_ && (tried & 255) == 0 && memory_exceeded(false)) break;
     touched_[cands[tried].second] = 0;
     try_eliminate(cands[tried].second, bound, budget);
   }
@@ -350,6 +353,8 @@ void Solver::eliminate() {
     }
     std::fflush(stdout);
   }
+  // Statistics only: what detection sees after BVE / BVA (--cardinality=2).
+  if (opts_.cardinality >= 2 && eliminate_rounds_ == 1) detect_cardinality("after round 1");
 }
 
 namespace {
@@ -710,7 +715,11 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
 void Solver::extend_model() {
   model_.assign(num_vars_, -1);
   for (Var v = 0; v < num_vars_; ++v) model_[v] = vals_[make_lit(v, false)] > 0 ? 1 : -1;
-  size_t i = extension_.size();
+  reconstruct_model(extension_.size());
+}
+
+void Solver::reconstruct_model(size_t end_size) {
+  size_t i = end_size;
   while (i > 0) {
     const size_t end = i - 1;  // the kNoLit terminator
     size_t start = end;

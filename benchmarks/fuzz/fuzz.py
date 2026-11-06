@@ -4,7 +4,7 @@
 For each seed, gen.py builds a formula; the PySAT reference (default
 cadical195) solves it in-process; the solver under test runs on it with a time
 limit; fuzzlib.check() classifies the result (status agreement, model check
-including coverage of all variables, proof check with drat-trim when built,
+including coverage of all variables, proof check with dpr-trim (else drat-trim) when built,
 crashes, malformed output, exit codes, hangs). Failures are saved to
 benchmarks/fuzz/failures/ (formula + solver arguments + kind) and, with
 --shrink, minimized by ddmin.py.
@@ -196,7 +196,8 @@ def main(argv=None) -> int:
     ap.add_argument("-t", "--time-limit", type=float, default=10.0, help="per-run solver time limit (default 10 s)")
     ap.add_argument("--reference", default="cadical195", help="PySAT reference solver (default cadical195)")
     ap.add_argument("--checker", default="auto",
-                    help="proof checker: auto (drat-trim if built), none, drat-trim, rupcheck, or a command")
+                    help="proof checker: auto (dpr-trim if built, else drat-trim), none, dpr-trim, drat-trim, rupcheck, "
+                         "or a command")
     ap.add_argument("--proof", choices=["auto", "always", "never"], default="auto",
                     help="request proofs: auto = when a checker is available")
     ap.add_argument("--proof-style", choices=["positional", "option"], default="positional",

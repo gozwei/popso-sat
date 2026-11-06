@@ -158,23 +158,77 @@ void Solver::probe_failed_literals(uint64_t ticks_limit) {
     if (implies && !implied) roots.push_back(l);
   }
   for (const Lit r : roots) {
+    // With --probeuip a failed probe learns the negation of the conflict's first unique
+    // implication point, which the probe implies; while the probe stays unassigned after that
+    // unit, it is probed again (each round fixes a new variable).
+    while (!inconsistent_ && stats_.vivify_ticks <= ticks_limit && vals_[r] == 0) {
+      ++stats_.probes;
+      control_.push_back(static_cast<uint32_t>(trail_.size()));
+      assign(r, kNoReason);
+      const bool ok = propagate_vivify(kNoReason);
+      const Lit uip = ok || !opts_.probeuip ? r : probe_uip();
+      backtrack(0);
+      if (ok) break;
+      ++stats_.failed_literals;
+      if (uip != r) ++stats_.probe_uips;
+      const Lit unit = negate(uip);
+      if (proof_) proof_->add_unit(unit);
+      assign(unit, kNoReason);
+      if (!propagate_vivify(kNoReason)) {
+        inconsistent_ = true;
+        if (proof_) proof_->add_empty();
+      }
+    }
     if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
-    if (vals_[r] != 0) continue;
-    ++stats_.probes;
-    control_.push_back(static_cast<uint32_t>(trail_.size()));
-    assign(r, kNoReason);
-    const bool ok = propagate_vivify(kNoReason);
-    backtrack(0);
-    if (ok) continue;
-    ++stats_.failed_literals;
-    const Lit unit = negate(r);
-    if (proof_) proof_->add_unit(unit);
-    assign(unit, kNoReason);
-    if (!propagate_vivify(kNoReason)) {
-      inconsistent_ = true;
-      if (proof_) proof_->add_empty();
+  }
+}
+
+// The first unique implication point of the conflict of a failed probe (all of its implications
+// are on level 1). Every path from the probe to the conflict passes through it, so its negation
+// is a unit (RUP: assigning it propagates to the same conflict), implied by the negated probe.
+Lit Solver::probe_uip() {
+  probe_marked_.clear();
+  uint32_t open = 0;
+  size_t i = trail_.size();
+  Lit uip = kNoLit;
+  Lit tmp[2];
+  const Lit* lits;
+  uint32_t n;
+  if (conflict_ref_ == kNoReason) {
+    tmp[0] = conflict_bin_[0];
+    tmp[1] = conflict_bin_[1];
+    lits = tmp;
+    n = 2;
+  } else {
+    const Clause& c = clause(conflict_ref_);
+    lits = c.lits();
+    n = c.size;
+  }
+  for (;;) {
+    for (uint32_t k = 0; k < n; ++k) {
+      const Var v = var_of(lits[k]);
+      if (flags_[v] || vdata_[v].level == 0) continue;
+      flags_[v] = kSeen;
+      probe_marked_.push_back(v);
+      ++open;
+    }
+    do {
+      uip = trail_[--i];
+    } while (!(flags_[var_of(uip)] & kSeen));
+    if (--open == 0) break;
+    const uint32_t r = vdata_[var_of(uip)].reason;
+    if (r & kBinaryTag) {
+      tmp[0] = r & ~kBinaryTag;
+      lits = tmp;
+      n = 1;
+    } else {
+      const Clause& c = clause(r);
+      lits = c.lits();
+      n = c.size;
     }
   }
+  for (const Var v : probe_marked_) flags_[v] = 0;
+  return uip;
 }
 
 bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {

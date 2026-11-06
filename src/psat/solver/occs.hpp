@@ -40,6 +40,7 @@ class OccLists {
     pool_.shrink_to_fit();
   }
   size_t lists() const { return heads_.size(); }
+  size_t bytes() const { return heads_.capacity() * sizeof(Head) + pool_.capacity() * sizeof(uint32_t); }
   uint32_t size(size_t l) const { return heads_[l].size; }
   uint32_t* begin(size_t l) { return pool_.data() + heads_[l].begin; }
   uint32_t* end(size_t l) { return begin(l) + heads_[l].size; }

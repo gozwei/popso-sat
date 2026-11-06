@@ -17,11 +17,15 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "psat/core/options.hpp"
 #include "psat/core/types.hpp"
 #include "psat/core/word_arena.hpp"
+#include "psat/solver/gauss.hpp"
 #include "psat/solver/heap.hpp"
 #include "psat/solver/kitten.hpp"
 #include "psat/solver/occs.hpp"
@@ -51,6 +55,12 @@ constexpr uint32_t kHeaderWords = 3;
 constexpr uint32_t kBinaryTag = 0x80000000u;
 constexpr uint32_t kNoReason = 0xFFFFFFFFu;
 constexpr uint32_t kMaxArenaWords = 0x7FFFFFF0u;
+// Gauss-Jordan reasons (--gauss, detached solver only): kGaussTag | offset into the reason buffer.
+// Binary reasons are kBinaryTag | literal with literals below 2^29, so both tags test true for
+// (reason & kBinaryTag) and the two are told apart by reason >= kGaussTag (kNoReason excluded).
+constexpr uint32_t kGaussTag = 0xC0000000u;
+constexpr uint32_t kGaussMask = 0x3FFFFFFFu;
+constexpr uint32_t kGaussConflict = 0x7FFFFFFFu;  // conflict_ref_ of a Gauss-Jordan conflict
 
 struct Watch {
   Lit blit;      // blocking literal (the other literal for binary clauses)
@@ -118,7 +128,25 @@ struct Reluctant {
 // Wall time per pass (top-level passes, and the sub-passes of elimination and vivification).
 enum Pass : uint8_t {
   kPassEliminate, kPassSubstitute, kPassCongruence, kPassSubsume, kPassBva,
-  kPassVivify, kPassProbe, kPassSweep, kPassWalk, kPassReduce, kPassLucky, kPassUnhide, kPassSimulate, kPassCount
+  kPassVivify, kPassProbe, kPassSweep, kPassWalk, kPassReduce, kPassLucky, kPassUnhide, kPassSimulate, kPassCounting,
+  kPassGauss,
+  kPassCount
+};
+
+// Cardinality constraints found by detection (cardinality.cpp; --cardinality, statistics only).
+struct CardinalityStats {
+  uint64_t amo = 0, amo_lits = 0, amo_pos = 0, amo_neg = 0, amo_mixed = 0;  // cliques of >= 3 literals
+  uint64_t amo_binaries = 0;     // binary clauses inside those cliques
+  uint64_t eo = 0, eo_clique = 0, eo_exact = 0, eo_big = 0;  // clauses that are exactly-one constraints
+  uint64_t eo_lits = 0;
+  uint64_t amk = 0, amk_lits = 0, amk_candidates = 0, amk_merged = 0;  // at-most-k (k >= 1) over auxiliary encodings
+  uint64_t vars_active = 0, vars_covered = 0, vars_covered4 = 0, vars_amo2 = 0;  // 4: in one of >= 4 literals; amo2: in 2+ cliques
+  uint64_t binaries = 0, long_clauses = 0, clauses_covered = 0;
+  uint64_t work = 0;
+  uint8_t incomplete = 0;  // phases that ran out of budget: 1 amo, 2 eo, 4 amk, 8 amk skipped (size)
+  double seconds = 0, phase_seconds[4] = {};  // build, amo, eo, amk
+  std::vector<uint32_t> amo_sizes, eo_sizes;
+  std::vector<std::pair<uint32_t, uint32_t>> amk_sizes;  // (literals, k)
 };
 
 struct Stats {
@@ -138,11 +166,15 @@ struct Stats {
   uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0, sweep_flips = 0, sweep_solves = 0, sweep_kitten_ticks = 0;
   uint64_t simulations = 0, sim_gates = 0, sim_candidates = 0, sim_checked = 0, sim_equivalences = 0, sim_units = 0,
            sim_failed = 0, sim_ticks = 0, sim_ites = 0;
-  uint64_t probes = 0, failed_literals = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
+  uint64_t probes = 0, failed_literals = 0, probe_uips = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0, bva_trials = 0, bva_rounds = 0;
   uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
+  // Counting certificates (counting.cpp): structures found, PR clauses and units added, structures
+  // abandoned (a failed check) or skipped (over budget), work units (detection included).
+  uint64_t counting_found = 0, counting_pr = 0, counting_units = 0, counting_lemmas = 0, counting_failed = 0,
+           counting_skipped = 0, counting_work = 0;
 };
 
 class Solver {
@@ -173,12 +205,16 @@ class Solver {
   void set_memory_limit(uint64_t bytes) { memory_limit_ = bytes; }
 
   const Stats& stats() const { return stats_; }
+  // The first cardinality detection run (--cardinality).
+  const CardinalityStats& cardinality_stats() const { return card_stats_; }
+  // XOR detection and Gauss-Jordan elimination (--gauss).
+  const GaussStats& gauss_stats() const { return gauss_stats_; }
   const Options& options() const { return opts_; }
   // Why the last solve() returned kUnknown ("" otherwise).
   const char* unknown_reason() const { return unknown_reason_; }
   size_t memory_bytes() const;
   double seconds() const;
-  static double peak_rss_mb();  // of the process (getrusage), for diagnostics
+  static double peak_rss_mb();  // of the process (getrusage)
   void print_statistics(std::FILE* out) const;
 
  private:
@@ -263,6 +299,7 @@ class Solver {
   void switch_mode();
   void update_conflict_statistics(uint32_t glue);
   bool check_limits();
+  bool memory_exceeded(bool accounting) const;
   void debug_check(const char* where);
 
   // --- clause database maintenance ------------------------------------------------------------
@@ -295,6 +332,7 @@ class Solver {
   void touch_clause(const Lit* lits, uint32_t size);
   void push_extension(Lit witness, const Lit* lits, uint32_t size);
   void extend_model();
+  void reconstruct_model(size_t end);  // model_ through the reconstruction stack [0, end)
   void walk();
   bool lucky();
   bool vivifying() const { return opts_.vivify && stats_.conflicts >= vivify_limit_; }
@@ -305,6 +343,7 @@ class Solver {
   bool irredundant_binary(Lit a, Lit b);
   bool viv_used_redundant_ = false;  // the last vivify_analyze used a learned clause
   void probe_failed_literals(uint64_t ticks_limit);
+  Lit probe_uip();
   void unhide(uint64_t ticks_limit);
   std::vector<uint32_t> unhide_start_, unhide_dsc_, unhide_fin_;
   std::vector<Lit> unhide_target_;
@@ -318,6 +357,93 @@ class Solver {
   bool sweep_add(const Lit* lits, uint32_t size);
   void sweep_retire_learned();
   void simulate_equivalences();
+  void detect_cardinality(const char* when);  // statistics only: reads the clauses, changes nothing
+  // Counting certificates (counting.cpp, --counting): PR refutations of detected pigeonhole,
+  // parity and Count^3 systems, before search.
+  struct CountingState;
+  void counting();
+  bool counting_detect(CountingState& st);
+  bool counting_certify(CountingState& st);
+  bool counting_detect_clique(CountingState& st);
+  bool counting_detect_rphp(CountingState& st);
+  bool counting_detect_embedded(CountingState& st);
+  bool counting_isolated(CountingState& st);
+  bool counting_add(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
+  bool counting_add_unit(CountingState& st, Lit u);
+  bool counting_check_pr(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
+  bool counting_implied(CountingState& st, const Lit* lits, size_t n);
+  bool counting_refutes(const Lit* lits, size_t n);
+  bool counting_tried_ = false;
+  bool counting_added_ = false;  // PR clauses were added: later clauses could make them unsound
+  std::string counting_desc_;    // the structure found (statistics)
+  // An input clause was a tautology (dropped here, kept by the checker) or repeated a literal
+  // (dpr-trim reads a clause whose first literal repeats as a PR line: the clause up to the
+  // repetition, with the rest as a witness, so its formula is not ours). PR checks need the
+  // checker's clauses to be the solver's (plus satisfied ones): no counting certificates then.
+  bool input_irregular_ = false;
+  // An input clause lost root-false literals: the checker keeps the longer clause, which the
+  // deletions of an isolated refutation (counting_isolated) cannot name.
+  bool input_shortened_ = false;
+  bool counting_isolated_ = false;  // this solver refutes an isolated subsystem (no nested search for one)
+
+  // --- Gauss-Jordan elimination (gauss.cpp, --gauss) ------------------------------------------
+  // The main solver extracts XORs and, if the formula has enough of them, runs a detached solver
+  // (gauss_sub_: a copy of the irredundant clauses, Gauss-Jordan propagation on, no proof, no
+  // elimination) in rounds besides its own search. Only a model can come back from it (extended
+  // with the main solver's reconstruction stack as of the copy); nothing it learns reaches the
+  // main solver's clauses or the proof.
+  void extract_xors(XorList& out, uint64_t max_size);
+  bool gauss_start();   // true: the detached solver found a model (imported); inconsistent_: refuted
+  bool gauss_refute(const XorList& xors);
+  bool gauss_prove(const std::vector<uint32_t>& rows, const XorList& xors);
+  bool gauss_round();   // true: likewise
+  bool gauss_run(uint64_t ticks);
+  void gauss_import_model();
+  bool gauss_due() const { return gauss_sub_ && stats_.ticks >= gauss_next_ticks_; }
+  // Gauss-Jordan propagation (in the detached solver).
+  bool gauss_init(const XorList& xors);  // false: the XORs are inconsistent
+  bool propagate_with_gauss();
+  bool gauss_propagate();
+  bool gauss_process_queue();
+  bool gauss_fix_row(uint32_t m, uint32_t r, uint32_t trigger);
+  void gauss_pivot(uint32_t m, uint32_t r, uint32_t col, uint32_t trigger);
+  // trigger: the column whose assignment queued the row (kNone: pivot or reopen).
+  void gauss_enqueue(uint32_t m, uint32_t r, uint32_t trigger = UINT32_MAX) {
+    GaussMatrix& M = gauss_mats_[m];
+    if (M.queued[r]) return;
+    M.queued[r] = 1;
+    gauss_queue_.push_back(GaussQueued{m, r, trigger});
+  }
+  void gauss_backtrack(uint32_t new_level);
+  Var gauss_decision(Var linear);  // an unassigned variable outside the matrices, else `linear`
+  std::vector<Var> gauss_free_;   // variables outside the matrices
+  void gauss_conflict_from_row(uint32_t m, uint32_t r);
+  const Lit* gauss_reason(uint32_t reason, uint32_t& n) const {
+    const Lit* p = gauss_reasons_.data() + (reason & kGaussMask);
+    n = p[0];
+    return p + 1;
+  }
+  bool gauss_on_ = false;  // this solver propagates XORs by Gauss-Jordan (the detached solver)
+  std::vector<GaussMatrix> gauss_mats_;
+  std::vector<uint32_t> gauss_mat_, gauss_col_;  // per variable: matrix and column (kNone: none)
+  size_t gauss_qhead_ = 0;                        // trail literals already in the matrices' view
+  std::vector<GaussQueued> gauss_queue_;          // rows to check
+  std::vector<Lit> gauss_reasons_;                // [size, propagated literal, false literals...]*
+  std::vector<Lit> gauss_conflict_;
+  std::vector<GaussClosed> gauss_closed_;  // levels non-decreasing
+  GaussStats gauss_stats_;
+  std::unique_ptr<Solver> gauss_sub_;
+  bool gauss_tried_ = false;
+  uint32_t gauss_sub_vars_ = 0;   // variables of the copy
+  size_t gauss_ext_size_ = 0;     // reconstruction stack size at the copy
+  uint64_t gauss_next_ticks_ = 0, gauss_last_ticks_ = 0;
+  // Adaptive share (--gaussadapt): current share (per mille of search ticks), detached solver
+  // ticks granted and used in rounds (an overshoot is paid back), counters at the last evaluation.
+  uint64_t gauss_share_ = 0, gauss_granted_ = 0, gauss_used_ = 0;
+  uint64_t gauss_eval_conflicts_ = 0, gauss_eval_gauss_conflicts_ = 0, gauss_eval_rounds_ = 0;
+  uint64_t ticks_limit_ = 0;      // search stops (unknown) at this many ticks (0: none)
+  CardinalityStats card_stats_;
+  uint32_t card_runs_ = 0;
   Kitten kitten_;
   std::vector<uint32_t> sweep_local_;   // per variable: index in the environment or UINT32_MAX
   std::vector<Var> sweep_env_;          // environment variables (local index -> variable)
@@ -371,6 +497,7 @@ class Solver {
   // Analysis scratch.
   std::vector<uint8_t> flags_;  // per variable: kSeen | kPoison | kRemovable
   std::vector<Var> analyzed_;
+  std::vector<Var> probe_marked_;  // probe_uip()
   std::vector<Var> minimized_;
   std::vector<Var> shrunk_;
   std::vector<Lit> learned_;
