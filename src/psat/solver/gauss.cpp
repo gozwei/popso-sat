@@ -34,6 +34,8 @@
 #include <bit>
 #include <chrono>
 #include <cstdio>
+#include <tuple>
+#include <type_traits>
 
 #include "psat/core/small_sort.hpp"
 #include "psat/solver/solver.hpp"
@@ -68,11 +70,40 @@ class SetFilter {
     if (c < 255) ++c;
   }
   uint32_t count(uint64_t h) const { return counts_[mix64(h) & mask_]; }
+  // (slots are hit at random in a table of up to 64 MB: callers prefetch a block of them)
+  void prefetch(uint64_t h) const { PSAT_PREFETCH(counts_.data() + (mix64(h) & mask_)); }
 
  private:
   std::vector<uint8_t> counts_;
   uint64_t mask_ = 0;
 };
+
+// A clause of XOR extraction: its variables (sorted, at most 8), their signs (bit k: vars[k]
+// negative) and a hash of the variables.
+struct XorRowAny {
+  Var vars[8];
+  uint64_t hash;
+  uint8_t n, mask;
+};
+// The same with exactly N variables: the rows are stored by size (24 bytes for 2 and 3
+// variables instead of 48; velev-vliw-sat-4.0-b8: 6.4M rows, 295 -> 154 MB).
+template <uint32_t N>
+struct XorRow {
+  uint64_t hash;
+  Var vars[N];
+  uint8_t mask;
+};
+using XorRows = std::tuple<std::vector<XorRow<2>>, std::vector<XorRow<3>>, std::vector<XorRow<4>>,
+                           std::vector<XorRow<5>>, std::vector<XorRow<6>>, std::vector<XorRow<7>>,
+                           std::vector<XorRow<8>>>;
+template <uint32_t N>
+void put_row(XorRows& rows, const XorRowAny& r) {
+  XorRow<N> x;
+  x.hash = r.hash;
+  std::copy(r.vars, r.vars + N, x.vars);
+  x.mask = r.mask;
+  std::get<N - 2>(rows).push_back(x);
+}
 
 // Connected components of the XORs (union-find over variables). comp[i]: the component index of
 // XOR i (dense, 0..count-1); variables assigned in `assigned` (if given) do not connect XORs.
@@ -123,11 +154,7 @@ uint32_t xor_components(const XorList& xors, uint32_t nvars, std::vector<uint32_
 
 void Solver::extract_xors(XorList& out, uint64_t max_size) {
   if (max_size > 8) max_size = 8;
-  struct Row {
-    Var vars[8];
-    uint64_t hash;
-    uint8_t n, mask;
-  };
+  using Row = XorRowAny;
   // Clauses as they are at the root: satisfied ones skipped, false literals removed (an XOR with
   // a root-assigned variable is an XOR over the others, encoded by the reduced clauses).
   auto make_row = [&](const Lit* lits, uint32_t size, Row& r) -> bool {
@@ -174,16 +201,62 @@ void Solver::extract_xors(XorList& out, uint64_t max_size) {
   for_each_candidate([&](const Lit*, uint32_t) { ++candidates; });
   if (candidates < 2) return;
   SetFilter filter(candidates);
+  // The rows go through the filter in blocks: the slots of a block are prefetched first, then
+  // added to or counted in order.
+  constexpr size_t kBlock = 16;
+  Row block[kBlock];
+  size_t nb = 0;
+  auto add_block = [&]() {
+    for (size_t k = 0; k < nb; ++k) filter.add(block[k].hash);
+    nb = 0;
+  };
   for_each_candidate([&](const Lit* lits, uint32_t n) {
-    Row r;
-    if (make_row(lits, n, r)) filter.add(r.hash);
+    if (!make_row(lits, n, block[nb])) return;
+    filter.prefetch(block[nb].hash);
+    if (++nb == kBlock) add_block();
   });
-  std::vector<Row> rows;
+  add_block();
   // (an encoding of n >= 3 variables may lack up to a quarter of its clauses: see below)
+  auto kept = [&](const Row& r) { return filter.count(r.hash) >= (r.n >= 3 ? 3u << (r.n - 3) : 2u); };
+  // Counted first: on large formulas millions of rows pass the filter, and a growing vector would
+  // hold up to twice their size (three times while it reallocates).
+  size_t nrows[9] = {};
+  auto count_block = [&]() {
+    for (size_t k = 0; k < nb; ++k) {
+      if (kept(block[k])) ++nrows[block[k].n];
+    }
+    nb = 0;
+  };
   for_each_candidate([&](const Lit* lits, uint32_t n) {
-    Row r;
-    if (make_row(lits, n, r) && filter.count(r.hash) >= (r.n >= 3 ? 3u << (r.n - 3) : 2u)) rows.push_back(r);
+    if (!make_row(lits, n, block[nb])) return;
+    filter.prefetch(block[nb].hash);
+    if (++nb == kBlock) count_block();
   });
+  count_block();
+  XorRows rows;
+  std::apply([&](auto&... v) { (v.reserve(nrows[sizeof(v[0].vars) / sizeof(Var)]), ...); }, rows);
+  auto keep_block = [&]() {
+    for (size_t k = 0; k < nb; ++k) {
+      const Row& r = block[k];
+      if (!kept(r)) continue;
+      switch (r.n) {
+        case 2: put_row<2>(rows, r); break;
+        case 3: put_row<3>(rows, r); break;
+        case 4: put_row<4>(rows, r); break;
+        case 5: put_row<5>(rows, r); break;
+        case 6: put_row<6>(rows, r); break;
+        case 7: put_row<7>(rows, r); break;
+        default: put_row<8>(rows, r); break;
+      }
+    }
+    nb = 0;
+  };
+  for_each_candidate([&](const Lit* lits, uint32_t n) {
+    if (!make_row(lits, n, block[nb])) return;
+    filter.prefetch(block[nb].hash);
+    if (++nb == kBlock) keep_block();
+  });
+  keep_block();
   // An encoding clause may be missing because a binary clause over two of its literals subsumes
   // it (the XOR is still implied, clause by clause, which is all that propagation and the RUP
   // steps of a refutation need). At most a quarter of the encoding: with more missing, the
@@ -191,7 +264,7 @@ void Solver::extract_xors(XorList& out, uint64_t max_size) {
   // and not the structure Gauss-Jordan is for.
   uint64_t lookups = 0;
   auto binary_present = [&](Lit a, Lit b) {
-    const std::vector<Watch>& ws = watches_[a].size() <= watches_[b].size() ? watches_[a] : watches_[b];
+    const WatchList ws = watches_[a].size() <= watches_[b].size() ? watches_[a] : watches_[b];
     const Lit other = watches_[a].size() <= watches_[b].size() ? b : a;
     lookups += ws.size() / 8 + 1;
     for (const Watch& w : ws) {
@@ -199,59 +272,66 @@ void Solver::extract_xors(XorList& out, uint64_t max_size) {
     }
     return false;
   };
-  std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
-    if (a.n != b.n) return a.n < b.n;
-    if (a.hash != b.hash) return a.hash < b.hash;
-    for (int k = 0; k < a.n; ++k) {
-      if (a.vars[k] != b.vars[k]) return a.vars[k] < b.vars[k];
-    }
-    return a.mask < b.mask;
-  });
-  for (size_t i = 0; i < rows.size();) {
-    size_t j = i;
-    while (j < rows.size() && rows[j].n == rows[i].n && rows[j].hash == rows[i].hash &&
-           std::equal(rows[i].vars, rows[i].vars + rows[i].n, rows[j].vars)) {
-      ++j;
-    }
-    const uint32_t n = rows[i].n;
-    const uint32_t need = 1u << (n - 1);
-    uint32_t count[2] = {0, 0};
-    int last = -1;
-    for (size_t k = i; k < j; ++k) {
-      if (rows[k].mask == last) continue;  // duplicate clause
-      last = rows[k].mask;
-      ++count[std::popcount(static_cast<unsigned>(rows[k].mask)) & 1];
-    }
-    for (int q = 0; q < 2; ++q) {
-      if (count[q] == need) {
-        out.push(rows[i].vars, n, static_cast<uint8_t>(1 - q));
-        out.covered += need;
-        continue;
+  // Each size in turn, smallest first, each sorted by hash, variables and signs: the order of one
+  // array of all rows sorted by size first.
+  auto process = [&](auto& rows_n) {
+    using R = std::decay_t<decltype(rows_n[0])>;
+    constexpr uint32_t n = sizeof(R::vars) / sizeof(Var);
+    std::sort(rows_n.begin(), rows_n.end(), [](const R& a, const R& b) {
+      if (a.hash != b.hash) return a.hash < b.hash;
+      for (uint32_t k = 0; k < n; ++k) {
+        if (a.vars[k] != b.vars[k]) return a.vars[k] < b.vars[k];
       }
-      if (n < 3 || 4 * count[q] < 3 * need || lookups > 64 * candidates) continue;
-      uint64_t present[4] = {0, 0, 0, 0};  // masks of parity class q present
+      return a.mask < b.mask;
+    });
+    for (size_t i = 0; i < rows_n.size();) {
+      size_t j = i;
+      while (j < rows_n.size() && rows_n[j].hash == rows_n[i].hash &&
+             std::equal(rows_n[i].vars, rows_n[i].vars + n, rows_n[j].vars)) {
+        ++j;
+      }
+      constexpr uint32_t need = 1u << (n - 1);
+      uint32_t count[2] = {0, 0};
+      int last = -1;
       for (size_t k = i; k < j; ++k) {
-        const uint32_t mk = rows[k].mask;
-        if ((std::popcount(mk) & 1u) == static_cast<uint32_t>(q)) present[mk >> 6] |= uint64_t{1} << (mk & 63);
+        if (rows_n[k].mask == last) continue;  // duplicate clause
+        last = rows_n[k].mask;
+        ++count[std::popcount(static_cast<unsigned>(rows_n[k].mask)) & 1];
       }
-      bool complete = true;
-      for (uint32_t mk = 0; mk < (1u << n) && complete; ++mk) {
-        if ((std::popcount(mk) & 1u) != static_cast<uint32_t>(q) || ((present[mk >> 6] >> (mk & 63)) & 1u)) continue;
-        bool subsumed = false;
-        for (uint32_t a = 0; a < n && !subsumed; ++a) {
-          for (uint32_t b = a + 1; b < n && !subsumed; ++b) {
-            subsumed = binary_present(make_lit(rows[i].vars[a], (mk >> a) & 1u), make_lit(rows[i].vars[b], (mk >> b) & 1u));
-          }
+      for (int q = 0; q < 2; ++q) {
+        if (count[q] == need) {
+          out.push(rows_n[i].vars, n, static_cast<uint8_t>(1 - q));
+          out.covered += need;
+          continue;
         }
-        complete = subsumed;
+        if (n < 3 || 4 * count[q] < 3 * need || lookups > 64 * candidates) continue;
+        uint64_t present[4] = {0, 0, 0, 0};  // masks of parity class q present
+        for (size_t k = i; k < j; ++k) {
+          const uint32_t mk = rows_n[k].mask;
+          if ((std::popcount(mk) & 1u) == static_cast<uint32_t>(q)) present[mk >> 6] |= uint64_t{1} << (mk & 63);
+        }
+        bool complete = true;
+        for (uint32_t mk = 0; mk < (1u << n) && complete; ++mk) {
+          if ((std::popcount(mk) & 1u) != static_cast<uint32_t>(q) || ((present[mk >> 6] >> (mk & 63)) & 1u)) continue;
+          bool subsumed = false;
+          for (uint32_t a = 0; a < n && !subsumed; ++a) {
+            for (uint32_t b = a + 1; b < n && !subsumed; ++b) {
+              subsumed = binary_present(make_lit(rows_n[i].vars[a], (mk >> a) & 1u),
+                                        make_lit(rows_n[i].vars[b], (mk >> b) & 1u));
+            }
+          }
+          complete = subsumed;
+        }
+        if (!complete) continue;
+        out.push(rows_n[i].vars, n, static_cast<uint8_t>(1 - q));
+        out.covered += count[q];
+        ++out.subsumed;
       }
-      if (!complete) continue;
-      out.push(rows[i].vars, n, static_cast<uint8_t>(1 - q));
-      out.covered += count[q];
-      ++out.subsumed;
+      i = j;
     }
-    i = j;
-  }
+    std::vector<R>().swap(rows_n);
+  };
+  std::apply([&](auto&... v) { (process(v), ...); }, rows);
 }
 
 // --- Main solver: the detached Gauss-Jordan solver ------------------------------------------
@@ -300,6 +380,7 @@ bool Solver::gauss_start() {
   }
   // An inconsistent XOR system is refuted right away, with a proof (gauss_proof.cpp).
   if (opts_.gaussproof && gs.components && gauss_refute(xors)) return false;
+  if (opts_.gaussfacts && gs.components) gauss_facts(xors);
   if (!gs.gated) return false;
 
   Options so = opts_;
@@ -310,7 +391,12 @@ bool Solver::gauss_start() {
   so.cardinality = 0;
   so.lucky = 0;
   so.walk = 0;  // (local search on XOR encodings: wasted)
+  so.xorsub = 0;    // (passes that add variables: the matrices are built for the copied ones)
+  so.counting = 0;
+  so.linmod = 0;
+  so.renumber = 0;  // (the copy is in this solver's numbering)
   so.verbose = opts_.verbose >= 3 ? opts_.verbose : 0;
+  so.reportmem = 0;  // (the main solver's report counts the copy)
   auto sub = std::make_unique<Solver>(so);
   sub->start_ = start_;
   sub->reserve(static_cast<int>(num_vars_));
@@ -437,6 +523,7 @@ bool Solver::gauss_run(uint64_t ticks) {
     const PassTimer pass_timer(*this, kPassGauss);
     res = s.solve();
   }
+  stop_after(s);  // (the time limit or termination: the main search stops at its next check)
   gauss_used_ += s.stats_.ticks - before;
   gs.sub_ticks = s.stats_.ticks;
   gs.sub_conflicts = s.stats_.conflicts;
@@ -633,7 +720,7 @@ Var Solver::gauss_decision(Var linear) {
 
 bool Solver::propagate_with_gauss() {
   for (;;) {
-    if (!propagate_impl<false>(kNoReason)) return false;
+    if (!propagate_search()) return false;
     if (!gauss_propagate()) {
       has_conflict_ = true;
       conflict_ref_ = kGaussConflict;

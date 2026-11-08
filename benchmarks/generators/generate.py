@@ -120,10 +120,20 @@ TABLE = [
     ("counter", "small", "counter", {"steps": 40, "target": 41}, {}),
     ("counter", "medium", "counter", {"steps": 1000, "target": 990}, {}),
     ("counter", "medium", "counter", {"steps": 1000, "target": 1001}, {}),
+    # XOR-substituted formulas (for --xorsub)
+    ("xorsubop", "small", "xorsub_op", {"m": 8, "d": 2, "sat": False}, {}),
+    ("xorsubop", "small", "xorsub_op", {"m": 8, "d": 2, "sat": True}, {}),
+    ("xorsubop", "medium", "xorsub_op", {"m": 12, "d": 2, "sat": False}, {}),
+    ("xorsubphp", "small", "xorsub_php", {"n": 6, "d": 2}, {}),
+    ("xorsubtseitin", "small", "xorsub_tseitin", {"n": 20, "deg": 3, "odd": True, "d": 2}, {}),
+    ("xorsubtseitin", "small", "xorsub_tseitin", {"n": 20, "deg": 3, "odd": False, "d": 2}, {}),
+    ("xorsubpebbling", "small", "xorsub_pebbling", {"h": 15, "d": 2}, {}),
+    ("xorsubpebbling", "small", "xorsub_pebbling", {"h": 10, "d": 3}, {}),
+    ("xorsubrand3sat", "small", "xorsub_ksat", {"n": 40, "k": 3, "ratio": 4.26, "d": 2}, {"want": {"sat": 1, "unsat": 1}}),
 ]
 
 
-BOOL_TAGS = {"odd": ("odd", "even"), "buggy": ("bug", "ok")}
+BOOL_TAGS = {"odd": ("odd", "even"), "buggy": ("bug", "ok"), "sat": ("sat", "unsat")}
 
 
 def tag_of(params: dict) -> str:

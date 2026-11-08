@@ -21,6 +21,7 @@ Families (as in tests/test_solver.cpp and benchmarks/fuzz/gen.py --family counti
   clqcl   clique-colouring: a graph with a k-clique that is m-colourable (clqcl_<n>_<k>_<m>)
   gcol    m-colouring of a random graph with an (m+1)-clique (a pigeonhole inside the formula)
   rphp    relativized pigeonhole: n pigeons, r places, n-1 holes (rphp_p<n>_r<r>)
+  php/fphp with at-most-one constraints over auxiliary variables (seq, commander, product)
 Exit code 1 if any run fails.
 """
 
@@ -46,6 +47,23 @@ def exactly_one(lits, clauses, pairwise=True):
     clauses.append(list(lits))
     if pairwise:
         clauses.extend([-a, -b] for a, b in itertools.combinations(lits, 2))
+
+
+def php_amo(pigeons, holes, functional, enc):
+    """Pigeonhole with the at-most-one constraints over auxiliary variables (the encodings of
+    benchmarks/generators/families.py: seq, commander, product)."""
+    sys.path.insert(0, str(BENCH / "generators"))
+    import families  # noqa: E402
+
+    c = families.Cnf()
+    x = [[c.var() for _ in range(holes)] for _ in range(pigeons)]
+    for p in range(pigeons):
+        c.add(*x[p])
+        if functional:
+            c.amo(x[p], enc)
+    for h in range(holes):
+        c.amo([x[p][h] for p in range(pigeons)], enc)
+    return c.n, c.clauses
 
 
 def php(pigeons, holes, functional):
@@ -157,6 +175,11 @@ def cases(quick):
         yield f"fphp{h + 1}_{h}", *php(h + 1, h, True), True
         yield f"fphp{h + 2}_{h}", *php(h + 2, h, True), True
         yield f"fphp{h}_{h}", *php(h, h, True), False
+    for enc in ("seq", "commander", "product"):
+        for h in [4, 6] + ([] if quick else [10, 15]):
+            yield f"php{h + 1}_{h}_{enc}", *php_amo(h + 1, h, False, enc), True
+            yield f"fphp{h + 1}_{h}_{enc}", *php_amo(h + 1, h, True, enc), True
+        yield f"fphp5_5_{enc}", *php_amo(5, 5, True, enc), False
     for parts, size in [(3, 2), (4, 2), (3, 3)] + ([] if quick else [(5, 3), (6, 4), (9, 2)]):
         yield f"clique{parts + 1}_{parts}x{size}", *clique(parts + 1, parts, size), True
         yield f"clique{parts}_{parts}x{size}", *clique(parts, parts, size), False
@@ -209,7 +232,7 @@ def main():
         name, nvars, cl, unsat = job
         cnf, proof, lpr = tmp / f"{name}.cnf", tmp / f"{name}.proof", tmp / f"{name}.lpr"
         write_cnf(cnf, nvars, cl)
-        cmd = [args.solver, "-v", "-n", "--counting=1"] + args.extra.split() + (["--proof-text"] if args.text else [])
+        cmd = [args.solver, "-v", "-n", "--counting=1", "--countingprobe=1"] + args.extra.split() + (["--proof-text"] if args.text else [])
         t0 = time.time()
         out = subprocess.run(cmd + [str(cnf), str(proof)], capture_output=True, text=True).stdout
         secs = time.time() - t0

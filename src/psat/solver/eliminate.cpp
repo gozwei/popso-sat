@@ -28,6 +28,15 @@
 
 namespace psat {
 
+// The bound of the next round: 0, then 1, 2, 4, ... up to --eliminatebound, one step per round
+// (with --eliminatecomplete one step per round that tried all its candidates).
+uint32_t Solver::elimination_bound() const {
+  const uint64_t level = opts_.eliminatecomplete ? eliminate_level_ : eliminate_rounds_;
+  if (level == 0) return 0;
+  return static_cast<uint32_t>(
+      std::min<uint64_t>(opts_.eliminatebound, uint64_t{1} << std::min<uint64_t>(level - 1, 20)));
+}
+
 bool Solver::eliminating() const {
   if (!opts_.eliminate || stats_.conflicts < eliminate_limit_) return false;
   // A round costs about one pass over the arena (occurrence lists, cleanup): later rounds wait
@@ -40,15 +49,27 @@ bool Solver::eliminating() const {
   }
   // Worth another round while the bound still grows (0, 1, 2, 4, ... --eliminatebound), or if the
   // irredundant formula changed since the last one. (Requiring a change alone meant that on
-  // formulas no other pass touched the bound stayed at 0 forever.)
-  const uint32_t next_bound = static_cast<uint32_t>(
-      std::min<uint64_t>(opts_.eliminatebound, uint64_t{1} << std::min<uint64_t>(eliminate_rounds_ - 1, 20)));
-  return eliminate_rounds_ == 0 || next_bound > eliminate_last_bound_ || fixed_ != eliminate_last_fixed_ ||
-         irredundant_ + binaries_irredundant_ != eliminate_last_irredundant_;
+  // formulas no other pass touched the bound stayed at 0 forever.) With --eliminatetouched, a
+  // change is also any variable touched since (strengthened or deleted clauses, units, the
+  // previous round's own resolvents, candidates its budget did not reach): counts alone missed
+  // strengthening, and once the bound was at its maximum rounds stopped for good.
+  // With --eliminatecomplete, also while the last round left candidates untried.
+  return eliminate_rounds_ == 0 || elimination_bound() > eliminate_last_bound_ || fixed_ != eliminate_last_fixed_ ||
+         irredundant_ + binaries_irredundant_ != eliminate_last_irredundant_ ||
+         (opts_.eliminatetouched && touched_count_ > 0) || (opts_.eliminatecomplete && eliminate_incomplete_);
+}
+
+uint64_t Solver::irredundant_literals() const {
+  uint64_t n = 2 * binaries_irredundant_;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (!c.garbage && !c.redundant) n += c.size;
+  }
+  return n;
 }
 
 void Solver::touch_clause(const Lit* lits, uint32_t size) {
-  for (uint32_t i = 0; i < size; ++i) touched_[var_of(lits[i])] = 1;
+  for (uint32_t i = 0; i < size; ++i) touch_var(var_of(lits[i]));
 }
 
 void Solver::push_extension(Lit witness, const Lit* lits, uint32_t size) {
@@ -58,7 +79,8 @@ void Solver::push_extension(Lit witness, const Lit* lits, uint32_t size) {
 }
 
 void Solver::disconnect_long_watches() {
-  for (std::vector<Watch>& ws : watches_) {
+  for (size_t l = 0; l < watches_.size(); ++l) {
+    const WatchList ws = watches_[l];
     size_t j = 0;
     for (size_t i = 0; i < ws.size(); ++i) {
       if (ws[i].binary()) ws[j++] = ws[i];
@@ -66,6 +88,10 @@ void Solver::disconnect_long_watches() {
     ws.resize(j);
   }
   watched_clauses_ = 0;
+  // Only the binary watches are left: the pool gives the rest back for the round's own
+  // structures (occurrence lists, congruence, BVA). as-p147: 315 MB of pool for 9 MB of binary
+  // watches; velev-vliw: 377-468 MB for 131 MB. (Lists keep their contents and order.)
+  watches_.compact();
 }
 
 void Solver::reconnect_long_watches() {
@@ -94,7 +120,7 @@ void Solver::reconnect_long_watches() {
 // learned binary can duplicate an original one, and removing the wrong copy leaves an irredundant
 // clause behind (found as a clause on an eliminated variable, then a wrong SAT model).
 void Solver::remove_binary_watch(Lit owner, Lit other, bool redundant) {
-  std::vector<Watch>& ws = watches_[owner];
+  const WatchList ws = watches_[owner];
   for (size_t i = 0; i < ws.size(); ++i) {
     if (ws[i].binary() && ws[i].blit == other && ws[i].redundant_binary() == redundant) {
       ws[i] = ws.back();
@@ -111,7 +137,8 @@ void Solver::delete_binary(Lit a, Lit b) {
     const Lit bin[2] = {a, b};
     proof_->del(bin, 2);
   }
-  touched_[var_of(a)] = touched_[var_of(b)] = 1;
+  touch_var(var_of(a));
+  touch_var(var_of(b));
 }
 
 void Solver::delete_irredundant(uint32_t ref) {
@@ -144,6 +171,102 @@ void Solver::gather_occurrences(Lit l, std::vector<uint32_t>& out, uint64_t& bud
   budget += j / 4 + 1;
 }
 
+namespace {
+
+// Min-heap of elimination candidates keyed by (occurrence product, variable); keys go both ways.
+class ElimHeap {
+ public:
+  static constexpr uint32_t kAbsent = UINT32_MAX;
+  explicit ElimHeap(size_t vars) : pos_(vars, kAbsent) {}
+  bool empty() const { return heap_.empty(); }
+  size_t size() const { return heap_.size(); }
+  bool contains(Var v) const { return pos_[v] != kAbsent; }
+  void push(Var v, uint64_t key) {
+    pos_[v] = static_cast<uint32_t>(heap_.size());
+    heap_.push_back(Entry{key, v});
+    up(pos_[v]);
+  }
+  void update(Var v, uint64_t key) {
+    const uint32_t i = pos_[v];
+    const uint64_t old = heap_[i].key;
+    heap_[i].key = key;
+    if (key < old) {
+      up(i);
+    } else if (key > old) {
+      down(i);
+    }
+  }
+  Var pop() {
+    const Var v = heap_[0].var;
+    const Entry last = heap_.back();
+    heap_.pop_back();
+    pos_[v] = kAbsent;
+    if (!heap_.empty()) {
+      heap_[0] = last;
+      pos_[last.var] = 0;
+      down(0);
+    }
+    return v;
+  }
+  template <typename F>
+  void for_each(F f) const {
+    for (const Entry& e : heap_) f(e.var);
+  }
+
+ private:
+  struct Entry {
+    uint64_t key;
+    Var var;
+    bool operator<(const Entry& o) const { return key < o.key || (key == o.key && var < o.var); }
+  };
+  void up(uint32_t i) {
+    const Entry e = heap_[i];
+    while (i > 0) {
+      const uint32_t p = (i - 1) / 2;
+      if (!(e < heap_[p])) break;
+      heap_[i] = heap_[p];
+      pos_[heap_[i].var] = i;
+      i = p;
+    }
+    heap_[i] = e;
+    pos_[e.var] = i;
+  }
+  void down(uint32_t i) {
+    const Entry e = heap_[i];
+    const uint32_t n = static_cast<uint32_t>(heap_.size());
+    for (;;) {
+      uint32_t c = 2 * i + 1;
+      if (c >= n) break;
+      if (c + 1 < n && heap_[c + 1] < heap_[c]) ++c;
+      if (!(heap_[c] < e)) break;
+      heap_[i] = heap_[c];
+      pos_[heap_[i].var] = i;
+      i = c;
+    }
+    heap_[i] = e;
+    pos_[e.var] = i;
+  }
+  std::vector<Entry> heap_;
+  std::vector<uint32_t> pos_;
+};
+
+}  // namespace
+
+// --eliminateheap: irredundant clauses with the given literals added (delta 1) or removed (-1).
+void Solver::elim_count(const Lit* lits, uint32_t size, int delta) {
+  if (elim_noccs_.empty()) return;
+  const bool weighted = !elim_nlits_.empty();
+  for (uint32_t k = 0; k < size; ++k) {
+    elim_noccs_[lits[k]] += static_cast<uint32_t>(delta);
+    if (weighted) elim_nlits_[lits[k]] += static_cast<uint64_t>(static_cast<int64_t>(delta) * size);
+    const Var u = var_of(lits[k]);
+    if (!elim_changed_mark_[u]) {
+      elim_changed_mark_[u] = 1;
+      elim_changed_.push_back(u);
+    }
+  }
+}
+
 void Solver::eliminate() {
   const PassTimer pass_timer(*this, kPassEliminate);
   ++stats_.eliminations;
@@ -155,10 +278,7 @@ void Solver::eliminate() {
   uint64_t limit = static_cast<uint64_t>(static_cast<double>(search_ticks) * opts_.eliminateeffort / 1000.0);
   // The first round (preprocessing) gets an effort floor proportional to the formula size.
   limit = std::max<uint64_t>(limit, eliminate_rounds_ == 0 ? 1'000'000 + arena_.size() / 2 : 100'000);
-  const uint32_t bound = eliminate_rounds_ == 0
-                             ? 0
-                             : static_cast<uint32_t>(std::min<uint64_t>(
-                                   opts_.eliminatebound, uint64_t{1} << std::min<uint64_t>(eliminate_rounds_ - 1, 20)));
+  const uint32_t bound = elimination_bound();
   // A raised bound retries every variable; otherwise only those whose clauses changed.
   const bool all_candidates = eliminate_rounds_ == 0 || bound > eliminate_last_bound_;
   eliminate_last_bound_ = bound;
@@ -200,8 +320,9 @@ void Solver::eliminate() {
       bool found = false;
       const double tc = seconds();
       const uint64_t congruent_before = stats_.congruent;
+      const uint64_t budget_before = budget;
       int iterations = 0;
-      for (int iter = 0; iter < 16 && !inconsistent_; ++iter) {
+      for (int iter = 0; iter < 16 && !inconsistent_ && !stop_requested(); ++iter) {
         ++iterations;
         const uint32_t n = congruence(budget);
         if (opts_.verbose >= 3) std::printf("c   congruence iteration %d: %u congruent\n", iter, n);
@@ -210,9 +331,19 @@ void Solver::eliminate() {
         substitute();
         scan("congruence+substitute");
       }
+      // An expensive round (64M work units or more) that pays more than --congruencecost per
+      // equivalence counts as unproductive too: late rounds on large circuits find a handful of
+      // equivalences in passes over millions of gates, several seconds each (g2-T97: 13 for 470M).
+      const uint64_t gained = stats_.congruent - congruent_before, cost = budget - budget_before;
+      stats_.elim_w_congruence += cost;
+      if (found && opts_.congruencecost && cost >= (uint64_t{64} << 20) &&
+          cost > gained * static_cast<uint64_t>(opts_.congruencecost)) {
+        found = false;
+      }
       if (opts_.verbose >= 2) {
-        std::printf("c [%.2f s] congruence: %d iterations, %llu congruent, %.2f s\n", seconds(), iterations,
-                    static_cast<unsigned long long>(stats_.congruent - congruent_before), seconds() - tc);
+        std::printf("c [%.2f s] congruence: %d iterations, %llu congruent, work %llu, %.2f s%s\n", seconds(), iterations,
+                    static_cast<unsigned long long>(gained), static_cast<unsigned long long>(cost), seconds() - tc,
+                    found ? "" : " (unproductive)");
       }
       congruence_delay_ = found ? 0 : std::min<uint32_t>(2 * congruence_delay_ + 1, 64);
       congruence_skip_ = congruence_delay_;
@@ -222,8 +353,12 @@ void Solver::eliminate() {
     reconnect_long_watches();
     return;
   }
+  // Stopped (time limit, interrupt) in the congruence or before: no occurrence lists, subsumption,
+  // BVA or eliminations; the end of the round (substituted variables' learned clauses dropped,
+  // watches reconnected) as always.
+  const bool stopping = stop_requested();
   // Occurrence lists with exact sizes (a counting pass first: no reallocation churn).
-  {
+  if (!stopping) {
     std::vector<uint32_t> count(2 * size_t{num_vars_}, 0);
     for (const uint32_t ref : clauses_) {
       const Clause& c = clause(ref);
@@ -231,21 +366,24 @@ void Solver::eliminate() {
       for (uint32_t k = 0; k < c.size; ++k) ++count[c.lits()[k]];
     }
     occs_.init(count);
-  }
-  for (const uint32_t ref : clauses_) {
-    const Clause& c = clause(ref);
-    if (c.garbage || c.redundant) continue;
-    for (uint32_t k = 0; k < c.size; ++k) occs_.push(c.lits()[k], ref);
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage || c.redundant) continue;
+      for (uint32_t k = 0; k < c.size; ++k) occs_.push(c.lits()[k], ref);
+    }
   }
   budget += arena_.size() / 8;
+  stats_.elim_w_occs += arena_.size() / 8;
   const double t1 = seconds();
 
   const uint64_t subsumed_before = stats_.subsumed, strengthened_before = stats_.strengthened;
-  if (opts_.subsume && !inconsistent_) subsume_round(budget);
+  const uint64_t subsume_budget_before = budget;
+  if (opts_.subsume && !inconsistent_ && !stopping) subsume_round(budget);
+  stats_.elim_w_subsume += budget - subsume_budget_before;
   scan("subsume");
   // BVA before elimination (as SBVA and Kissat's factor in preprocessing): elimination first
   // removes much of the structure (binary clauses of at-most-one encodings) BVA would factor.
-  const bool bva_round_now = opts_.bva && !inconsistent_ && (eliminate_rounds_ == 1 || opts_.bvaevery);
+  const bool bva_round_now = opts_.bva && !inconsistent_ && !stopping && (eliminate_rounds_ == 1 || opts_.bvaevery);
   if (bva_round_now && opts_.bvafirst) {
     bva_run(budget);
     scan("bva");
@@ -253,39 +391,136 @@ void Solver::eliminate() {
   const double t2 = seconds();
 
   // Candidates: active, unassigned (touched) variables, fewest occurrences first.
+  // --eliminateheap: exact counts of the live irredundant clauses per literal, kept up to date by
+  // the eliminations, and a heap on their current product: the order of a sort at the start of
+  // the round goes stale (on circuits, merging gates grows the clause lists of their neighbors
+  // from a handful to dozens before they are tried). --eliminateheap=2 weighs the clauses by their
+  // literals (an estimate of the resolution work): on cabp formulas the variables of clauses with
+  // ~700 literals have one or two clauses per polarity, came first, and each failed on the
+  // resolvent size limit.
+  const bool use_heap = opts_.eliminateheap != 0 && !stopping;
+  const bool weighted = opts_.eliminateheap == 2;
+  if (use_heap) {
+    elim_noccs_.assign(2 * size_t{num_vars_}, 0);
+    if (weighted) elim_nlits_.assign(2 * size_t{num_vars_}, 0);
+    elim_changed_mark_.assign(num_vars_, 0);
+    elim_changed_.clear();
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage || c.redundant) continue;
+      for (uint32_t k = 0; k < c.size; ++k) {
+        ++elim_noccs_[c.lits()[k]];
+        if (weighted) elim_nlits_[c.lits()[k]] += c.size;
+      }
+    }
+    for (Lit l = 0; l < 2 * num_vars_; ++l) {
+      uint32_t b = 0;
+      for (const Watch& w : watches_[l]) b += w.binary() && !w.redundant_binary();
+      elim_noccs_[l] += b;
+      if (weighted) elim_nlits_[l] += 2 * uint64_t{b};
+    }
+    budget += arena_.size() / 16;
+  }
+  auto key = [&](Var u) {
+    const Lit p = make_lit(u, false), n = make_lit(u, true);
+    if (weighted) {
+      constexpr uint64_t kCap = uint64_t{1} << 31;
+      return std::min(elim_nlits_[p], kCap) * std::min(elim_nlits_[n], kCap);
+    }
+    return uint64_t{elim_noccs_[p]} * uint64_t{elim_noccs_[n]};
+  };
   std::vector<std::pair<uint64_t, Var>> cands;
-  for (Var v = 0; v < num_vars_; ++v) {
+  for (Var v = 0; v < num_vars_ && !stopping; ++v) {
     if (eliminated_[v] || vals_[make_lit(v, false)] != 0) continue;
     if (!all_candidates && !touched_[v]) continue;
     if (opts_.bvaprotect && v < bva_added_.size() && bva_added_[v]) continue;  // would undo BVA
     const Lit p = make_lit(v, false), n = make_lit(v, true);
-    uint64_t np = occs_.size(p), nn = occs_.size(n);
-    for (const Watch& w : watches_[p]) np += w.binary() && !w.redundant_binary();
-    for (const Watch& w : watches_[n]) nn += w.binary() && !w.redundant_binary();
+    uint64_t np, nn;
+    if (use_heap) {
+      np = elim_noccs_[p];
+      nn = elim_noccs_[n];
+    } else {
+      np = occs_.size(p);
+      nn = occs_.size(n);
+      for (const Watch& w : watches_[p]) np += w.binary() && !w.redundant_binary();
+      for (const Watch& w : watches_[n]) nn += w.binary() && !w.redundant_binary();
+    }
     if (np > static_cast<uint64_t>(opts_.eliminateocclim) || nn > static_cast<uint64_t>(opts_.eliminateocclim)) continue;
-    cands.emplace_back(np * nn, v);
+    cands.emplace_back(use_heap ? key(v) : np * nn, v);
   }
-  std::sort(cands.begin(), cands.end());
+  if (!use_heap) std::sort(cands.begin(), cands.end());
   budget += cands.size();
 
   const uint32_t eliminated_before = inactive_;
+  elim_round_clauses_ = elim_round_lits_ = 0;
+  elim_round_growing_ = 0;
+  // --eliminategrowth: the irredundant literals stay below the count before the first round's
+  // eliminations plus that share (eliminations that do not add literals are never limited).
+  elim_round_lits_start_ = opts_.eliminategrowth ? irredundant_literals() : 0;
+  if (opts_.eliminategrowth && eliminate_rounds_ == 1) elim_ref_lits_ = elim_round_lits_start_;
+  elim_cap_lits_ = opts_.eliminategrowth && eliminate_rounds_ > 1 &&
+                           elim_ref_lits_ >= static_cast<uint64_t>(opts_.eliminategrowthmin)
+                       ? elim_ref_lits_ + elim_ref_lits_ * static_cast<uint64_t>(opts_.eliminategrowth) / 1000
+                       : UINT64_MAX;
   const double t3 = seconds();
   // Elimination has its own budget, whatever subsumption and substitution used.
   // A variable's mark is cleared when it is tried; candidates the budget did not reach stay
   // marked (also after a round with all candidates), so later rounds get to them.
   const uint64_t elim_start = budget;
+  if (elim_failed_bound_.size() < num_vars_) elim_failed_bound_.resize(num_vars_, 0);
+  if (elim_size_failed_.size() < num_vars_) elim_size_failed_.resize(num_vars_, 0);
+  const Stats round_stats = stats_;
+  ElimHeap heap(use_heap ? num_vars_ : 0);
+  if (use_heap) {
+    for (const auto& c : cands) heap.push(c.second, c.first);
+  }
   size_t tried = 0;
-  for (; tried < cands.size(); ++tried) {
-    if (inconsistent_ || budget - elim_start > limit) break;
+  for (;; ++tried) {
+    if (use_heap ? heap.empty() : tried >= cands.size()) break;
+    if (inconsistent_ || budget - elim_start > limit || stop_requested()) break;
     // Over the memory limit (eliminations with a bound add clauses), the round ends here and the
     // search stops at its next limit check.
     if (memory_limit_ && (tried & 255) == 0 && memory_exceeded(false)) break;
-    touched_[cands[tried].second] = 0;
-    try_eliminate(cands[tried].second, bound, budget);
+    const Var v = use_heap ? heap.pop() : cands[tried].second;
+    const uint32_t v_bound = bva_elim_bound(v, bound);  // (--bvasearch: 0 for BVA variables)
+    if (touched_[v]) {
+      elim_failed_bound_[v] = 0;
+    } else if (elim_failed_bound_[v]) {
+      ++(elim_failed_bound_[v] == v_bound + 1 ? stats_.elim_retried_same : stats_.elim_retried_raised);
+    }
+    touched_[v] = 0;
+    const uint64_t before = budget;
+    if (!try_eliminate(v, v_bound, budget) && !eliminated_[v]) {
+      elim_failed_bound_[v] = v_bound + 1;
+      stats_.elim_w_failed += budget - before;
+    }
+    if (use_heap) {
+      for (const Var u : elim_changed_) {
+        elim_changed_mark_[u] = 0;
+        if (heap.contains(u)) heap.update(u, key(u));
+      }
+      elim_changed_.clear();
+    }
   }
-  for (size_t i = tried; i < cands.size(); ++i) touched_[cands[i].second] = 1;
+  const bool completed = !inconsistent_ && !stopping && (use_heap ? heap.empty() : tried == cands.size());
+  if (use_heap) {
+    heap.for_each([&](Var u) { touched_[u] = 1; });
+    std::vector<uint32_t>().swap(elim_noccs_);
+    std::vector<uint64_t>().swap(elim_nlits_);
+  } else {
+    for (size_t i = tried; i < cands.size(); ++i) touched_[cands[i].second] = 1;
+  }
+  eliminate_incomplete_ = !completed;
+  // --eliminatecomplete=2: a round that eliminated fewer than a sixteenth of the variables it
+  // tried also ends its bound (ps_200_300_70: ~200k variables untried at bound 0 after the first
+  // round, each later round's budget reached 4-8k of them and eliminated none, so the bound stayed
+  // at 0: 59k eliminated in 14 rounds against 128k with a bound raised every round).
+  const bool unproductive = opts_.eliminatecomplete == 2 && 16 * (inactive_ - eliminated_before) < tried;
+  if ((completed || unproductive) && eliminate_level_ < 32) ++eliminate_level_;
+  touched_count_ = 0;  // (recounted below, after the round's own changes)
   // BVA once, in the first round (as SBVA preprocessing): repeated rounds keep adding variables.
   if (bva_round_now && !opts_.bvafirst && !inconsistent_) bva_run(budget);
+  if (eliminate_rounds_ > 1 && !inconsistent_ && !stopping) bva_search(budget);  // --bvasearch
   const double t4 = seconds();
 
   // Learned clauses on eliminated variables are dropped (they would constrain them again).
@@ -331,6 +566,9 @@ void Solver::eliminate() {
   occs_.clear();
   collect_garbage();
   reconnect_long_watches();
+  touched_count_ = 0;
+  for (Var v = 0; v < num_vars_; ++v) touched_count_ += touched_[v] && !eliminated_[v] && !vals_[make_lit(v, false)];
+  watches_.maybe_compact();
   eliminate_last_ticks_ = stats_.ticks;
   eliminate_last_fixed_ = fixed_;
   eliminate_last_irredundant_ = irredundant_ + binaries_irredundant_;
@@ -346,10 +584,28 @@ void Solver::eliminate() {
                 static_cast<unsigned long long>(stats_.strengthened - strengthened_before),
                 static_cast<unsigned long long>(irredundant_ + binaries_irredundant_), peak_rss_mb());
     if (opts_.verbose >= 2) {
+      std::printf("c   growth by eliminations: clauses %+lld, literals %+lld (%llu eliminations added clauses, "
+                  "%llu capped in all)\n",
+                  static_cast<long long>(elim_round_clauses_), static_cast<long long>(elim_round_lits_),
+                  static_cast<unsigned long long>(elim_round_growing_), static_cast<unsigned long long>(elim_capped_));
       std::printf("c   times: occs %.2f, subsume %.2f, candidates %.2f, eliminate %.2f, cleanup %.2f s; "
                   "%zu candidates, budget %llu of %llu\n",
                   t1 - t0, t2 - t1, t3 - t2, t4 - t3, seconds() - t4, cands.size(),
                   static_cast<unsigned long long>(budget), static_cast<unsigned long long>(limit));
+      auto d = [](uint64_t now, uint64_t then) { return static_cast<unsigned long long>(now - then); };
+      std::printf("c   tried %zu of %zu%s (%llu retried unchanged at the same bound, %llu at a raised bound); failed: "
+                  "occurrences %llu, size %llu (skipped %llu), bound %llu, literals %llu, xor %llu\n",
+                  tried, cands.size(), completed ? " (all)" : "", d(stats_.elim_retried_same, round_stats.elim_retried_same),
+                  d(stats_.elim_retried_raised, round_stats.elim_retried_raised),
+                  d(stats_.elim_fail_occ, round_stats.elim_fail_occ), d(stats_.elim_fail_size, round_stats.elim_fail_size),
+                  d(stats_.elim_long_skipped, round_stats.elim_long_skipped), d(stats_.elim_fail_bound, round_stats.elim_fail_bound),
+                  d(stats_.elim_fail_lits, round_stats.elim_fail_lits), d(stats_.elim_fail_xor, round_stats.elim_fail_xor));
+      std::printf("c   work: gather %llu, gates %llu, definitions %llu, count %llu, add %llu (failed tries %llu); "
+                  "%llu resolutions\n",
+                  d(stats_.elim_w_gather, round_stats.elim_w_gather), d(stats_.elim_w_gates, round_stats.elim_w_gates),
+                  d(stats_.elim_w_defs, round_stats.elim_w_defs), d(stats_.elim_w_count, round_stats.elim_w_count),
+                  d(stats_.elim_w_add, round_stats.elim_w_add), d(stats_.elim_w_failed, round_stats.elim_w_failed),
+                  d(stats_.elim_resolutions, round_stats.elim_resolutions));
     }
     std::fflush(stdout);
   }
@@ -487,11 +743,20 @@ bool Solver::find_ite_gate(Var v, std::vector<OccClause>* side, std::vector<uint
 
 bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
   if (eliminated_[v] || vals_[make_lit(v, false)] != 0) return false;
+  ++stats_.elim_tried;
+  uint64_t mark = budget;
+  auto charge = [&](uint64_t& to) {
+    to += budget - mark;
+    mark = budget;
+  };
   const Lit pivots[2] = {make_lit(v, false), make_lit(v, true)};
   std::vector<OccClause>* side = elim_side_;
   std::vector<uint32_t>& refs = elim_refs_;
   side[0].clear();
   side[1].clear();
+  // A clause longer than the resolvent limit + 1 fails every resolution it takes part in (not a
+  // tautology, not satisfied); only definitions that skip its pairs can eliminate v then.
+  bool has_long = false;
   for (int s = 0; s < 2; ++s) {
     const Lit p = pivots[s];
     gather_occurrences(p, refs, budget);
@@ -501,9 +766,11 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
       bool satisfied = false;
       for (uint32_t k = 0; k < c.size; ++k) satisfied = satisfied || vals_[c.lits()[k]] > 0;
       if (satisfied) {
+        elim_count(c.lits(), c.size, -1);
         delete_irredundant(ref);
         continue;
       }
+      has_long = has_long || c.size > static_cast<uint32_t>(opts_.eliminateclslim) + 1;
       side[s].push_back(OccClause{ref, kNoLit});
     }
     for (const Watch& w : watches_[p]) {
@@ -513,11 +780,27 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
     budget += watches_[p].size() / 8 + 1;
   }
   const size_t np = side[0].size(), nn = side[1].size();
-  if (np > static_cast<size_t>(opts_.eliminateocclim) || nn > static_cast<size_t>(opts_.eliminateocclim)) return false;
+  charge(stats_.elim_w_gather);
+  if (np > static_cast<size_t>(opts_.eliminateocclim) || nn > static_cast<size_t>(opts_.eliminateocclim)) {
+    ++stats_.elim_fail_occ;
+    return false;
+  }
+  // --eliminatelongskip: its last try failed on the size limit and the long clause is still there
+  // (on cabp formulas such variables are re-touched through their clauses of ~700 literals every
+  // round, and with the cheapest-first order their tries used up whole rounds).
+  if (opts_.eliminatelongskip && v < elim_size_failed_.size() && elim_size_failed_[v]) {
+    if (has_long) {
+      ++stats_.elim_fail_size;
+      ++stats_.elim_long_skipped;
+      return false;
+    }
+    elim_size_failed_[v] = 0;
+  }
 
   // Resolvent of a positive and a negative occurrence, root-simplified. Returns false if it is a
   // tautology or satisfied; marks_ is clean on return.
   auto resolve = [&](const OccClause& a, const OccClause& b, std::vector<Lit>& out) -> bool {
+    ++stats_.elim_resolutions;
     out.clear();
     bool keep = true;
     auto add_side = [&](const OccClause& oc, Lit pivot, bool second) {
@@ -618,6 +901,8 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
         const uint32_t m = opts_.eliminatexorlim ? find_xor_gate(v, side, nullptr, gate, budget) : 0;
         if (m && k + m - 2 > static_cast<uint32_t>(opts_.eliminatexorlim)) {
           ++stats_.xor_merges_skipped;
+          ++stats_.elim_fail_xor;
+          charge(stats_.elim_w_gates);
           return false;
         }
       }
@@ -626,10 +911,12 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
     if (!gated) gated = find_ite_gate(v, side, gate, budget);
     if (gated) ++stats_.gates;
   }
+  charge(stats_.elim_w_gates);
   // Semantic definition (an unsat core of the clauses of v without v): its gate x gate
   // resolvents are not tautologies and must be kept; non-gate x non-gate ones are implied.
   bool semantic = false;
   if (!gated && opts_.definitions) semantic = gated = find_definition(v, side, gate, budget);
+  charge(stats_.elim_w_defs);
   auto skip_pair = [&](size_t i, size_t j) {
     if (!gated) return false;
     return semantic ? !gate[0][i] && !gate[1][j] : gate[0][i] == gate[1][j];
@@ -637,7 +924,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
 
   // Count the resolvents first (abort above the bound or on a too long resolvent).
   const uint64_t limit = np + nn + bound;
-  uint64_t count = 0;
+  uint64_t count = 0, res_lits = 0;
   std::vector<Lit>& res = elim_res_;
   for (size_t i = 0; i < np; ++i) {
     const OccClause& a = side[0][i];
@@ -645,10 +932,46 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
       const OccClause& b = side[1][j];
       if (skip_pair(i, j)) continue;
       if (!resolve(a, b, res)) continue;
-      if (res.size() > static_cast<size_t>(opts_.eliminateclslim)) return false;
-      if (++count > limit) return false;
+      if (res.size() > static_cast<size_t>(opts_.eliminateclslim)) {
+        ++stats_.elim_fail_size;
+        if (has_long && v < elim_size_failed_.size()) elim_size_failed_[v] = 1;
+        charge(stats_.elim_w_count);
+        return false;
+      }
+      if (++count > limit) {
+        ++stats_.elim_fail_bound;
+        charge(stats_.elim_w_count);
+        return false;
+      }
+      res_lits += res.size();
     }
   }
+  {
+    uint64_t removed_lits = 0;
+    for (int s = 0; s < 2; ++s) {
+      for (const OccClause& oc : side[s]) removed_lits += oc.ref == kNoReason ? 2 : clause(oc.ref).size;
+    }
+    // Literal growth: at most --eliminatelitbound per elimination, and within the round's cap.
+    if (res_lits > removed_lits) {
+      const uint64_t grow = res_lits - removed_lits;
+      if (grow > static_cast<uint64_t>(opts_.eliminatelitbound)) {
+        ++stats_.elim_fail_lits;
+        charge(stats_.elim_w_count);
+        return false;
+      }
+      const int64_t now = static_cast<int64_t>(elim_round_lits_start_) + elim_round_lits_;
+      if (elim_cap_lits_ != UINT64_MAX && now + static_cast<int64_t>(grow) > static_cast<int64_t>(elim_cap_lits_)) {
+        ++elim_capped_;
+        ++stats_.elim_fail_lits;
+        charge(stats_.elim_w_count);
+        return false;
+      }
+    }
+    elim_round_clauses_ += static_cast<int64_t>(count) - static_cast<int64_t>(np + nn);
+    elim_round_lits_ += static_cast<int64_t>(res_lits) - static_cast<int64_t>(removed_lits);
+    elim_round_growing_ += count > np + nn ? 1 : 0;
+  }
+  charge(stats_.elim_w_count);
 
   // Eliminate: add the resolvents, then save and delete the clauses of v.
   for (size_t i = 0; i < np; ++i) {
@@ -662,12 +985,14 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
       touch_clause(res.data(), static_cast<uint32_t>(res.size()));
       if (res.empty()) {
         inconsistent_ = true;
+        charge(stats_.elim_w_add);
         return true;
       }
       if (res.size() == 1) {
-        if (vals_[res[0]] == 0) assign(res[0], kNoReason);
+        if (vals_[res[0]] == 0) assign_unit_in_proof(res[0]);
         continue;
       }
+      elim_count(res.data(), static_cast<uint32_t>(res.size()), 1);
       if (res.size() == 2) {
         add_binary(res[0], res[1], false);
         continue;
@@ -676,16 +1001,36 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
       for (const Lit l : res) occs_.push(l, ref);
     }
   }
+  // Model reconstruction needs the clauses of one side only (the one with fewer words), followed by
+  // a default for v: reconstruction runs backwards, so v is first set to falsify that side's pivot,
+  // then made true if one of the side's clauses is falsified otherwise. The resolvents (with gate
+  // definitions, also the skipped pairs they imply) make sure the other side is then satisfied.
+  size_t words[2] = {0, 0};
+  for (int s = 0; s < 2; ++s) {
+    for (const OccClause& oc : side[s]) words[s] += (oc.ref == kNoReason ? 2 : clause(oc.ref).size) + 2;
+  }
+  const int kept = words[0] <= words[1] ? 0 : 1;
+  for (const OccClause& oc : side[kept]) {
+    if (oc.ref == kNoReason) {
+      const Lit bin[2] = {pivots[kept], oc.other};
+      push_extension(pivots[kept], bin, 2);
+    } else {
+      const Clause& c = clause(oc.ref);
+      push_extension(pivots[kept], c.lits(), c.size);
+    }
+  }
+  const Lit other = pivots[1 - kept];
+  push_extension(other, &other, 1);
   for (int s = 0; s < 2; ++s) {
     for (const OccClause& oc : side[s]) {
       if (oc.ref == kNoReason) {
         const Lit bin[2] = {pivots[s], oc.other};
-        push_extension(pivots[s], bin, 2);
+        elim_count(bin, 2, -1);
         delete_binary(pivots[s], oc.other);
         --binaries_irredundant_;
       } else {
         const Clause& c = clause(oc.ref);
-        push_extension(pivots[s], c.lits(), c.size);
+        elim_count(c.lits(), c.size, -1);
         delete_irredundant(oc.ref);
       }
     }
@@ -693,6 +1038,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
   eliminated_[v] = 1;
   ++inactive_;
   ++stats_.eliminated;
+  charge(stats_.elim_w_add);
   if (opts_.invariants) {
     for (const uint32_t ref : clauses_) {
       const Clause& c = clause(ref);

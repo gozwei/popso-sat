@@ -3,10 +3,78 @@
 Measurements of popso-sat against established open-source solvers. Every SAT answer in these
 runs was checked against the formula by the benchmark runner
 ([benchmarks/run.py](benchmarks/run.py)); no run produced a wrong answer. Proofs were switched
-off for the timing runs, except the v0.4.0 SAT Competition 2026 run, where every UNSAT answer
-was checked with its proof. Otherwise UNSAT proofs are verified separately by the correctness
+off for the timing runs, except the v0.4.0 and v0.4.1 SAT Competition 2026 runs, where every
+UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs are verified separately by the correctness
 gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
 are never mixed.
+
+## v0.4.1
+
+New in 0.4.1, on by default:
+- BVA during search;
+- linear equations mod p solved by Gaussian elimination;
+- congruence closure over XOR and ITE gates;
+- vivification and sweeping changes;
+- a walk that looks for models (`--walkmode=3`).
+
+Also in 0.4.1, all with an unchanged search: faster propagation and inprocessing, lower memory,
+and smaller, faster-checking proofs. See the [CHANGELOG](CHANGELOG.md).
+
+### SAT Competition 2026 sample (AMD EPYC 4465P, Linux)
+
+The same 168 instances as below (`sets/sc2026.txt`). Setup:
+- 1000 s and 12 GB per instance;
+- an AMD EPYC 4465P (12 cores, 24 threads, 62 GB);
+- the three solvers ran at the same time, seven instances each (21 at once), so they shared the
+  machine's load equally;
+- every model checked;
+- both popso-sat versions wrote proofs, and every UNSAT answer was verified by dpr-trim. 0.4.1
+  had 65 and 0.4.0 had 63; the longest check took 1438 s;
+- Kissat 4.0.4 (built from source) ran without a proof.
+
+This is a faster machine than the i7 below, so its numbers are not comparable with that table.
+The 0.4.1 defaults were chosen on this set (300 s runs), so it is not an independent test.
+
+| | popso-sat 0.4.1 | popso-sat 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 168 (SAT / UNSAT) | 108 (43 / 65) | 101 (38 / 63) | 82 (35 / 47) |
+| solved within 300 s | 94 | 80 | 58 |
+| PAR-2 (s) | 783.2 | 896.1 | 1131.7 |
+| shifted geometric mean (s) | 114.2 | 155.6 | 320.7 |
+| largest peak memory | 2.7 GB (T92) | 7.6 GB (cabp k290) | 2.4 GB (g2-T97) |
+
+**What this shows:**
+- 0.4.1 solves 11 instances that 0.4.0 does not, and loses 4.
+  - Gained:
+    - the four linear-equations instances, in 0.0 s (equations mod 3);
+    - two school timetabling instances (UNSAT, 23 and 124 s; BVA during search);
+    - xor_op_n40_d3 (UNSAT, 0.6 s; XOR substitution);
+    - jkkk-one-one-11-38 (91 s), size_5_5_5 tensors (54 s), cabp k275 (256 s) and abw-K
+      (26 s), all SAT.
+  - Lost:
+    - three satisfiable instances 0.4.0 solved late: ntil-90d-39 at 547 s, qwh.60 at 582 s,
+      51-136961 at 731 s;
+    - gensys-ukn004 (UNSAT, 809 s for 0.4.0).
+- On the instances both versions solve, the shifted geometric mean drops on SAT (56 → 39 s) and
+  barely moves on UNSAT (26.1 → 25.2 s). Overall, the commonly solved instances take 21% less
+  time.
+- Peak memory on the largest instances falls from 7.6 to 2.7 GB. The cyclic antibandwidth (cabp)
+  instances drop from 5.8–7.6 GB to 1.0–1.5 GB.
+
+**Against Kissat 4.0.4** (same machine, same limits, same time):
+- 0.4.1 solves 37 instances that Kissat does not, and Kissat solves 11 that 0.4.1 does not.
+- Most of the 37 come from techniques Kissat does not have:
+  - counting certificates: chnl, count, exam scheduling, clique colouring, graph colouring,
+    sudoku-php, relativized pigeonhole;
+  - Gauss-Jordan elimination: lights-out, parity;
+  - linear equations mod p;
+  - XOR substitution.
+- Kissat's 11:
+  - SAT (5): knight_18, snw_16_9_preOpt_pre, ntil-90d-39, qwh.60, 51-136961;
+  - UNSAT (6): minandmaxor128, asconhash H10, gensys-ukn004, satcoin-genesis, linvrinv5 and a
+    booth/dadda multiplier miter.
+- Instances both solve, shifted geometric mean: SAT 42 s (0.4.1) against 78 s (Kissat) on 30;
+  UNSAT 57 against 69 s on 41.
 
 ## v0.4.0
 
@@ -29,18 +97,17 @@ four instances per family. Setup:
 - every model checked;
 - 0.4.0 wrote its proofs, and each of its 61 UNSAT answers was verified by dpr-trim (the
   runner's `--proof --checker dpr-trim`; the longest check took 2983 s);
-- 0.3.3 ran without proofs.
+- 0.3.3 and Kissat 4.0.4 (the native binary, built from source) ran without proofs.
 
 The 0.4.0 defaults were chosen on this set (300 s runs with each new technique on and off), so it
-is no longer an independent test. Kissat 4.0.4 is running on the same machine; its column
-follows with the next release.
+is no longer an independent test.
 
-| | popso-sat 0.4.0 | popso-sat 0.3.3 |
-|---|---|---|
-| solved of 168 (SAT / UNSAT) | 98 (37 / 61) | 67 (35 / 32) |
-| solved within 300 s | 78 | 46 |
-| PAR-2 (s) | 926.4 | 1303.8 |
-| shifted geometric mean (s) | 164.1 | 416.5 |
+| | popso-sat 0.4.0 | popso-sat 0.3.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 168 (SAT / UNSAT) | 98 (37 / 61) | 67 (35 / 32) | 80 (35 / 45) |
+| solved within 300 s | 78 | 46 | 56 |
+| PAR-2 (s) | 926.4 | 1303.8 | 1152.3 |
+| shifted geometric mean (s) | 164.1 | 416.5 | 338.7 |
 
 **What this shows:**
 - 0.4.0 solves 35 instances that 0.3.3 does not, and loses 4. Of the 35:
@@ -74,6 +141,29 @@ follows with the next release.
     investigated for 0.4.1.
 - On the unsatisfiable instances that both solve, 0.4.0 is faster even though it writes a
   proof: 118 → 104 s, shifted geometric mean of 32.
+
+**Against Kissat 4.0.4** (same machine, same limits):
+- 0.4.0 solves 30 instances that Kissat does not, and Kissat solves 12 that 0.4.0 does not.
+- Of the 30, 25 come from techniques Kissat does not have:
+  - 20 counting refutations;
+  - 5 Gauss-Jordan solutions (two lights-out refutations, par32-4, par32-4-c, two-trees-1023v).
+  - The other 5 are hantzsche_wendt_unit_93, ntil-90d-39, QuasiGroup-4-12, StConn_7_128 and
+    vdwb_k6_n300.
+- Of Kissat's 12, 0.3.3 solved only two (cabp-V-nos6 k275 and jkkk-one-one-11-38-sat):
+  - satisfiable (5): knight_18, snw_16_9_preOpt_pre, size_5_5_5_i116_r12 (tensors), cabp k275
+    and jkkk;
+  - unsatisfiable (7): three school timetabling instances (70-129 s for Kissat), minandmaxor128,
+    asconhash, gensys-ukn004 and satcoin-genesis-UNSAT-7200.
+  - With three seeds on the M4 (200-300 s), Kissat solves knight_18, jkkk and cabp k275 in two
+    runs of three each. The 0.4.1 development build solves cabp k275 in three of three, and
+    jkkk and knight_18 in none.
+- On the 68 instances both solve, shifted geometric mean: satisfiable 67 s (0.4.0) vs 84 s
+  (Kissat), unsatisfiable 63 s vs 82 s.
+- Memory on the largest instances is 1.7-10x Kissat's: cabp-V-nos6 5.8-7.6 GB against 0.8 GB, T92
+  3.2 against 1.8 GB. 0.4.1 caps the clauses elimination may add, which brings cabp k290 from
+  3.5 to 1.4 GB on the M4 (300 s).
+- Peak memory of runs that stayed under 434 MB (0.4.0) or 479 MB (Kissat) is not shown: the
+  runner of these runs reported its own size as the floor (fixed in 0.4.1).
 
 <details>
 <summary>sc2026: solved per family where the two differ</summary>

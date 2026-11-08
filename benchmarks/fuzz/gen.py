@@ -19,6 +19,13 @@ small formulas fast:
              partition into triples, for --counting: mostly UNSAT, scrambled or not
   circuit    miters of two copies of a random AND/OR/XOR/ITE circuit written in
              different equivalent gate forms (sometimes with one gate changed)
+  xorsub     (only with --family) XOR-substituted formulas for --xorsub: random k-CNF,
+             pigeonhole, ordering principle, Tseitin or pyramid pebbling with every variable
+             (or most) replaced by the XOR of 2 (sometimes 3) new variables, expanded into
+             CNF; shuffled numbering, polarities and clause order; sometimes a stray clause
+  linmod     (only with --family) linear equations mod 3, 5 or 7 on one-hot domains for
+             --linmod (forbidden-tuple clauses), planted or random right-hand sides, sometimes
+             scrambled, with extra clauses or a non-linear constraint
 
 Besides the edge-* families, low-probability mutators sprinkle duplicate
 literals, tautologies, duplicate clauses, units and unused variables into the
@@ -194,6 +201,51 @@ def _exactly_one_pairs(lits: list[int], clauses: list[list[int]]) -> None:
             clauses.append([-lits[i], -lits[j]])
 
 
+AMO_ENCODINGS = ("pairwise", "seq", "commander", "product")
+
+
+def _at_most_one(lits: list[int], clauses: list[list[int]], enc: str, next_var: int) -> int:
+    """At-most-one over lits: pairwise, sequential counter (Sinz), commander (groups of three,
+    commanders recursively) or product (row and column variables). Returns the next free
+    variable."""
+    n = len(lits)
+    if n <= 1:
+        return next_var
+    if enc == "pairwise" or n <= 3:
+        _exactly_one_pairs(lits, clauses)
+        return next_var
+    if enc == "seq":
+        s = list(range(next_var, next_var + n - 1))
+        clauses.append([-lits[0], s[0]])
+        for i in range(1, n - 1):
+            clauses += [[-lits[i], s[i]], [-s[i - 1], s[i]], [-lits[i], -s[i - 1]]]
+        clauses.append([-lits[-1], -s[-1]])
+        return next_var + n - 1
+    if enc == "commander":
+        commanders = []
+        for g in range(0, n, 3):
+            group = lits[g:g + 3]
+            c = next_var
+            next_var += 1
+            commanders.append(c)
+            _exactly_one_pairs(group, clauses)
+            clauses += [[-x, c] for x in group]
+            clauses.append([-c] + group)
+        return _at_most_one(commanders, clauses, "commander", next_var)
+    side = 1
+    while side * side < n:
+        side += 1
+    rows = list(range(next_var, next_var + (n + side - 1) // side))
+    next_var += len(rows)
+    cols = list(range(next_var, next_var + side))
+    next_var += side
+    for i, x in enumerate(lits):
+        clauses += [[-x, rows[i // side]], [-x, cols[i % side]]]
+    _exactly_one_pairs(rows, clauses)
+    _exactly_one_pairs(cols, clauses)
+    return next_var
+
+
 def gen_counting(rng: random.Random, max_vars: int) -> Formula:
     """Counting principles for --counting (not in the default mix): pigeonhole (plain, functional,
     clique formulas with k variables per pair), perfect matching of K_n, partition of n points into
@@ -203,6 +255,9 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
     kind = rng.choice(["php", "fphp", "clique", "matching", "triples", "clqcl", "gcol", "rphp"])
     sat = rng.random() < 0.25
     clauses: list[list[int]] = []
+    # At-most-one constraints over auxiliary variables (pigeonholes, matchings, triples) half the time.
+    enc = rng.choice(AMO_ENCODINGS[1:]) if rng.random() < 0.5 else "pairwise"
+    amo_groups: list[list[int]] = []
     if kind in ("php", "fphp", "clique"):
         if kind == "clique":
             parts, size = rng.randint(2, 4), rng.randint(1, 3)
@@ -216,14 +271,20 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
         for p in range(pigeons):
             row = [x(p, v) for v in range(verts)]
             clauses.append(row)
-            if kind != "php":
+            if kind == "fphp":
+                amo_groups.append(row)
+            elif kind != "php":
                 _exactly_one_pairs(row, clauses)
-        for p in range(pigeons):
-            for q in range(p + 1, pigeons):
-                for v in range(verts):
-                    for w in range(verts):
-                        if v // size == w // size and (kind != "php" or v == w):
-                            clauses.append([-x(p, v), -x(q, w)])
+        if kind == "clique":
+            for p in range(pigeons):
+                for q in range(p + 1, pigeons):
+                    for v in range(verts):
+                        for w in range(verts):
+                            if v // size == w // size:
+                                clauses.append([-x(p, v), -x(q, w)])
+        else:
+            for v in range(verts):
+                amo_groups.append([x(p, v) for p in range(pigeons)])
         nvars = pigeons * verts
         name = f"{kind}{pigeons}x{holes}" + (f"x{size}" if kind == "clique" else "")
         unsat = pigeons > holes
@@ -237,7 +298,7 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
         for a in range(n):
             row = [e[a, b] for b in range(n) if b != a]
             clauses.append(row)
-            _exactly_one_pairs(row, clauses)
+            amo_groups.append(row)
         name, unsat = f"matching{n}", n % 2 == 1
     elif kind == "clqcl":
         n, m = rng.randint(4, 5), 3  # (the reference needs 1 s for n = 5, 10 s for n = 6)
@@ -326,8 +387,15 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
                         through[p].append(nvars)
         for row in through:
             clauses.append(row)
-            _exactly_one_pairs(row, clauses)
+            amo_groups.append(row)
         name, unsat = f"triples{n}", n % 3 != 0
+    if amo_groups:
+        nv = nvars + 1
+        for g in amo_groups:
+            nv = _at_most_one(g, clauses, enc, nv)
+        nvars = nv - 1
+        if enc != "pairwise":
+            name += f"-{enc}"
     expected = "UNSAT" if unsat else ("SAT" if sat is not None else None)
     r = rng.random()
     if r < 0.15:  # one more clause: still unsatisfiable if it was
@@ -379,6 +447,215 @@ def gen_parity(rng: random.Random, max_vars: int) -> Formula:
     nv = _xor_chain(rng, b, b2, nv, clauses)
     rng.shuffle(clauses)
     return Formula(nv - 1, clauses, "parity", expected="SAT" if b1 == b2 else "UNSAT")
+
+
+# ----- XOR substitution
+
+
+def xor_substitute(rng: random.Random, nvars: int, clauses: list[list[int]], p3: float = 0.15,
+                   p1: float = 0.1) -> tuple[int, list[list[int]]]:
+    """Replaces variable x (1..nvars) by the XOR of a tuple of 2 (or 3, or 1) new variables plus a
+    random constant, expands every clause completely, and shuffles variable numbers, literal
+    order and clause order. Satisfiability is preserved."""
+    sizes = [0] + [3 if rng.random() < p3 else (1 if rng.random() < p1 else 2) for _ in range(nvars)]
+    total = sum(sizes)
+    ids = list(range(1, total + 1))
+    rng.shuffle(ids)
+    tuples, flips, k = [[]], [0], 0
+    for x in range(1, nvars + 1):
+        tuples.append(ids[k:k + sizes[x]])
+        k += sizes[x]
+        flips.append(rng.randint(0, 1))
+    out = []
+    for c in clauses:
+        acc = [[]]
+        for lit in c:
+            t = tuples[abs(lit)]
+            if len(t) == 1 and not flips[abs(lit)]:
+                parts = [[t[0] if lit > 0 else -t[0]]]
+            else:
+                false_value = (0 if lit > 0 else 1) ^ flips[abs(lit)]  # XOR(t) when lit is false
+                parts = []
+                for m in range(1 << len(t)):
+                    if bin(m).count("1") % 2 != false_value:
+                        continue
+                    parts.append([-v if (m >> i) & 1 else v for i, v in enumerate(t)])
+            acc = [a + p for a in acc for p in parts]
+        for z in acc:
+            rng.shuffle(z)
+            out.append(z)
+    rng.shuffle(out)
+    return total, out
+
+
+def _ordering_principle(m: int) -> tuple[int, list[list[int]]]:
+    x = lambda i, j: i * m + j + 1  # noqa: E731
+    cl = []
+    for i in range(m):
+        pred = []
+        for j in range(m):
+            if j == i:
+                continue
+            pred.append(x(j, i))
+            if i < j:
+                cl += [[-x(i, j), -x(j, i)], [x(i, j), x(j, i)]]
+            for k in range(m):
+                if k != i and k != j:
+                    cl.append([-x(i, j), -x(j, k), x(i, k)])
+        cl.append(pred)
+    return m * m, cl
+
+
+def _pyramid_pebbling(h: int) -> tuple[int, list[list[int]]]:
+    """Pebbling formula of a pyramid of height h: sources true, each node implied by its two
+    predecessors, the sink false (UNSAT)."""
+    ids = {}
+    for r in range(h):
+        for i in range(r + 1):
+            ids[r, i] = len(ids) + 1
+    cl = [[ids[h - 1, i]] for i in range(h)]  # the bottom row are the sources
+    for r in range(h - 1):
+        for i in range(r + 1):
+            cl.append([-ids[r + 1, i], -ids[r + 1, i + 1], ids[r, i]])
+    cl.append([-ids[0, 0]])
+    return len(ids), cl
+
+
+def _tseitin_small(rng: random.Random, n: int, odd: bool) -> tuple[int, list[list[int]]]:
+    """Tseitin parity formula on a random connected graph (cycle plus chords), an edge variable
+    per edge and a charge per vertex: odd total charge UNSAT, even SAT."""
+    edges = [(i, (i + 1) % n) for i in range(n)]
+    for _ in range(rng.randint(0, n // 2)):
+        a, b = rng.sample(range(n), 2)
+        if (a, b) not in edges and (b, a) not in edges:
+            edges.append((a, b))
+    charge = [rng.randint(0, 1) for _ in range(n)]
+    if (sum(charge) % 2 == 1) != odd:
+        charge[0] ^= 1
+    inc = [[] for _ in range(n)]
+    for e, (a, b) in enumerate(edges):
+        inc[a].append(e + 1)
+        inc[b].append(e + 1)
+    cl = []
+    for v in range(n):
+        xs = inc[v]
+        for m in range(1 << len(xs)):
+            if bin(m).count("1") % 2 != charge[v]:
+                cl.append([-x if (m >> i) & 1 else x for i, x in enumerate(xs)])
+    return len(edges), cl
+
+
+def gen_xorsub(rng: random.Random, max_vars: int) -> Formula:
+    kind = rng.choice(["ksat", "php", "op", "tseitin", "pebbling"])
+    expected = None
+    if kind == "ksat":
+        n = rng.randint(4, 14)
+        k = rng.choice([2, 3])
+        m = int(n * THRESHOLD[k] * rng.uniform(0.7, 1.3))
+        nvars, base = n, _ksat_clauses(rng, n, max(1, m), k)
+    elif kind == "php":
+        holes = rng.randint(2, 4)
+        pigeons = holes + 1 if rng.random() < 0.8 else holes
+        var = lambda p, h: p * holes + h + 1  # noqa: E731
+        base = [[var(p, h) for h in range(holes)] for p in range(pigeons)]
+        for h in range(holes):
+            for p in range(pigeons):
+                for q in range(p + 1, pigeons):
+                    base.append([-var(p, h), -var(q, h)])
+        nvars, expected = pigeons * holes, "UNSAT" if pigeons > holes else "SAT"
+    elif kind == "op":
+        m = rng.randint(3, 4)
+        nvars, base = _ordering_principle(m)
+        expected = "UNSAT"
+        if rng.random() < 0.4:
+            base.pop()  # the last element needs no predecessor: SAT
+            expected = "SAT"
+    elif kind == "tseitin":
+        odd = rng.random() < 0.6
+        nvars, base = _tseitin_small(rng, rng.randint(4, 7), odd)
+        expected = "UNSAT" if odd else "SAT"
+    else:
+        nvars, base = _pyramid_pebbling(rng.randint(2, 4))
+        expected = "UNSAT"
+        if rng.random() < 0.3:
+            base.pop()  # no sink clause: SAT
+            expected = "SAT"
+    p3 = rng.choice([0.0, 0.0, 0.15, 0.4])
+    p1 = rng.choice([0.0, 0.0, 0.1, 0.3])
+    total, clauses = xor_substitute(rng, nvars, base, p3, p1)
+    notes = [f"base {kind}, {nvars} variables, {len(base)} clauses; p3 {p3}, p1 {p1}"]
+    if clauses and rng.random() < 0.1:  # a stray clause: some groups incomplete or extra
+        clauses.append(_random_clause(rng, total, rng.randint(2, 4)))
+        notes.append("stray clause")
+        if expected == "SAT":
+            expected = None
+    return Formula(total, clauses, f"xorsub-{kind}", expected=expected, notes=notes)
+
+
+def gen_linmod(rng: random.Random, max_vars: int) -> Formula:
+    """Linear equations mod p (3, 5 or 7) on one-hot domains for --linmod (not in the default
+    mix): each domain is an exactly-one group (positive clause + pairwise at-most-one), each
+    equation over k domains forbids the p^k - p^(k-1) tuples that violate it with one clause each
+    (as the sc2026 linear-equations family). Planted solution (SAT) or random right-hand sides;
+    sometimes flipped domain polarities, scrambled numbering, extra random clauses, an incomplete
+    equation (a forbidden tuple missing) or a non-linear constraint."""
+    p = rng.choice([3, 3, 3, 5, 7])
+    kmax = {3: 4, 5: 3, 7: 2}[p]
+    nd = rng.randint(2, max(2, min(30, max_vars // p)))
+    neq = rng.randint(1, nd + 2)
+    planted = rng.random() < 0.6
+    sol = [rng.randrange(p) for _ in range(nd)]
+    var = lambda d, v: d * p + v + 1  # noqa: E731
+    clauses: list[list[int]] = []
+    for d in range(nd):
+        lits = [var(d, v) for v in range(p)]
+        clauses.append(lits[:])
+        _exactly_one_pairs(lits, clauses)
+    notes = [f"p {p}, {nd} domains, {neq} equations, planted {planted}"]
+    expected = "SAT" if planted else None
+    for e in range(neq):
+        k = rng.randint(2, min(kmax, nd))
+        ds = rng.sample(range(nd), k)
+        coef = [rng.randrange(1, p) for _ in range(k)]
+        rhs = sum(c * sol[d] for c, d in zip(coef, ds)) % p if planted else rng.randrange(p)
+        tuples = []
+        for idx in range(p ** k):
+            t, x = [], idx
+            for _ in range(k):
+                t.append(x % p)
+                x //= p
+            if sum(c * v for c, v in zip(coef, t)) % p != rhs:
+                tuples.append(t)
+        if rng.random() < 0.05 and tuples:  # incomplete: one forbidden tuple missing (not linear)
+            tuples.pop(rng.randrange(len(tuples)))
+            notes.append(f"equation {e} incomplete")
+        elif rng.random() < 0.05:  # one extra forbidden tuple (not linear, may be UNSAT)
+            t = [rng.randrange(p) for _ in range(k)]
+            if t not in tuples:
+                tuples.append(t)
+                expected = None
+                notes.append(f"equation {e} extra tuple")
+        for t in tuples:
+            clauses.append([-var(d, v) for d, v in zip(ds, t)])
+    nvars = nd * p
+    if rng.random() < 0.2:  # extra random clauses over the domain variables and new ones
+        extra = rng.randint(1, 6)
+        nvars += extra
+        for _ in range(rng.randint(1, 3 * extra)):
+            clauses.append(_random_clause(rng, nvars, rng.randint(2, 4)))
+        expected = None
+        notes.append("extra clauses")
+    if rng.random() < 0.4:  # scramble numbering and polarities, shuffle clauses and literals
+        perm = list(range(1, nvars + 1))
+        rng.shuffle(perm)
+        flip = [rng.random() < 0.3 for _ in range(nvars + 1)]
+        clauses = [[(perm[abs(l) - 1] if l > 0 else -perm[abs(l) - 1]) * (-1 if flip[abs(l)] else 1) for l in c]
+                   for c in clauses]
+        for c in clauses:
+            rng.shuffle(c)
+        rng.shuffle(clauses)
+        notes.append("scrambled")
+    return Formula(nvars, clauses, f"linmod-p{p}", expected=expected, notes=notes)
 
 
 # ----- edge cases
@@ -613,6 +890,8 @@ FAMILIES = {
     "parity": (gen_parity, 0.04),
     **{name: (fn, 0.13 / len(EDGE)) for name, fn in EDGE.items()},
     "counting": (gen_counting, 0.0),  # not in the default mix (its seeds stay as they were)
+    "xorsub": (gen_xorsub, 0.0),  # not in the default mix
+    "linmod": (gen_linmod, 0.0),  # not in the default mix
 }
 
 

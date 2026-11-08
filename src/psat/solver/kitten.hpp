@@ -46,6 +46,9 @@ class Kitten {
   bool flip(KLit lit);
   // Random decision phases for the next solves (diverse models refine candidates faster).
   void randomize_phases(uint64_t& state);
+  // The decision phase of lit's variable for the next solves: lit true (after randomize_phases,
+  // which leaves the assignment undone).
+  void prefer(KLit lit) { phase_[var(lit)] = (lit & 1u) ? int8_t{-1} : int8_t{1}; }
 
   // After kUnsat: the negations of the assumptions involved (empty: unsatisfiable without them).
   const std::vector<KLit>& final_clause() const { return final_; }
@@ -57,10 +60,22 @@ class Kitten {
   uint32_t learned_size(size_t i) const { return arena_[learned_refs_[i]]; }
 
   uint64_t ticks() const { return ticks_; }
+  size_t bytes() const;  // allocated (capacity) of the clause arena, watches and per-variable arrays
 
   // After an unsatisfiable result without assumptions (inconsistent()): the ids of the original
   // clauses in a refutation (an unsatisfiable subset, not necessarily minimal).
   void compute_core(std::vector<uint32_t>& ids);
+
+  // Proofs with fewer lemmas: with track_cores (until clear()), every unsatisfiable result marks
+  // the learned clauses its refutation or final clause depends on (transitively, with the reasons
+  // of the root literals involved); mark_learned(i) marks learned clause i likewise. A caller
+  // writing a proof needs only the marked learned clauses, in derivation order.
+  void track_cores(bool on) { track_cores_ = on; }
+  // Decisions from a move-to-front queue instead of the score heap (until clear(); set before
+  // resize()): O(1) per decision and per unassignment, for many short satisfiable solves.
+  void use_queue(bool on) { queue_ = on; }
+  void mark_learned(size_t i);
+  bool needed(size_t i) const { return i < needed_.size() && needed_[i]; }
 
  private:
   static constexpr uint32_t kNone = UINT32_MAX;
@@ -90,6 +105,13 @@ class Kitten {
   std::vector<uint32_t> learned_refs_;
   std::vector<uint32_t> ante_, ante_begin_{0};
   uint32_t core_conflict_ = kNone;  // the clause falsified at the root
+  bool track_cores_ = false;
+  std::vector<uint8_t> needed_;          // per learned clause
+  std::vector<uint32_t> final_reasons_;  // reasons visited by analyze_final
+  std::vector<uint32_t> stamp_;          // per arena offset: epoch of the last visit
+  uint32_t epoch_ = 0;
+  void mark_core();
+  void mark_from(std::vector<uint32_t>& work);
   std::vector<int8_t> vals_;      // per literal
   std::vector<int8_t> phase_;     // per variable
   std::vector<uint32_t> levels_;  // per variable
@@ -97,6 +119,15 @@ class Kitten {
   std::vector<uint8_t> seen_;     // per variable
   std::vector<double> score_;     // per variable
   std::vector<uint32_t> heap_, heap_pos_;  // max-heap on score_
+  // Queue (use_queue): doubly linked, the last element was enqueued (bumped) last and is decided
+  // first; every variable after queue_search_ is assigned.
+  bool queue_ = false;
+  std::vector<uint32_t> queue_prev_, queue_next_;
+  std::vector<uint64_t> queue_stamp_;
+  uint32_t queue_first_ = kNone, queue_last_ = kNone, queue_search_ = kNone;
+  uint64_t queue_stamps_ = 0;
+  void queue_enqueue(uint32_t v);  // at the end
+  void queue_dequeue(uint32_t v);
   double inc_ = 1.0;
   std::vector<KLit> trail_;
   std::vector<uint32_t> control_;  // trail position of each decision level

@@ -62,9 +62,10 @@
 //   the clique-colouring plan with the pigeons as positions, the places as vertices and the holes
 //   as colours (its cost grows with the square of the places);
 // - an embedded pigeonhole is refuted in isolation (counting_isolated): a separate solver on the
-//   subsystem's clauses runs the pigeonhole plan; the proof then deletes every other clause on
-//   the subsystem's variables (the PR checks see the subsystem only, as in that solver) and
-//   continues with its refutation. A subset of the clauses is unsatisfiable, so is the formula.
+//   subsystem's clauses runs the pigeonhole plan; the proof then deletes every other clause (the
+//   PR checks see the subsystem only, as in that solver, and do not visit the rest of the formula
+//   for each step) and continues with its refutation. A subset of the clauses is unsatisfiable,
+//   so is the formula.
 //
 // Every PR clause C with witness w is checked before it is written. The negation of C is
 // propagated at decision level 1 (assignment A); every clause D that w touches without satisfying
@@ -86,8 +87,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 #include <numeric>
 #include <string>
+#include <unordered_map>
 
 #include "psat/core/options.hpp"
 #include "psat/io/proof.hpp"
@@ -126,6 +129,11 @@ struct Solver::CountingState {
   std::vector<Var> vars;                   // the structure variables
   std::vector<Var> extra_vars;             // other variables with occurrence lists
   bool embedded = false;                   // pigeonhole inside a larger formula: refuted in isolation
+  // Virtual exclusions (at-most-one constraints over auxiliary variables), found by probing:
+  // vlit[voff[x] .. voff[x + 1]) are literals that x falsifies by propagation.
+  bool virt = false;
+  std::vector<uint32_t> voff;
+  std::vector<Lit> vlit;
   std::vector<uint32_t> longs;             // embedded: the pigeon clauses
   uint64_t degree_sum = 0, long_sum = 0;   // for the cost estimate (over all structure variables)
   uint64_t all_vars = 0;
@@ -138,6 +146,35 @@ struct Solver::CountingState {
   std::vector<Lit> others, rest;
   uint64_t work = 0, limit = 0, ticks0 = 0;
   const char* failure = nullptr;
+  // Proof clean-up after each round (counting_certify): the round's clauses of three or more
+  // literals (size, then the literals), the trail position where the round's units start, and
+  // per literal: its satisfied clauses are dropped from the proof already.
+  std::vector<Lit> round;
+  size_t round_trail = 0;
+  std::vector<uint8_t> dropped;
+  // Clauses the plan does not need, deleted from the proof before it if it refutes the formula
+  // (whole-formula pigeonhole): flat (size, literals), and the number of such copies per clause
+  // hash (end_round leaves that many copies of a clause alone).
+  std::vector<Lit> upfront;
+  std::unordered_map<uint64_t, uint32_t> upfront_copies;
+  static uint64_t key(const Lit* lits, uint32_t size) {
+    uint64_t h = size;
+    for (uint32_t i = 0; i < size; ++i) {
+      uint64_t x = lits[i] + 0x9e3779b97f4a7c15ULL;
+      x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+      x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+      h += x ^ (x >> 31);
+    }
+    return h;
+  }
+  // One copy of the clause is deleted up front (and no longer counted as such).
+  bool take_upfront(const Lit* lits, uint32_t size) {
+    if (upfront_copies.empty()) return false;
+    const auto it = upfront_copies.find(key(lits, size));
+    if (it == upfront_copies.end() || !it->second) return false;
+    --it->second;
+    return true;
+  }
 
   std::vector<uint32_t>* occ_of(Lit l) {
     const uint32_t i = slot[var_of(l)];
@@ -673,7 +710,21 @@ bool Solver::counting_detect_clique(CountingState& st) {
 // refuted on its own (counting_isolated).
 bool Solver::counting_detect_embedded(CountingState& st) {
   const size_t nv = num_vars_, nl = 2 * nv;
-  const uint64_t cap = st.work + 4 * (arena_.size() + 2 * binaries_irredundant_) + 8'000'000;
+  // Budget: four passes over the clauses; one with virtual exclusions (after probing).
+  const uint64_t passes = st.virt ? 1 : 4;
+  const uint64_t cap = st.work + passes * (arena_.size() + 2 * binaries_irredundant_) + (st.virt ? 2'000'000 : 8'000'000);
+  // The literals x excludes: binary clauses (-x v -y), and the virtual exclusions if any.
+  auto virtual_count = [&st](Lit x) -> size_t { return st.virt ? st.voff[x + 1] - st.voff[x] : 0; };
+  // (charge: count the scan as work; the adjacency pass counts the occurrences it visits instead)
+  auto exclusions = [&](Lit x, bool charge, auto&& visit) {
+    for (const Watch& w : watches_[negate(x)]) {
+      if (w.binary() && !w.redundant_binary()) visit(negate(w.blit));
+    }
+    if (st.virt) {
+      for (uint32_t i = st.voff[x]; i < st.voff[x + 1]; ++i) visit(st.vlit[i]);
+    }
+    if (charge) st.work += (watches_[negate(x)].size() + virtual_count(x)) / 4 + 1;
+  };
   // Candidate pigeons: long clauses whose literals each exclude at least s other literals.
   std::vector<uint32_t> cand;
   for (const uint32_t ref : clauses_) {
@@ -682,12 +733,13 @@ bool Solver::counting_detect_embedded(CountingState& st) {
     if (++st.work > cap) return false;
     const Lit* lits = c.lits();
     bool ok = true;
-    for (uint32_t k = 0; k < c.size && ok; ++k) ok = !vals_[lits[k]] && watches_[negate(lits[k])].size() >= c.size;
+    for (uint32_t k = 0; k < c.size && ok; ++k) {
+      ok = !vals_[lits[k]] && watches_[negate(lits[k])].size() + virtual_count(lits[k]) >= c.size;
+    }
     if (!ok) continue;
     for (uint32_t k = 0; k < c.size && ok; ++k) {
       uint32_t cnt = 0;
-      for (const Watch& x : watches_[negate(lits[k])]) cnt += x.binary() && !x.redundant_binary();
-      st.work += watches_[negate(lits[k])].size() / 4 + 1;
+      exclusions(lits[k], true, [&cnt](Lit) { ++cnt; });
       ok = cnt >= c.size;
     }
     if (!ok) continue;
@@ -720,17 +772,16 @@ bool Solver::counting_detect_embedded(CountingState& st) {
     if (st.work > cap) return false;
     const Clause& c = clause(cand[i]);
     qstamp[i] = ++now;
-    for (uint32_t k = 0; k < c.size; ++k) {
-      for (const Watch& w : watches_[negate(c.lits()[k])]) {
-        if (!w.binary() || w.redundant_binary()) continue;
-        const Lit y = negate(w.blit);
+    const uint32_t size = c.size;
+    for (uint32_t k = 0; k < size; ++k) {
+      exclusions(clause(cand[i]).lits()[k], false, [&](Lit y) {
         for (uint32_t t = off[y]; t < off[y + 1]; ++t) {
-          if (qstamp[occ[t]] == now || clause(cand[occ[t]]).size != c.size) continue;
+          if (qstamp[occ[t]] == now || clause(cand[occ[t]]).size != size) continue;
           qstamp[occ[t]] = now;
           adj[i].push_back(occ[t]);
         }
         st.work += off[y + 1] - off[y] + 1;
-      }
+      });
     }
   }
   std::vector<uint32_t> degree(cand.size()), queue;
@@ -778,17 +829,14 @@ bool Solver::counting_detect_embedded(CountingState& st) {
     constexpr uint32_t kAmbiguous = UINT32_MAX;
     ++tnow;
     for (uint32_t j = 0; j < s; ++j) {
-      for (const Watch& w : watches_[negate(rows[0][j])]) {
-        if (!w.binary() || w.redundant_binary()) continue;
-        const Lit y = negate(w.blit);
+      exclusions(rows[0][j], true, [&](Lit y) {
         if (tstamp[y] == tnow) {
           if (tlab[y] != j) tlab[y] = kAmbiguous;
         } else {
           tstamp[y] = tnow;
           tlab[y] = j;
         }
-      }
-      st.work += watches_[negate(rows[0][j])].size() / 4 + 1;
+      });
     }
     for (const uint32_t t : nbrs) {
       if (rows.size() >= kMaxRows) break;
@@ -813,12 +861,10 @@ bool Solver::counting_detect_embedded(CountingState& st) {
     for (size_t a = 0; a < n; ++a) {
       ++tnow;
       for (uint32_t h = 0; h < s; ++h) {
-        for (const Watch& w : watches_[negate(rows[a][h])]) {
-          if (!w.binary() || w.redundant_binary()) continue;
-          tstamp[negate(w.blit)] = tnow;
-          tlab[negate(w.blit)] = h;
-        }
-        st.work += watches_[negate(rows[a][h])].size() / 4 + 1;
+        exclusions(rows[a][h], true, [&](Lit y) {
+          tstamp[y] = tnow;
+          tlab[y] = h;
+        });
       }
       for (size_t b = a + 1; b < n; ++b) {
         bool ok = true;
@@ -890,9 +936,9 @@ bool Solver::counting_detect_embedded(CountingState& st) {
 
 // Refutes the embedded subsystem on its own: a solver on its pigeon clauses and its at-most-one
 // binary clauses (renumbered variables) runs the pass. If it refutes them, the proof deletes every
-// other clause on the subsystem's variables (the checker then sees the subsystem only, as the
-// isolated solver did) and continues with the isolated solver's proof, which ends with the empty
-// clause. Refuting a subset of the clauses refutes the formula. Otherwise nothing is written.
+// other clause (the checker then sees the subsystem only, as the isolated solver did) and
+// continues with the isolated solver's proof, which ends with the empty clause. Refuting a subset
+// of the clauses refutes the formula. Otherwise nothing is written.
 bool Solver::counting_isolated(CountingState& st) {
   const uint32_t holes = st.holes, pigeons = st.pigeons;
   std::vector<uint32_t> sub(num_vars_, UINT32_MAX), where(num_vars_, UINT32_MAX);  // where: pigeon * holes + hole
@@ -905,8 +951,9 @@ bool Solver::counting_isolated(CountingState& st) {
     }
     sub[v] = static_cast<uint32_t>(to_main.size() / 2);
     where[v] = i;
-    to_main.push_back(make_lit(v, false));
-    to_main.push_back(make_lit(v, true));
+    // (its proof is copied into this one as encoded: in the input numbering)
+    to_main.push_back(external_lit(make_lit(v, false)));
+    to_main.push_back(external_lit(make_lit(v, true)));
   }
   auto dimacs = [&](Lit x) { return to_dimacs(make_lit(sub[var_of(x)], is_negative(x))); };
   // In the subsystem: (-a v -b) for structure literals a, b of one hole and different pigeons, or
@@ -921,8 +968,13 @@ bool Solver::counting_isolated(CountingState& st) {
   o.lucky = 0;
   o.verbose = 0;
   o.cardinality = 0;
+  o.renumber = 0;
+  o.linmod = 0;
   Solver iso(o);
   iso.counting_isolated_ = true;
+  iso.start_ = start_;  // (the same clock, time limit and terminate flag: see stop_requested())
+  iso.time_limit_ = time_limit_;
+  iso.terminate_ = terminate_;
   std::string buffer;
   {
     ProofWriter iso_proof([&buffer](const char* d, size_t n) { buffer.append(d, n); },
@@ -936,6 +988,10 @@ bool Solver::counting_isolated(CountingState& st) {
       for (uint32_t h = 0; h < holes; ++h) cl.push_back(dimacs(st.cell[i * holes + h]));
       iso.add_clause(cl.data(), cl.size());
     }
+    // Its at-most-one clauses: binary clauses of the formula, and virtual exclusions, which the
+    // proof derives by RUP before the auxiliary clauses are deleted.
+    std::vector<Lit> lemmas;  // pairs
+    std::vector<uint64_t> fed;
     for (uint32_t i = 0; i < pigeons * holes; ++i) {
       const Lit a = st.cell[i];
       for (const Watch& w : watches_[negate(a)]) {
@@ -944,41 +1000,77 @@ bool Solver::counting_isolated(CountingState& st) {
         if (a < b && in_subsystem(a, b)) {
           const int bin[2] = {dimacs(negate(a)), dimacs(negate(b))};
           iso.add_clause(bin, 2);
+          fed.push_back(uint64_t{a} << 32 | b);
+        }
+      }
+    }
+    if (st.virt) {
+      std::sort(fed.begin(), fed.end());
+      for (uint32_t i = 0; i < pigeons * holes; ++i) {
+        const Lit a = st.cell[i];
+        for (uint32_t k = st.voff[a]; k < st.voff[a + 1]; ++k) {
+          const Lit b = st.vlit[k];
+          if (!(a < b) || !in_subsystem(a, b)) continue;
+          const uint64_t key = uint64_t{a} << 32 | b;
+          if (std::binary_search(fed.begin(), fed.end(), key)) continue;
+          lemmas.push_back(a);
+          lemmas.push_back(b);
+          const int bin[2] = {dimacs(negate(a)), dimacs(negate(b))};
+          iso.add_clause(bin, 2);
         }
       }
     }
     iso.set_conflict_limit(0);
     const int res = iso.solve();
+    stop_after(iso);
     stats_.counting_work += iso.stats().counting_work;
     if (res != kUnsat || !iso.stats().counting_found) {
       st.failure = "the isolated subsystem was not refuted";
       return false;
     }
     iso_proof.flush();
+    // The virtual exclusions as RUP lemmas (checked here; with a proof also written).
+    if (!lemmas.empty() && propagated_ < trail_.size() && !propagate()) {
+      inconsistent_ = true;
+      if (proof_) proof_->add_empty();
+      return true;
+    }
+    for (size_t i = 0; i < lemmas.size(); i += 2) {
+      const Lit bin[2] = {negate(lemmas[i]), negate(lemmas[i + 1])};
+      if (!counting_refutes(bin, 2)) {
+        st.failure = "a virtual exclusion is not RUP";
+        return false;
+      }
+    }
     if (proof_) {
-      // Delete the other clauses on the subsystem's variables, then the isolated refutation.
+      for (size_t i = 0; i < lemmas.size(); i += 2) {
+        const Lit bin[2] = {negate(lemmas[i]), negate(lemmas[i + 1])};
+        proof_->add(bin, 2);
+      }
+      stats_.counting_lemmas += lemmas.size() / 2;
+      // Delete every other clause, then the isolated refutation. The PR checks need the other
+      // clauses on the subsystem's variables gone (the checker then sees the subsystem only, as
+      // the isolated solver did); the rest goes too, since dpr-trim and cake_lpr visit every
+      // clause of the formula for each PR clause (exam_90_80: dpr-trim 2729 s for a 0.8 s solve).
       std::vector<uint32_t> keep(st.longs);
       std::sort(keep.begin(), keep.end());
       for (const uint32_t ref : clauses_) {
         const Clause& c = clause(ref);
         if (c.garbage || std::binary_search(keep.begin(), keep.end(), ref)) continue;
-        bool touches = false;
-        for (uint32_t k = 0; k < c.size && !touches; ++k) touches = sub[var_of(c.lits()[k])] != UINT32_MAX;
-        if (touches) proof_->del(c.lits(), c.size);
+        proof_->del(c.lits(), c.size);
       }
-      for (const Var v : st.vars) {
-        for (const Lit l : {make_lit(v, false), make_lit(v, true)}) {
-          for (const Watch& w : watches_[l]) {
-            if (!w.binary()) continue;
-            const Lit b = w.blit;
-            if (sub[var_of(b)] != UINT32_MAX && b < l) continue;  // (deleted from b's list)
-            if (in_subsystem(negate(l), negate(b))) continue;
-            const Lit bin[2] = {l, b};
-            proof_->del(bin, 2);
-          }
+      for (Lit l = 0; l < 2 * num_vars_; ++l) {
+        for (const Watch& w : watches_[l]) {
+          if (!w.binary()) continue;
+          const Lit b = w.blit;
+          if (b < l) continue;  // (deleted from b's list)
+          if (in_subsystem(negate(l), negate(b))) continue;
+          const Lit bin[2] = {l, b};
+          proof_->del(bin, 2);
         }
       }
-      proof_->raw(buffer.data(), buffer.size(), iso_proof.added(), iso_proof.deleted(), iso_proof.pr());
+      proof_->raw(buffer.data(), buffer.size(), iso_proof.added(), iso_proof.deleted(), iso_proof.pr(),
+                  iso_proof.deleted_bytes());
     }
   }
   stats_.counting_pr += iso.stats().counting_pr;
@@ -1246,6 +1338,123 @@ bool Solver::counting_detect_rphp(CountingState& st) {
   return true;
 }
 
+// Virtual exclusions: at-most-one constraints over auxiliary variables (sequential counters,
+// ladders, commander and product encodings) have no binary clause (-x v -y), but x implies -y
+// through binary clauses over the auxiliary variables, so (-x v -y) is RUP. Each literal of a long
+// clause (one of the candidate pigeons) is assumed and propagated over the binary clauses only
+// (read-only: the solver's watches and values are not touched; these encodings need no longer
+// clause for the exclusion), and the literals of long clauses it falsifies without a binary
+// clause between them are recorded, both ways. Bounded: a quarter of a pass over the clauses, 4096
+// implied literals per probe; stops after the first 64 probes unless one of them found two such
+// exclusions with literals of other long clauses.
+bool Solver::counting_virtual(CountingState& st) {
+  const size_t nl = 2 * size_t{num_vars_};
+  const uint64_t cap = st.work + (arena_.size() + 2 * binaries_irredundant_) / 4 + 1'000'000;
+  constexpr uint32_t kMulti = UINT32_MAX - 1;
+  // Candidate literals: those of long clauses without assigned literals (and their clause).
+  std::vector<uint32_t> owner(nl, UINT32_MAX);
+  std::vector<uint32_t> longs;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || c.redundant || c.size > 4096) continue;
+    if (++st.work > cap) return false;
+    bool free = true;
+    for (uint32_t k = 0; k < c.size && free; ++k) free = !vals_[c.lits()[k]];
+    if (!free) continue;
+    const auto idx = static_cast<uint32_t>(longs.size());
+    longs.push_back(ref);
+    for (uint32_t k = 0; k < c.size; ++k) {
+      uint32_t& o = owner[c.lits()[k]];
+      o = o == UINT32_MAX ? idx : kMulti;
+    }
+  }
+  if (longs.size() < 4) return false;
+  std::vector<int8_t> val(vals_.begin(), vals_.end());
+  std::vector<Lit> trail;
+  std::vector<uint8_t> probed(nl, 0);
+  std::vector<uint32_t> direct(nl, 0);  // stamp: excluded by a binary clause
+  std::vector<uint32_t> excluded(nl, 0);  // per probed literal: literals of long clauses it excludes
+  std::vector<std::pair<Lit, Lit>> pairs;
+  uint64_t probes = 0, useful = 0;
+  bool stop = false;
+  for (uint32_t i = 0; i < longs.size() && !stop; ++i) {
+    const Clause& c0 = clause(longs[i]);
+    for (uint32_t k = 0; k < c0.size; ++k) {
+      const Lit x = c0.lits()[k];
+      if (probed[x]) continue;
+      probed[x] = 1;
+      if (st.work > cap || (probes >= 64 && !useful) || pairs.size() > 4'000'000) {  // (what was found so far)
+        stop = true;
+        break;
+      }
+      ++probes;
+      // Propagate x over the binary clauses.
+      trail.assign(1, x);
+      val[x] = 1;
+      val[negate(x)] = -1;
+      bool conflict = false;
+      for (size_t head = 0; head < trail.size() && !conflict && trail.size() < 4096; ++head) {
+        const Lit f = negate(trail[head]);
+        for (const Watch& w : watches_[f]) {  // binary clauses (f v b): b
+          if (!w.binary() || w.redundant_binary()) continue;
+          const int8_t v = val[w.blit];
+          if (v > 0) continue;
+          if (v < 0) {
+            conflict = true;
+            break;
+          }
+          val[w.blit] = 1;
+          val[negate(w.blit)] = -1;
+          trail.push_back(w.blit);
+        }
+        st.work += watches_[f].size() / 4 + 1;
+      }
+      if (!conflict) {
+        const auto stamp = static_cast<uint32_t>(probes);
+        for (const Watch& w : watches_[negate(x)]) {
+          if (!w.binary() || w.redundant_binary()) continue;
+          direct[negate(w.blit)] = stamp;
+          excluded[x] += owner[negate(w.blit)] != UINT32_MAX;
+        }
+        uint32_t others = 0;
+        for (size_t m = 1; m < trail.size(); ++m) {
+          const Lit y = negate(trail[m]);
+          if (owner[y] == UINT32_MAX || y == negate(x) || direct[y] == stamp) continue;
+          pairs.emplace_back(x, y);
+          ++excluded[x];
+          others += owner[y] != owner[x] || owner[x] == kMulti;  // (in two clauses: counted)
+        }
+        useful += others >= 2;
+      }
+      for (const Lit t : trail) val[t] = val[negate(t)] = 0;
+    }
+  }
+  if (pairs.empty() || !useful) return false;
+  // A pigeon of a pigeonhole with s holes excludes at least s literals with each of its literals:
+  // without four such clauses no detection follows.
+  uint32_t pigeons = 0;
+  for (uint32_t i = 0; i < longs.size() && pigeons < 4; ++i) {
+    const Clause& c = clause(longs[i]);
+    bool ok = true;
+    for (uint32_t k = 0; k < c.size && ok; ++k) ok = probed[c.lits()[k]] && excluded[c.lits()[k]] >= c.size;
+    pigeons += ok;
+  }
+  if (pigeons < 4) return false;
+  // Both directions, deduplicated.
+  const size_t n = pairs.size();
+  for (size_t i = 0; i < n; ++i) pairs.emplace_back(pairs[i].second, pairs[i].first);
+  std::sort(pairs.begin(), pairs.end());
+  pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
+  st.voff.assign(nl + 1, 0);
+  for (const auto& pr : pairs) ++st.voff[pr.first + 1];
+  for (size_t l = 0; l < nl; ++l) st.voff[l + 1] += st.voff[l];
+  st.vlit.resize(pairs.size());
+  for (size_t i = 0; i < pairs.size(); ++i) st.vlit[i] = pairs[i].second;
+  st.virt = true;
+  st.work += pairs.size();
+  return true;
+}
+
 // True if propagating the negations of lits[0..n) on a new decision level gives a conflict (also
 // when one of them is true already). Backtracks to the current level.
 bool Solver::counting_refutes(const Lit* lits, size_t n) {
@@ -1410,6 +1619,10 @@ bool Solver::counting_add(CountingState& st, const Lit* c, size_t nc, const Lit*
     } else if (nc > 1) {
       proof_->add(c, nc);  // (a unit is written when it is assigned)
     }
+    if (nc >= 3) {
+      st.round.push_back(static_cast<Lit>(nc));
+      st.round.insert(st.round.end(), c, c + nc);
+    }
   }
   counting_added_ = true;
   if (nw) {
@@ -1447,9 +1660,54 @@ bool Solver::counting_add_unit(CountingState& st, Lit u) {
 
 bool Solver::counting_certify(CountingState& st) {
   auto over = [&]() {
-    if (st.work + (stats_.ticks - st.ticks0) <= st.limit) return false;
-    st.failure = "budget";
-    return true;
+    if (st.work + (stats_.ticks - st.ticks0) > st.limit) {
+      st.failure = "budget";
+      return true;
+    }
+    if (stop_requested()) {
+      st.failure = "stopped (time limit or interrupted)";
+      return true;
+    }
+    return false;
+  };
+  // At the end of a round (its units derived), the proof drops what the checker no longer needs:
+  // dpr-trim and cake_lpr visit every clause of the formula for each PR clause, so the formula
+  // they see should shrink as the plan goes on instead of growing by every round's clauses.
+  // Dropped: the clauses that the units (and their root propagation) satisfy, the round's PR
+  // clauses among them; with `subsumed`, also the round's clauses of three or more literals (the
+  // clique-colouring plan: its binary lemmas subsume them). The solver keeps them all (the search
+  // goes on unchanged if the plan stops early); ProofWriter::forget leaves out its later deletions.
+  // (Not booked as counting work: the budget, and with it the search, must not depend on the proof.)
+  st.round.clear();
+  st.round_trail = trail_.size();
+  auto end_round = [&](bool subsumed) {
+    if (!proof_ || inconsistent_) return;
+    if (subsumed) {
+      for (size_t at = 0; at < st.round.size(); at += st.round[at] + 1) {
+        proof_->forget(st.round.data() + at + 1, st.round[at]);
+      }
+    }
+    st.round.clear();
+    if (st.dropped.empty()) st.dropped.assign(2 * size_t{num_vars_}, 0);
+    for (size_t t = st.round_trail; t < trail_.size(); ++t) {
+      const Lit u = trail_[t];
+      for (const Watch& w : watches_[u]) {
+        if (!w.binary() || st.dropped[w.blit]) continue;  // (dropped with the other literal)
+        const Lit bin[2] = {u, w.blit};
+        if (!st.take_upfront(bin, 2)) proof_->forget(bin, 2);
+      }
+      if (const std::vector<uint32_t>* o = st.occ_of(u)) {
+        for (const uint32_t ref : *o) {
+          const Clause& c = clause(ref);
+          if (c.garbage) continue;
+          bool done = false;
+          for (uint32_t k = 0; k < c.size && !done; ++k) done = st.dropped[c.lits()[k]] != 0;
+          if (!done && !st.take_upfront(c.lits(), c.size)) proof_->forget(c.lits(), c.size);
+        }
+      }
+      st.dropped[u] = 1;
+    }
+    st.round_trail = trail_.size();
   };
   if (st.kind == kPigeonhole) {
     const uint32_t holes = st.holes, k = st.k;
@@ -1475,6 +1733,7 @@ bool Solver::counting_certify(CountingState& st) {
           if (inconsistent_) return true;
         }
       }
+      end_round(false);
     }
     return true;
   }
@@ -1499,6 +1758,7 @@ bool Solver::counting_certify(CountingState& st) {
         if (!counting_add_unit(st, negate(pv(i, m)))) return false;
         if (inconsistent_) return true;
       }
+      end_round(false);
     }
     for (uint32_t m = holes; m > 0; --m) {  // hole m - 1 for place m
       const uint32_t hole = m - 1, s = m;
@@ -1514,6 +1774,7 @@ bool Solver::counting_certify(CountingState& st) {
         if (!counting_add_unit(st, negate(qv(i, hole)))) return false;
         if (inconsistent_) return true;
       }
+      end_round(false);
     }
     return true;
   }
@@ -1551,6 +1812,7 @@ bool Solver::counting_certify(CountingState& st) {
           if (!counting_add(st, cl, 2, nullptr, 0)) return false;
         }
       }
+      end_round(true);
     }
     for (uint32_t u = 0; u < n; ++u) {
       if (!counting_add_unit(st, negate(qv(0, u)))) return false;
@@ -1579,6 +1841,7 @@ bool Solver::counting_certify(CountingState& st) {
       }
       if (!counting_add_unit(st, st.e(m, q))) return false;
       if (inconsistent_) return true;
+      end_round(false);
     }
     return true;
   }
@@ -1611,6 +1874,7 @@ bool Solver::counting_certify(CountingState& st) {
         if (inconsistent_) return true;
       }
     }
+    end_round(false);
     others.assign(verts.begin(), verts.end() - 3);  // without m, q and r
     for (const uint32_t b : others) {
       if (over()) return false;
@@ -1633,6 +1897,7 @@ bool Solver::counting_certify(CountingState& st) {
     }
     if (!counting_add_unit(st, st.t(m, q, r))) return false;
     if (inconsistent_) return true;
+    end_round(false);
     verts = others;
   }
   return true;
@@ -1666,6 +1931,12 @@ void Solver::counting() {
     st = CountingState();
     st.work = work;
     found = counting_detect_embedded(st);
+    if (!found && opts_.countingprobe) {  // at-most-one constraints over auxiliary variables (exclusions by probing)?
+      const uint64_t work2 = st.work;
+      st = CountingState();
+      st.work = work2;
+      found = counting_virtual(st) && counting_detect_embedded(st);
+    }
   }
   stats_.counting_work += st.work;
   const uint64_t detect_work = st.work;
@@ -1674,7 +1945,7 @@ void Solver::counting() {
   char desc[128];
   if (st.kind == kPigeonhole) {
     std::snprintf(desc, sizeof desc, "%spigeonhole %u pigeons, %u holes, %u variables per pair%s",
-                  st.embedded ? "embedded " : "", st.pigeons, st.holes, st.k,
+                  st.virt ? "embedded (exclusions by probing) " : st.embedded ? "embedded " : "", st.pigeons, st.holes, st.k,
                   st.systems > 1 ? " (one of several independent systems)" : "");
   } else if (st.relativized) {
     std::snprintf(desc, sizeof desc, "relativized pigeonhole %u pigeons, %u places, %u holes", st.pigeons, st.vertices,
@@ -1756,7 +2027,82 @@ void Solver::counting() {
   const std::vector<int8_t> saved = saved_;
   const uint64_t propagations0 = stats_.propagations;
   st.ticks0 = stats_.ticks;
+  // Whole-formula pigeonhole: the plan needs the pigeon clauses of pigeons 0 .. holes and the
+  // exclusions within a hole among them. If it refutes the formula, the proof first deletes the
+  // rest (functional clauses "a pigeon in at most one hole", pigeons beyond holes + 1, other
+  // independent systems, second copies of an exclusion: exam_90_80 57% of its clauses), which
+  // dpr-trim and cake_lpr would visit for every PR clause. Whether it does is known at the end, so
+  // its lines are buffered.
+  ProofWriter* const main_proof = proof_;
+  std::string buffer;
+  std::unique_ptr<ProofWriter> buffered;
+  // (Not after root-shortened input clauses: their deletions could not name the checker's.)
+  if (proof_ && st.kind == kPigeonhole && !st.embedded && !input_shortened_ && proof_->shortened_live() == 0) {
+    const uint32_t holes = st.holes, per_pigeon = st.holes * st.k;
+    std::vector<uint32_t> where(num_vars_, UINT32_MAX);
+    for (uint32_t c = 0; c < st.cell.size(); ++c) where[var_of(st.cell[c])] = c;
+    auto cell = [&](Lit l) {  // cell index of a structure literal of a pigeon 0 .. holes, or none
+      const uint32_t c = where[var_of(l)];
+      return c != UINT32_MAX && st.cell[c] == l && c / per_pigeon <= holes ? c : UINT32_MAX;
+    };
+    auto add_upfront = [&](const Lit* lits, uint32_t n) {
+      st.upfront.push_back(static_cast<Lit>(n));
+      st.upfront.insert(st.upfront.end(), lits, lits + n);
+      ++st.upfront_copies[CountingState::key(lits, n)];
+    };
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage) continue;
+      const uint32_t c0 = cell(c.lits()[0]);
+      bool needed = c0 != UINT32_MAX;  // a pigeon clause: its cells, all of one pigeon
+      for (uint32_t k = 1; k < c.size && needed; ++k) {
+        const uint32_t ck = cell(c.lits()[k]);
+        needed = ck != UINT32_MAX && ck / per_pigeon == c0 / per_pigeon;
+      }
+      if (!needed) add_upfront(c.lits(), c.size);
+    }
+    std::vector<uint64_t> kept;  // the exclusions kept, to delete second copies (miles1500.72 lists each twice)
+    for (Lit l = 0; l < 2 * num_vars_; ++l) {
+      for (const Watch& w : watches_[l]) {
+        if (!w.binary() || w.blit < l) continue;
+        const uint32_t a = cell(negate(l)), b = cell(negate(w.blit));
+        const Lit bin[2] = {l, w.blit};
+        if (a != UINT32_MAX && b != UINT32_MAX && (a / st.k) % holes == (b / st.k) % holes) {  // one hole
+          kept.push_back(uint64_t{l} << 32 | w.blit);
+          continue;
+        }
+        add_upfront(bin, 2);
+      }
+    }
+    std::sort(kept.begin(), kept.end());
+    for (size_t i = 1; i < kept.size(); ++i) {
+      if (kept[i] != kept[i - 1]) continue;
+      const Lit bin[2] = {static_cast<Lit>(kept[i] >> 32), static_cast<Lit>(kept[i] & 0xffffffffu)};
+      add_upfront(bin, 2);
+    }
+    buffered = std::make_unique<ProofWriter>([&buffer](const char* d, size_t n) { buffer.append(d, n); }, proof_->binary());
+    buffered->set_map(proof_->map());  // (the input numbering; an isolated subsystem's: the main solver's)
+    buffered->set_source(proof_->source());
+  }
+  struct RestoreProof {
+    Solver& s;
+    ProofWriter* p;
+    ~RestoreProof() { s.proof_ = p; }
+  } restore_proof{*this, main_proof};
+  if (buffered) proof_ = buffered.get();
   const bool ok = counting_certify(st);
+  if (buffered) {
+    proof_ = main_proof;
+    buffered->flush();
+    if (inconsistent_) {
+      for (size_t at = 0; at < st.upfront.size(); at += st.upfront[at] + 1) {
+        if (st.upfront[at] > 1) proof_->del(st.upfront.data() + at + 1, st.upfront[at]);
+      }
+    }
+    proof_->raw(buffer.data(), buffer.size(), buffered->added(), buffered->deleted(), buffered->pr(),
+                buffered->deleted_bytes());
+    proof_->adopt(*buffered);
+  }
   const uint64_t ticks = stats_.ticks - st.ticks0;
   stats_.ticks = st.ticks0;
   stats_.propagations = propagations0;

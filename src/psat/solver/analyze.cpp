@@ -4,7 +4,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 
+#include "psat/core/radix_sort.hpp"
 #include "psat/io/proof.hpp"
 #include "psat/solver/solver.hpp"
 
@@ -38,7 +41,7 @@ void Solver::bump_reason_clause(uint32_t ref) {
 }
 
 void Solver::remove_long_watch(Lit l, uint32_t ref) {
-  std::vector<Watch>& ws = watches_[l];
+  const WatchList ws = watches_[l];
   for (size_t k = 0; k < ws.size(); ++k) {
     if (!ws[k].binary() && ws[k].ref == ref) {
       ws[k] = ws.back();
@@ -121,13 +124,22 @@ bool Solver::analyze() {
       // A missed lower implication: all but one literal were false below its level. Backtrack
       // below that level and assign it, with the conflict clause as reason.
       ++stats_.chrono_missed;
-      backtrack(lvl - 1);
-      if (conflict_ref_ == kNoReason) {
-        const Lit other = conflict_bin_[0] == forced ? conflict_bin_[1] : conflict_bin_[0];
-        assign_at(forced, kBinaryTag | other, vdata_[var_of(other)].level);
-      } else {
-        const Clause& c = clause(conflict_ref_);  // forced is lits[0], the next highest lits[1]
-        assign_at(forced, conflict_ref_, vdata_[var_of(c.lits()[1])].level);
+      const Lit other = conflict_ref_ == kNoReason ? (conflict_bin_[0] == forced ? conflict_bin_[1] : conflict_bin_[0])
+                                                   : clause(conflict_ref_).lits()[1];  // (forced is lits[0])
+      const uint32_t other_level = vdata_[var_of(other)].level;
+      uint32_t target = lvl - 1;
+      // --chrono=2: the implications of the last chronologically backtracked UIP contradict the
+      // levels kept above its backjump level (no decision since). Popping one level per such
+      // conflict would re-propagate the UIP's implications each time (on linked_list about ten
+      // in a row); backjump as without chronological backtracking instead.
+      if (opts_.chrono >= 2 && chrono_jump_ < target && stats_.decisions == chrono_decisions_) {
+        ++stats_.chrono_fallbacks;
+        target = chrono_jump_;
+      }
+      chrono_jump_ = UINT32_MAX;
+      backtrack(target);
+      if (other_level <= target) {  // (else the conflict clause is not unit after the backjump)
+        assign_at(forced, conflict_ref_ == kNoReason ? kBinaryTag | other : conflict_ref_, other_level);
       }
       return true;
     }
@@ -161,30 +173,35 @@ bool Solver::analyze() {
     lits = c.lits();
     n = c.size;
   }
+  // (local base pointers: the uint8_t flag stores may alias any member for the compiler)
+  uint8_t* const flags = flags_.data();
+  const VarData* const vdata = vdata_.data();
+  LevelInfo* const levels = levels_.data();
+  const Lit* const trail = trail_.data();
   for (;;) {
     for (uint32_t k = 0; k < n; ++k) {
       const Lit l = lits[k];
       const Var v = var_of(l);
-      if (flags_[v]) continue;
-      const VarData& d = vdata_[v];
+      if (flags[v]) continue;
+      const VarData& d = vdata[v];
       if (d.level == 0) continue;
-      flags_[v] = kSeen;
+      flags[v] = kSeen;
       analyzed_.push_back(v);
       if (d.level == cur) {
         ++open;
       } else {
         learned_.push_back(l);
-        LevelInfo& li = levels_[d.level];
+        LevelInfo& li = levels[d.level];
         if (li.seen++ == 0) touched_levels_.push_back(d.level);
         if (d.trail < li.trail) li.trail = d.trail;
       }
     }
     // (With chronological backtracking, seen literals of lower levels can follow on the trail.)
     do {
-      uip = trail_[--i];
-    } while (!(flags_[var_of(uip)] & kSeen) || vdata_[var_of(uip)].level != cur);
+      uip = trail[--i];
+    } while (!(flags[var_of(uip)] & kSeen) || vdata[var_of(uip)].level != cur);
     if (--open == 0) break;
-    const uint32_t r = vdata_[var_of(uip)].reason;
+    const uint32_t r = vdata[var_of(uip)].reason;
     if (r >= kGaussTag) {  // (never kNoReason: uip is implied)
       lits = gauss_reason(r, n);
     } else if (r & kBinaryTag) {
@@ -230,10 +247,15 @@ bool Solver::analyze() {
   // Chronological backtracking: a backjump over many levels throws away assignments that would
   // mostly be made again; backtrack one level instead and assign the UIP at its own level.
   uint32_t target = jump;
-  if (opts_.chrono && learned_.size() > 1 && cur - jump > static_cast<uint32_t>(opts_.chronolevels)) {
+  chrono_jump_ = UINT32_MAX;
+  if (opts_.chrono && (learned_.size() > 1 || opts_.chronounits) && cur - jump > static_cast<uint32_t>(opts_.chronolevels)) {
     target = cur - 1;
     ++stats_.chrono_backtracks;
+    chrono_jump_ = jump;
+    chrono_decisions_ = stats_.decisions;
   }
+  stats_.conflict_levels += cur;
+  stats_.backjump_levels += cur - target;
   backtrack(target);
   learn_clause(jump, glue);
   update_conflict_statistics(glue);
@@ -256,12 +278,17 @@ void Solver::minimize_clause() {
 // level is on that level, at the root, or in (or implied by) the learned clause. The result is
 // RUP like the minimized clause.
 void Solver::shrink_clause() {
-  // Group by level (descending), latest trail position first.
-  std::sort(learned_.begin() + 1, learned_.end(), [this](Lit a, Lit b) {
-    const VarData& x = vdata_[var_of(a)];
-    const VarData& y = vdata_[var_of(b)];
-    return x.level != y.level ? x.level > y.level : x.trail > y.trail;
-  });
+  // Group by level (descending), latest trail position first. Sorted (ascending, radix) as the
+  // complements of the 64-bit keys level << 32 | trail position, one read per literal instead of
+  // two per comparison; the positions are distinct, so the order does not depend on the sort, and
+  // each literal is the negation of the trail literal at its position.
+  sort_keys_.clear();
+  for (size_t k = 1; k < learned_.size(); ++k) {
+    const VarData& d = vdata_[var_of(learned_[k])];
+    sort_keys_.push_back(~((uint64_t{d.level} << 32) | d.trail));
+  }
+  radix_sort_keys(sort_keys_, sort_tmp_);
+  for (size_t k = 1; k < learned_.size(); ++k) learned_[k] = negate(trail_[static_cast<uint32_t>(~sort_keys_[k - 1])]);
   size_t out = 1;
   size_t i = 1;
   while (i < learned_.size()) {
@@ -382,8 +409,14 @@ bool Solver::minimize_literal(Lit lit, uint32_t depth) {
     }
     for (uint32_t k = 0; k < n; ++k) {
       const Lit o = lits[k];
-      if (var_of(o) == v) continue;
-      if (!minimize_literal(negate(o), depth + 1)) {
+      const Var u = var_of(o);
+      if (u == v) continue;
+      // The first checks of the recursive call (depth > 0), inline: most reason literals are
+      // decided by their flags or root level without a call.
+      const uint8_t fu = flags_[u];
+      if (fu & (kSeen | kRemovable)) continue;
+      if (vdata_[u].level == 0) continue;
+      if ((fu & kPoison) || !minimize_literal(negate(o), depth + 1)) {
         res = false;
         break;
       }
@@ -429,10 +462,13 @@ void Solver::bump_reason_literals() {
 void Solver::learn_clause(uint32_t jump, uint32_t glue) {
   ++stats_.learned;
   stats_.learned_literals += learned_.size();
+  stats_.learned_glue += glue;
   const Lit uip = learned_[0];
   if (learned_.size() == 1) {
     ++stats_.learned_units;
-    assign(uip, kNoReason);  // root level: logged to the proof by on_root_fixed
+    // Root level (logged to the proof by on_root_fixed); with --chronounits out of order, above
+    // the levels kept by the chronological backtrack.
+    assign_at(uip, kNoReason, 0);
     return;
   }
   if (proof_) proof_->add(learned_.data(), learned_.size());
@@ -457,6 +493,7 @@ void Solver::learn_clause(uint32_t jump, uint32_t glue) {
 // last few learned clauses (it was derived from a conflict they were part of), which can then be
 // deleted. Clauses that are reasons on the trail are kept.
 void Solver::eager_subsume() {
+  const ProofScope proof_scope(*this, kProofEager);
   const uint32_t n = static_cast<uint32_t>(learned_.size());
   for (const Lit l : learned_) marks_[l] = 1;
   for (const uint32_t ref : recent_learned_) {
@@ -464,8 +501,10 @@ void Solver::eager_subsume() {
     if (c.garbage || c.size <= n) continue;
     const Lit first = c.lits()[0];
     if (vals_[first] > 0 && vdata_[var_of(first)].reason == ref) continue;
+    // (stops once the literals left cannot make up the missing ones)
     uint32_t found = 0;
-    for (uint32_t k = 0; k < c.size && found < n; ++k) found += marks_[c.lits()[k]] ? 1u : 0u;
+    const Lit* lits = c.lits();
+    for (uint32_t k = 0; k < c.size && found < n && c.size - k >= n - found; ++k) found += marks_[lits[k]] ? 1u : 0u;
     if (found < n) continue;
     ++stats_.eager_subsumed;
     delete_clause_proof(c);
@@ -496,25 +535,29 @@ void Solver::backtrack(uint32_t new_level) {
         backtrack_tmp_.push_back(l);
       }
     }
-    std::copy(backtrack_tmp_.begin(), backtrack_tmp_.end(), trail_.begin() + static_cast<std::ptrdiff_t>(j));
+    std::copy(backtrack_tmp_.begin(), backtrack_tmp_.end(), trail_.begin() + j);
   }
-  // Unassign trail_[j..) from the top (the order decides ties in the heap).
+  // Unassign trail_[j..) from the top (the order decides ties in the heap). Both values of a
+  // variable are cleared with one 2-byte store; variables still in the heap are not pushed (the
+  // push would return at once, but as a call).
+  int8_t* const vals = vals_.data();
+  const Lit* const trail = trail_.data();
   if (stable_) {
     for (size_t i = trail_.size(); i-- > j;) {
-      const Lit l = trail_[i];
-      vals_[l] = vals_[negate(l)] = 0;
-      heap_.push(var_of(l));
+      const Var v = var_of(trail[i]);
+      std::memset(vals + 2 * size_t{v}, 0, 2);
+      if (!heap_.contains(v)) heap_.push(v);
     }
   } else {
+    const uint64_t* const bumped = bumped_.data();
     Var search = queue_search_;
-    uint64_t search_stamp = search == UINT32_MAX ? 0 : bumped_[search];
+    uint64_t search_stamp = search == UINT32_MAX ? 0 : bumped[search];
     for (size_t i = trail_.size(); i-- > j;) {
-      const Lit l = trail_[i];
-      vals_[l] = vals_[negate(l)] = 0;
-      const Var v = var_of(l);
-      if (bumped_[v] > search_stamp) {
+      const Var v = var_of(trail[i]);
+      std::memset(vals + 2 * size_t{v}, 0, 2);
+      if (bumped[v] > search_stamp) {
         search = v;
-        search_stamp = bumped_[v];
+        search_stamp = bumped[v];
       }
     }
     queue_search_ = search;

@@ -26,3 +26,4 @@ generated/medium/xorchain_medium_n40.cnf                   unsat    # family=xor
 generated/medium/xorchain_medium_n48.cnf                   unsat    # family=xorchain construction
 generated/medium/xorsat_medium_n500-m460-s0.cnf            sat      # family=xorsat gf2-elimination
 generated/medium/xorsat_medium_n500-m460-s2.cnf            unsat    # family=xorsat gf2-elimination
+generated/medium/xorsubop_medium_m12-d2-unsat.cnf          unsat    # family=xorsubop construction

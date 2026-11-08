@@ -21,6 +21,8 @@ namespace psat {
 
 namespace {
 
+constexpr size_t kFilterBlock = 16;  // keys whose filter slots are prefetched together
+
 // Saturating 8-bit counters indexed by a hash of a key: count(h) is at least the number of adds
 // of h (collisions only raise it). Filters the clauses that can be part of a gate before the
 // exact (sorting) passes: on large formulas with millions of ternary clauses and few or no
@@ -38,6 +40,9 @@ class CountFilter {
     if (c < 255) ++c;
   }
   uint32_t count(uint64_t h) const { return counts_[mix(h) & mask_]; }
+  // The table is large (up to 64 MB) and its slots are hit at random: callers prefetch the slots
+  // of a block of keys before adding or counting them.
+  void prefetch(uint64_t h) const { PSAT_PREFETCH(counts_.data() + (mix(h) & mask_)); }
   size_t size() const { return counts_.size(); }
 
  private:
@@ -74,7 +79,7 @@ uint32_t Solver::congruence(uint64_t& budget) {
   }
   budget += nlits / 8;
   std::vector<uint32_t> start(nlits + 1, 0), occ;
-  if (outputs) {
+  if (outputs && !stop_requested()) {
     for (const uint32_t ref : clauses_) {
       const Clause& c = clause(ref);
       if (c.garbage || c.redundant) continue;
@@ -95,16 +100,22 @@ uint32_t Solver::congruence(uint64_t& budget) {
   std::vector<uint8_t>().swap(output);
 
   // Extract gates: (sorted inputs, lhs), stored flat.
+  // kind: AND (inputs sorted), XOR (lhs = XOR of the inputs, positive literals, sorted; one gate
+  // per choice of output of an XOR constraint) or ITE (inputs c, t, e with c and t positive);
+  // flip: the normalized gate's output is lhs ^ flip (XOR and ITE normalization moves signs).
+  enum : uint8_t { kAnd, kXor, kIte };
   struct Gate {
     uint64_t hash;
     uint32_t begin, size;  // inputs in gate_inputs
     Lit lhs;
+    uint8_t kind = kAnd, flip = 0;
   };
   std::vector<Gate> gates;
   std::vector<Lit> inputs;
   for (Lit lhs = 0; lhs < nlits; ++lhs) {
     if (vals_[lhs] != 0 || eliminated_[var_of(lhs)]) continue;
     if (start[lhs + 1] == start[lhs]) continue;
+    if (stop_requested()) break;  // (the gates so far: every merge below is still justified)
     // Candidate inputs: x with a binary clause (-lhs v x).
     uint32_t cands = 0;
     for (const Watch& w : watches_[negate(lhs)]) {
@@ -132,7 +143,7 @@ uint32_t Solver::congruence(uint64_t& budget) {
         std::sort(inputs.begin() + begin, inputs.end());
         uint64_t h = 0x9E3779B97F4A7C15ull * (inputs.size() - begin);
         for (size_t k = begin; k < inputs.size(); ++k) h = (h ^ inputs[k]) * 0x100000001B3ull;
-        gates.push_back(Gate{h, begin, static_cast<uint32_t>(inputs.size() - begin), lhs});
+        gates.push_back(Gate{h, begin, static_cast<uint32_t>(inputs.size() - begin), lhs, kAnd, 0});
         break;  // one base clause per output
       }
     }
@@ -145,11 +156,41 @@ uint32_t Solver::congruence(uint64_t& budget) {
   std::vector<uint32_t>().swap(occ);
   std::vector<uint32_t>().swap(start);
   uint32_t found = 0;
+  const bool joined = opts_.congruenceclosure && opts_.congruencegates;
+  if (joined) {
+    // XOR and ITE gates join the closure: an equivalence found through one kind renames the
+    // inputs of the others in the same call (BMC unrollings alternate AND levels with XOR and ITE
+    // levels: matching them pairwise needed one call plus a substitution per level).
+    std::vector<CongruenceXor> xors;
+    extract_xor_constraints(xors, budget);
+    for (const CongruenceXor& x : xors) {
+      for (uint32_t k = 0; k < x.n; ++k) {
+        const uint32_t begin = static_cast<uint32_t>(inputs.size());
+        for (uint32_t m = 0; m < x.n; ++m) {
+          if (m != k) inputs.push_back(make_lit(x.vars[m], false));
+        }
+        // v_k = parity + XOR(others): the output literal is v_k, negated for an odd parity.
+        gates.push_back(Gate{0, begin, static_cast<uint32_t>(x.n - 1), make_lit(x.vars[k], x.parity != 0), kXor, 0});
+      }
+    }
+    std::vector<CongruenceXor>().swap(xors);
+    std::vector<CongruenceIte> ites;
+    extract_ites(ites, budget);
+    for (const CongruenceIte& t : ites) {
+      const uint32_t begin = static_cast<uint32_t>(inputs.size());
+      inputs.push_back(t.c);
+      inputs.push_back(t.t);
+      inputs.push_back(t.e);
+      gates.push_back(Gate{0, begin, 3, t.o, kIte, 0});
+    }
+  }
   if (gates.size() < 2) {
     std::vector<Gate>().swap(gates);
     std::vector<Lit>().swap(inputs);
-    found += congruent_xors(budget);
-    found += congruent_ites(budget);
+    if (!joined) {
+      found += congruent_xors(budget);
+      found += congruent_ites(budget);
+    }
     stats_.congruent += found;
     return found;
   }
@@ -183,33 +224,77 @@ uint32_t Solver::congruence(uint64_t& budget) {
       }
       return r;
     };
-    // Gates with an input in the class of a root variable (lists move to the surviving root).
-    std::vector<std::vector<uint32_t>> class_gates(num_vars_);
+    // Gates with an input in the class of a root variable (lists move to the surviving root):
+    // every variable's own gates (increasing) are a run of class_list, and a class is the chain of
+    // runs starting at its root, linked through class_next (class_tail: the last run, class_size:
+    // the gates in the chain). A join appends the absorbed chain, so a class lists its gates in
+    // the order of a list per variable that is appended to (without an allocation per variable).
+    std::vector<uint32_t> class_start(size_t{num_vars_} + 1, 0);
     for (uint32_t g = 0; g < ng; ++g) {
-      for (uint32_t k = 0; k < gates[g].size; ++k) class_gates[var_of(inputs[gates[g].begin + k])].push_back(g);
+      for (uint32_t k = 0; k < gates[g].size; ++k) ++class_start[var_of(inputs[gates[g].begin + k]) + 1];
+    }
+    for (Var v = 0; v < num_vars_; ++v) class_start[v + 1] += class_start[v];
+    std::vector<uint32_t> class_list(class_start[num_vars_]);
+    {
+      std::vector<uint32_t> fill(class_start.begin(), class_start.end() - 1);
+      for (uint32_t g = 0; g < ng; ++g) {
+        for (uint32_t k = 0; k < gates[g].size; ++k) class_list[fill[var_of(inputs[gates[g].begin + k])]++] = g;
+      }
+    }
+    constexpr uint32_t kNoRun = UINT32_MAX;
+    std::vector<uint32_t> class_next(num_vars_, kNoRun), class_tail(num_vars_), class_size(num_vars_);
+    for (Var v = 0; v < num_vars_; ++v) {
+      class_tail[v] = v;
+      class_size[v] = class_start[v + 1] - class_start[v];
     }
     budget += inputs.size() / 4 + ng;
     std::vector<uint32_t> queue(ng);
     for (uint32_t g = 0; g < ng; ++g) queue[g] = g;
-    auto merge = [&](Lit a, Lit b) {
+    // A merge of a with b adds (-a v b) and (a v -b). Both are RUP for AND gates and degenerate
+    // gates; for XOR and ITE partners they follow from a case split over the inputs (all but one
+    // for XOR, the condition for ITE: every leaf is RUP through the earlier equivalences and
+    // the two gates' clauses), written by prove_by_cases.
+    std::vector<Lit> case_clause;
+    std::vector<Var> cases;
+    // Classes already complementary (a gate equal to the negation of an equal gate): the two
+    // binary clauses are still RUP and make the formula unsatisfiable, which the substitution
+    // after this call finds (x equivalent to -x); the classes are not joined.
+    auto merge = [&](Lit a, Lit b, const Gate* split = nullptr) {
       Lit ra = find(a), rb = find(b);
-      if (ra == rb || ra == negate(rb)) return false;  // (complementary: the inputs are false; skip)
+      if (ra == rb || var_of(a) == var_of(b)) return false;  // (a gate equal to its own negation: left to search)
+      const bool contradiction = ra == negate(rb);
       const Lit e1[2] = {negate(a), b};
       const Lit e2[2] = {a, negate(b)};
-      if (proof_) {
+      if (proof_ && split) {
+        const Lit* in = inputs.data() + split->begin;
+        cases.clear();
+        if (split->kind == kXor) {
+          for (uint32_t k = 0; k + 1 < split->size; ++k) cases.push_back(var_of(in[k]));
+        } else {
+          cases.push_back(var_of(in[0]));
+        }
+        case_clause.assign(e1, e1 + 2);
+        prove_by_cases(case_clause, cases, 0);
+        case_clause.assign(e2, e2 + 2);
+        prove_by_cases(case_clause, cases, 0);
+      } else if (proof_) {
         proof_->add(e1, 2);
         proof_->add(e2, 2);
       }
       add_binary(e1[0], e1[1], false);
       add_binary(e2[0], e2[1], false);
-      if (class_gates[var_of(ra)].size() < class_gates[var_of(rb)].size()) std::swap(ra, rb);
+      if (contradiction) return true;
+      if (class_size[var_of(ra)] < class_size[var_of(rb)]) std::swap(ra, rb);
       rep[var_of(rb)] = ra ^ (rb & 1u);  // rb's class joins ra's
-      std::vector<uint32_t>& moved = class_gates[var_of(rb)];
-      std::vector<uint32_t>& into = class_gates[var_of(ra)];
-      queue.insert(queue.end(), moved.begin(), moved.end());
-      into.insert(into.end(), moved.begin(), moved.end());
-      budget += moved.size() + 1;
-      std::vector<uint32_t>().swap(moved);
+      const Var into = var_of(ra), moved = var_of(rb);
+      for (uint32_t x = moved; x != kNoRun; x = class_next[x]) {
+        queue.insert(queue.end(), class_list.begin() + class_start[x], class_list.begin() + class_start[x + 1]);
+      }
+      class_next[class_tail[into]] = moved;
+      class_tail[into] = class_tail[moved];
+      class_size[into] += class_size[moved];
+      budget += class_size[moved] + 1;
+      class_size[moved] = 0;
       return true;
     };
     // Open addressing on the hash of the normalized inputs; an entry is stale once its gate was
@@ -248,30 +333,82 @@ uint32_t Solver::congruence(uint64_t& budget) {
       table[i] = Slot{h, g};
       ++used;
     };
-    for (size_t head = 0; head < queue.size(); ++head) {
+    for (size_t head = 0; head < queue.size() && !stop_requested(); ++head) {
       const uint32_t g = queue[head];
       Gate& G = gates[g];
       if (!G.size) continue;  // dropped
       // Normalize.
       Lit* in = inputs.data() + G.begin;
-      for (uint32_t k = 0; k < G.size; ++k) in[k] = find(in[k]);
-      std::sort(in, in + G.size);
       uint32_t n = 0;
       bool drop = false;
       const Var out = var_of(find(G.lhs));
-      for (uint32_t k = 0; k < G.size; ++k) {
-        if (n && in[n - 1] == in[k]) continue;
-        if ((n && in[n - 1] == negate(in[k])) || var_of(in[k]) == out) drop = true;
-        in[n++] = in[k];
-      }
       budget += G.size / 4 + 1;
-      if (drop || n == 1) {
-        G.size = 0;
-        if (!drop && merge(G.lhs, in[0])) ++found;
-        continue;
+      if (G.kind == kAnd) {
+        for (uint32_t k = 0; k < G.size; ++k) in[k] = find(in[k]);
+        if (G.size <= 16) {
+          small_sort(in, G.size);
+        } else {
+          std::sort(in, in + G.size);
+        }
+        for (uint32_t k = 0; k < G.size; ++k) {
+          if (n && in[n - 1] == in[k]) continue;
+          if ((n && in[n - 1] == negate(in[k])) || var_of(in[k]) == out) drop = true;
+          in[n++] = in[k];
+        }
+        if (drop || n == 1) {
+          G.size = 0;
+          if (!drop && merge(G.lhs, in[0])) ++found;
+          continue;
+        }
+      } else if (G.kind == kXor) {
+        // Representatives with their signs moved into the output; a variable twice (x + x = 0)
+        // would need a longer case split: such gates are dropped.
+        for (uint32_t k = 0; k < G.size; ++k) {
+          const Lit r = find(in[k]);
+          G.flip ^= static_cast<uint8_t>(r & 1u);
+          in[k] = r & ~1u;
+        }
+        if (G.size <= 16) {
+          small_sort(in, G.size);
+        } else {
+          std::sort(in, in + G.size);
+        }
+        n = G.size;
+        for (uint32_t k = 0; k < n; ++k) {
+          if ((k && in[k - 1] == in[k]) || var_of(in[k]) == out) drop = true;
+        }
+        if (drop) {
+          G.size = 0;
+          continue;
+        }
+      } else {  // ITE: c positive (else swap t and e), t positive (else negate t, e and the output)
+        Lit c = find(in[0]), t = find(in[1]), e = find(in[2]);
+        if (is_negative(c)) {
+          c = negate(c);
+          std::swap(t, e);
+        }
+        if (is_negative(t)) {
+          t = negate(t);
+          e = negate(e);
+          G.flip ^= 1u;
+        }
+        in[0] = c;
+        in[1] = t;
+        in[2] = e;
+        n = 3;
+        if (var_of(c) == out || var_of(t) == out || var_of(e) == out || var_of(c) == var_of(t) ||
+            var_of(c) == var_of(e) || t == negate(e)) {
+          G.size = 0;
+          continue;
+        }
+        if (t == e) {  // o = ITE(c, t, t) = t
+          G.size = 0;
+          if (merge(G.lhs ^ G.flip, t)) ++found;
+          continue;
+        }
       }
       G.size = n;
-      uint64_t h = 0x9E3779B97F4A7C15ull * n;
+      uint64_t h = (0x9E3779B97F4A7C15ull + G.kind) * n;
       for (uint32_t k = 0; k < n; ++k) h = (h ^ in[k]) * 0x100000001B3ull;
       G.hash = h;
       // Look up a live gate with the same inputs.
@@ -286,21 +423,28 @@ uint32_t Solver::congruence(uint64_t& budget) {
           continue;
         }
         const Gate& H = gates[s.gate];
-        if (H.size == n && std::equal(in, in + n, inputs.data() + H.begin)) {
+        if (H.kind == G.kind && H.size == n && std::equal(in, in + n, inputs.data() + H.begin)) {
           partner = s.gate;
           break;
         }
       }
       if (partner != kEmpty) {
-        if (merge(G.lhs, gates[partner].lhs)) ++found;
+        const Gate& H = gates[partner];
+        if (merge(G.lhs ^ G.flip, H.lhs ^ H.flip, G.kind == kAnd ? nullptr : &G)) {
+          ++found;
+          if (G.kind == kXor) ++stats_.congruent_xors;
+          if (G.kind == kIte) ++stats_.congruent_ites;
+        }
       } else if (!present) {
         insert(h, g);
       }
     }
     std::vector<Gate>().swap(gates);
     std::vector<Lit>().swap(inputs);
-    found += congruent_xors(budget);
-    found += congruent_ites(budget);
+    if (!joined) {
+      found += congruent_xors(budget);
+      found += congruent_ites(budget);
+    }
     stats_.congruent += found;
     return found;
   }
@@ -380,7 +524,9 @@ void Solver::prove_by_cases(std::vector<Lit>& clause, const std::vector<Var>& ca
 // XOR constraints given by complete sets of 2^(n-1) clauses over n variables (3 <= n <= 5) with the
 // same parity of negative literals; two XORs whose variable sets differ in exactly the output
 // (y1 + S = p1, y2 + S = p2) give y1 = y2 + p1 + p2.
-uint32_t Solver::congruent_xors(uint64_t& budget) {
+void Solver::extract_xor_constraints(std::vector<CongruenceXor>& xors, uint64_t& budget) {
+  xors.clear();
+  if (stop_requested()) return;
   struct Row {
     Var vars[5];
     uint8_t n, mask;
@@ -413,23 +559,47 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
     const Clause& c = clause(ref);
     if (!c.garbage && !c.redundant && c.size >= 3 && c.size <= 5) ++candidates;
   }
-  if (candidates < 4) return 0;
+  if (candidates < 4) return;
   CountFilter filter(candidates);
-  for (const uint32_t ref : clauses_) {
-    const Clause& c = clause(ref);
-    if (c.garbage || c.redundant || c.size < 3 || c.size > 5) continue;
-    Row r;
-    if (make_row(c, r)) filter.add(set_hash(r));
-  }
-  budget += candidates + filter.size() / 64;
-  std::vector<Row> rows;
+  // In blocks: the filter slots of a block are prefetched, then added to / counted in order.
+  Row block[kFilterBlock];
+  uint64_t hashes[kFilterBlock];
+  size_t nb = 0;
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
     if (c.garbage || c.redundant || c.size < 3 || c.size > 5) continue;
     Row r;
     if (!make_row(c, r)) continue;
-    if (filter.count(set_hash(r)) >= (1u << (r.n - 1))) rows.push_back(r);
+    hashes[nb] = set_hash(r);
+    filter.prefetch(hashes[nb]);
+    if (++nb == kFilterBlock) {
+      for (size_t k = 0; k < nb; ++k) filter.add(hashes[k]);
+      nb = 0;
+      if (stop_requested()) return;
+    }
   }
+  for (size_t k = 0; k < nb; ++k) filter.add(hashes[k]);
+  nb = 0;
+  budget += candidates + filter.size() / 64;
+  std::vector<Row> rows;
+  auto keep_block = [&]() {
+    for (size_t k = 0; k < nb; ++k) {
+      if (filter.count(hashes[k]) >= (1u << (block[k].n - 1))) rows.push_back(block[k]);
+    }
+    nb = 0;
+  };
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || c.redundant || c.size < 3 || c.size > 5) continue;
+    if (!make_row(c, block[nb])) continue;
+    hashes[nb] = set_hash(block[nb]);
+    filter.prefetch(hashes[nb]);
+    if (++nb == kFilterBlock) {
+      keep_block();
+      if (stop_requested()) return;
+    }
+  }
+  keep_block();
   budget += candidates;
   budget += rows.size();
   std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
@@ -440,11 +610,6 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
     return a.mask < b.mask;
   });
   // XOR constraints: variables + parity of the sum (= 1 - parity of the negative-literal count).
-  struct Xor {
-    Var vars[5];
-    uint8_t n, parity;
-  };
-  std::vector<Xor> xors;
   for (size_t i = 0; i < rows.size();) {
     size_t j = i;
     while (j < rows.size() && rows[j].n == rows[i].n && std::equal(rows[i].vars, rows[i].vars + rows[i].n, rows[j].vars)) ++j;
@@ -458,7 +623,7 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
     }
     for (int q = 0; q < 2; ++q) {
       if (count[q] != need) continue;
-      Xor x{};
+      CongruenceXor x{};
       x.n = rows[i].n;
       std::copy(rows[i].vars, rows[i].vars + x.n, x.vars);
       x.parity = static_cast<uint8_t>(1 - q);
@@ -466,6 +631,12 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
     }
     i = j;
   }
+}
+
+uint32_t Solver::congruent_xors(uint64_t& budget) {
+  using Xor = CongruenceXor;
+  std::vector<Xor> xors;
+  extract_xor_constraints(xors, budget);
   if (xors.size() < 2) return 0;
   // One entry per (XOR, output variable): key = the other variables.
   struct Out {
@@ -496,7 +667,7 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
   uint32_t found = 0;
   std::vector<Lit> cl;
   std::vector<Var> cases;
-  for (size_t i = 0; i < outs.size();) {
+  for (size_t i = 0; i < outs.size() && !stop_requested();) {
     size_t j = i + 1;
     while (j < outs.size() && !key_less(outs[i], outs[j])) ++j;
     const Xor& xa = xors[outs[i].xi];
@@ -539,7 +710,9 @@ uint32_t Solver::congruent_xors(uint64_t& budget) {
 // ITE(c,-t,-e) = -ITE(c,t,e)); two gates with the same (c, t, e) have equivalent outputs. Each
 // equivalence clause is proved by a case split on c: (-o1 v o2 v c) and (-o1 v o2 v -c) are RUP
 // by the gate clauses, and their resolvent is the binary clause.
-uint32_t Solver::congruent_ites(uint64_t& budget) {
+void Solver::extract_ites(std::vector<CongruenceIte>& gates, uint64_t& budget) {
+  gates.clear();
+  if (stop_requested()) return;
   // Live irredundant ternary clauses without assigned literals: a sorted set of sorted triples,
   // and their occurrence lists (CSR).
   // The four clauses of an ITE gate all contain the condition and the output variable: only
@@ -559,36 +732,53 @@ uint32_t Solver::congruent_ites(uint64_t& budget) {
     const Clause& c = clause(ref);
     if (!c.garbage && !c.redundant && c.size == 3) ++ternary;
   }
-  if (ternary < 8) return 0;
+  if (ternary < 8) return;
   CountFilter pairs(3 * ternary);
+  // In blocks: the filter slots of a block are prefetched, then added to / counted in order.
+  Triple block[kFilterBlock];
+  uint64_t keys[3 * kFilterBlock];
+  size_t nb = 0;
+  auto block_keys = [&](const Triple& t) {
+    keys[3 * nb] = pair_key(t[0], t[1]);
+    keys[3 * nb + 1] = pair_key(t[0], t[2]);
+    keys[3 * nb + 2] = pair_key(t[1], t[2]);
+    for (size_t k = 3 * nb; k < 3 * nb + 3; ++k) pairs.prefetch(keys[k]);
+  };
   for (const uint32_t ref : clauses_) {
     Triple t;
     if (!live_triple(clause(ref), t)) continue;
-    pairs.add(pair_key(t[0], t[1]));
-    pairs.add(pair_key(t[0], t[2]));
-    pairs.add(pair_key(t[1], t[2]));
+    block_keys(t);
+    if (++nb == kFilterBlock) {
+      for (size_t k = 0; k < 3 * nb; ++k) pairs.add(keys[k]);
+      nb = 0;
+      if (stop_requested()) return;
+    }
   }
+  for (size_t k = 0; k < 3 * nb; ++k) pairs.add(keys[k]);
+  nb = 0;
   budget += 2 * ternary + pairs.size() / 64;
   std::vector<Triple> tri;
-  for (const uint32_t ref : clauses_) {
-    Triple t;
-    if (!live_triple(clause(ref), t)) continue;
-    if (pairs.count(pair_key(t[0], t[1])) < 4 && pairs.count(pair_key(t[0], t[2])) < 4 &&
-        pairs.count(pair_key(t[1], t[2])) < 4) {
-      continue;
+  auto keep_block = [&]() {
+    for (size_t k = 0; k < nb; ++k) {
+      if (pairs.count(keys[3 * k]) < 4 && pairs.count(keys[3 * k + 1]) < 4 && pairs.count(keys[3 * k + 2]) < 4) continue;
+      small_sort(block[k].data(), 3);
+      tri.push_back(block[k]);
     }
-    small_sort(t.data(), 3);
-    tri.push_back(t);
+    nb = 0;
+  };
+  for (const uint32_t ref : clauses_) {
+    if (!live_triple(clause(ref), block[nb])) continue;
+    block_keys(block[nb]);
+    if (++nb == kFilterBlock) {
+      keep_block();
+      if (stop_requested()) return;
+    }
   }
-  if (tri.size() < 8) return 0;
+  keep_block();
+  if (tri.size() < 8) return;
   std::sort(tri.begin(), tri.end());
   tri.erase(std::unique(tri.begin(), tri.end()), tri.end());
   budget += tri.size();
-  auto has = [&](Lit a, Lit b, Lit d) {
-    Triple t{a, b, d};
-    small_sort(t.data(), 3);
-    return std::binary_search(tri.begin(), tri.end(), t);
-  };
   const size_t nlits = 2 * size_t{num_vars_};
   std::vector<uint32_t> start(nlits + 1, 0), occ;
   for (const Triple& t : tri) {
@@ -602,14 +792,26 @@ uint32_t Solver::congruent_ites(uint64_t& budget) {
       for (const Lit l : tri[i]) occ[fill[l]++] = i;
     }
   }
-  struct Ite {
-    Lit c, t, e, o;
+  // Membership in the (sorted, unique) triples: a triple with a, b and d is in the occurrence
+  // list of each of them, so the shortest of the three lists is scanned (a binary search over
+  // millions of triples missed the cache at every step).
+  auto has = [&](Lit a, Lit b, Lit d) {
+    Triple t{a, b, d};
+    small_sort(t.data(), 3);
+    Lit x = a;
+    if (start[b + 1] - start[b] < start[x + 1] - start[x]) x = b;
+    if (start[d + 1] - start[d] < start[x + 1] - start[x]) x = d;
+    for (uint32_t o = start[x]; o < start[x + 1]; ++o) {
+      if (tri[occ[o]] == t) return true;
+    }
+    return false;
   };
-  std::vector<Ite> gates;
+  using Ite = CongruenceIte;
   constexpr uint32_t kMaxOcc = 32;  // pairs per literal are quadratic: skip very frequent ones
   for (Lit no = 0; no < nlits; ++no) {  // no = -o: clauses (x y -o)
     const uint32_t b = start[no], n = start[no + 1] - b;
     if (n < 2 || n > kMaxOcc || eliminated_[var_of(no)]) continue;
+    if (stop_requested()) break;
     const Lit o = negate(no);
     budget += n * n / 2 + 1;
     for (uint32_t i = 0; i < n; ++i) {
@@ -648,6 +850,12 @@ uint32_t Solver::congruent_ites(uint64_t& budget) {
       }
     }
   }
+}
+
+uint32_t Solver::congruent_ites(uint64_t& budget) {
+  using Ite = CongruenceIte;
+  std::vector<Ite> gates;
+  extract_ites(gates, budget);
   if (gates.size() < 2) return 0;
   std::sort(gates.begin(), gates.end(), [](const Ite& a, const Ite& b) {
     if (a.c != b.c) return a.c < b.c;

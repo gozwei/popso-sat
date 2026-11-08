@@ -47,9 +47,10 @@ size_t Solver::bva_count(Lit l, uint64_t& budget) {
   return n;
 }
 
-int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
+int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touched_only) {
   const PassTimer pass_timer(*this, kPassBva);
   int64_t reduced = 0;
+  const uint64_t round_start = budget;
   // Trial rounds: the clauses later replacements may not use (long by reference, binary by
   // their ordered literal pair).
   std::unordered_set<uint32_t> consumed_long;
@@ -92,14 +93,23 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
     }
   };
 
-  // Literals by occurrence count, most frequent first.
+  // Literals by occurrence count, most frequent first. Rounds during search (touched_only) take
+  // the least frequent first: the most frequent literals were factored in the first round already
+  // and their matchings are the expensive ones (on schooltt-5-3-8 the budget of a round covered
+  // 45-485 of 12-25k literals in that order and found nothing; least frequent first, the cliques
+  // the resolvents form, thousands of replacements).
   std::vector<std::pair<size_t, Lit>> queue;
   for (Lit l = 0; l < 2 * num_vars_; ++l) {
     if (vals_[l] != 0 || eliminated_[var_of(l)]) continue;
+    if (touched_only && !touched_[var_of(l)]) continue;
     const size_t n = bva_count(l, budget);
     if (n >= 3) queue.emplace_back(n, l);
   }
-  std::sort(queue.begin(), queue.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+  // (ties by literal: std::sort orders equal keys differently in libc++ and libstdc++)
+  std::sort(queue.begin(), queue.end(), [touched_only](const auto& a, const auto& b) {
+    if (a.first != b.first) return touched_only ? a.first < b.first : a.first > b.first;
+    return a.second < b.second;
+  });
 
   struct Pair {
     Lit lit;
@@ -173,8 +183,13 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
     return score;
   };
   Lit last_l = kNoLit;
+  const uint32_t first_fresh = num_vars_;  // variables from here on are this round's
 
-  for (size_t qi = 0; qi < queue.size() && budget <= limit && added < max_new && !inconsistent_; ++qi) {
+  // Matchings for queue[qi..end), while the budget is at most `stop` (checked between literals:
+  // a matching itself only stops at the round's limit).
+  auto run = [&](size_t& qi, size_t end, uint64_t stop) {
+  for (; qi < end && budget <= stop && budget <= limit && added < max_new && !inconsistent_ && !stop_requested();
+       ++qi) {
     const Lit l = queue[qi].second;
     if (l != last_l) retries = 0;
     last_l = l;
@@ -188,13 +203,13 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
     // so far is used (the inner loops are charged: on large formulas one literal's matching
     // can otherwise take seconds).
     for (;;) {
-      if (budget > limit) break;
+      if (budget > limit || stop_requested()) break;
       pairs.clear();
       bool out_of_budget = false;
       for (uint32_t ci = 0; ci < m_cls.size(); ++ci) {
         // Checked per clause too: on formulas with few variables and many clauses one step
         // scans thousands of clauses with thousands of partner occurrences each.
-        if (budget > limit) {
+        if (budget > limit || stop_requested()) {
           out_of_budget = true;
           break;
         }
@@ -319,7 +334,7 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
     hop1.resize(num_vars_, 0);
     hop2.resize(num_vars_, 0);
     hops_for = UINT32_MAX;  // the formula changes
-    touched_[xv] = 1;
+    touch_var(xv);
     if (bva_added_.size() < num_vars_) bva_added_.resize(num_vars_, 0);
     bva_added_[xv] = 1;
     ++added;
@@ -365,7 +380,162 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry) {
     reduced += reduction(m_lit.size(), m_cls.size());
     if (retries++ < 8) --qi;  // try l again
   }
+  };
+
+  // --bvasched: the plain order (most frequent literals first) gets half of the budget; where
+  // that covers the queue, nothing changes (most frequent first is the better greedy order when
+  // the whole queue is affordable). The queue is split into classes of literals with the same
+  // binary order of magnitude of occurrences; the rest of the budget goes out in shares of
+  // bvaexplore percent of it divided by the number of classes. Every class not reached yet first
+  // gets one share; then each share goes to the class whose last share removed the most clauses
+  // per tick (the class the plain order stopped in counts with the plain order's last share).
+  // Yields fall within a class, whose first literals are its most frequent ones, and the order
+  // follows that. The most frequent literals are not always the productive ones: knight_18's
+  // 2,172 literals of ~300 ternary clauses each cost ~50k ticks per matching for a few small
+  // re-encodings and used the whole budget, while the at-most-one cliques of 18 behind them (17
+  // occurrences per literal) give 120k clauses of reduction for 11.5M ticks.
+  size_t qi = 0;
+  if (!opts_.bvasched) {
+    run(qi, queue.size(), limit);
+  } else if (!queue.empty() && budget <= limit) {
+    struct Class {
+      size_t pos, end;
+      uint64_t spent;  // ticks of its last share
+      int64_t gain;    // clauses removed in it
+      bool measured;
+    };
+    std::vector<Class> classes;
+    auto magnitude = [](size_t n) {
+      uint32_t m = 0;
+      for (; n > 1; n >>= 1) ++m;
+      return m;
+    };
+    for (size_t i = 0; i < queue.size();) {
+      size_t j = i + 1;
+      while (j < queue.size() && magnitude(queue[j].first) == magnitude(queue[i].first)) ++j;
+      classes.push_back(Class{i, j, 0, 0, false});
+      i = j;
+    }
+    uint64_t half = budget + (limit - budget) / 2;
+    const uint64_t share =
+        std::max<uint64_t>(1, (limit - budget) / 2 / 100 * static_cast<uint64_t>(opts_.bvaexplore) / classes.size());
+    // --bvaextend: a share that removed at least one clause per --bvaextendticks ticks earns one
+    // more past the budget (in the plain order or in the classes), up to bvaextend times the
+    // budget. schooltt-5-7-11: the trial finds 20% in the budget and 63% in twenty times it (one
+    // large family of cliques, productive throughout); knight_18's expensive literals remove one
+    // clause per ~25k ticks and get no extension.
+    const uint64_t most =
+        round_start + (limit - round_start) * static_cast<uint64_t>(std::max<int64_t>(1, opts_.bvaextend));
+    auto productive = [&](uint64_t spent, int64_t gain) {
+      return gain > 0 && static_cast<uint64_t>(gain) * static_cast<uint64_t>(opts_.bvaextendticks) >= spent;
+    };
+    uint64_t last_spent = 0;
+    int64_t last_gain = 0;
+    for (;;) {
+      while (qi < queue.size() && budget <= half && budget <= limit && added < max_new && !inconsistent_ &&
+             !stop_requested()) {
+        const uint64_t b0 = budget;
+        const int64_t r0 = reduced;
+        run(qi, queue.size(), std::min(half, budget + share));
+        last_spent = budget - b0;
+        last_gain = reduced - r0;
+      }
+      if (opts_.bvaextend <= 1 || qi >= queue.size() || added >= max_new || inconsistent_ || half >= most ||
+          stop_requested()) {
+        break;
+      }
+      if (!productive(last_spent, last_gain)) break;
+      half = std::min(most, half + share);  // (the classes keep the other half after it)
+      limit = std::min(most, std::max(limit, half + (limit - round_start) / 2));
+    }
+    for (Class& c : classes) {
+      if (qi >= c.end) {
+        c.pos = c.end;  // done in the plain order
+      } else if (qi >= c.pos) {
+        c.pos = qi;
+        c.spent = last_spent;
+        c.gain = last_gain;
+        c.measured = true;
+      }
+    }
+    auto spend = [&](Class& c) {
+      const uint64_t b0 = budget;
+      const int64_t r0 = reduced;
+      run(c.pos, c.end, budget + share);
+      c.spent = budget - b0;
+      c.gain = reduced - r0;
+      c.measured = true;
+    };
+    for (Class& c : classes) {
+      if (c.pos < c.end && !c.measured) spend(c);
+    }
+    // (clauses per tick compared as cross products; ties: the more frequent class)
+    auto better = [&](const Class& a, const Class& b) {
+      return static_cast<double>(std::max<int64_t>(a.gain, 0)) * static_cast<double>(b.spent + 1) >
+             static_cast<double>(std::max<int64_t>(b.gain, 0)) * static_cast<double>(a.spent + 1);
+    };
+    const Class* last = nullptr;
+    while (added < max_new && !inconsistent_ && !stop_requested()) {
+      if (budget > limit) {
+        if (!last || limit >= most || !productive(last->spent, last->gain)) break;
+        limit = std::min(most, budget + share);
+      }
+      Class* best = nullptr;
+      for (Class& c : classes) {
+        if (c.pos < c.end && (!best || better(c, *best))) best = &c;
+      }
+      if (!best) break;
+      spend(*best);
+      last = best;
+    }
+  }
+
+  // --bvadecide=1: this round's variables go to the far end of the decision queue (decided after
+  // every original variable; by default the queue decides the newest variables first).
+  if (!dry && opts_.bvadecide && num_vars_ > first_fresh) {
+    std::vector<Var> order;
+    order.reserve(num_vars_);
+    for (Var v = first_fresh; v < num_vars_; ++v) order.push_back(v);
+    for (Var v = queue_first_; v != UINT32_MAX; v = links_[v].next) {
+      if (v < first_fresh) order.push_back(v);
+    }
+    for (const Var v : order) queue_dequeue(v);
+    for (const Var v : order) queue_enqueue_last(v);
+    queue_search_ = queue_last_;
+  }
+  bva_last_added_ = added;
   return reduced;
+}
+
+// --bvasearch: later elimination rounds re-encode what their eliminations produced (resolvents
+// of at-most-one structures are new cliques of binary and ternary clauses), starting from the
+// literals of variables touched since the last round, with --bvasearcheffort of the search ticks
+// since then; only where the first round's BVA added variables (on other formulas a few
+// replacements only perturb the search). Kissat's factor keeps running during search too: on
+// schooltt-5-3-8 after its preprocessing (factor included) it needs 1.7M conflicts with it and
+// 3.1-8.8M without (seeds 0-2).
+//
+// Elimination keeps BVA variables unless eliminating one adds no clause (bva_elim_bound: bound
+// 0). Eliminating x re-creates the |M_lit| x |M_cls| clauses its replacement removed, a growth by
+// the replacement's reduction, which is within the bound 16 for most replacements: without the
+// rule BVA and elimination undo each other round after round (schooltt-5-3-8, 300 s: 399k BVA
+// variables, 283k eliminated and 1.44M irredundant clauses, unsolved; with it 18k BVA variables
+// and 34k clauses, refuted in 80 s).
+void Solver::bva_search(uint64_t& budget) {
+  if (!opts_.bva || !opts_.bvasearch || opts_.bvaevery || stats_.bva_vars == 0 || inconsistent_) return;
+  const uint64_t vars_before = stats_.bva_vars, removed_before = stats_.bva_removed, added_before = stats_.bva_added;
+  const uint64_t search_ticks = stats_.ticks - eliminate_last_ticks_;
+  const uint64_t limit = std::max<uint64_t>(
+      100'000, static_cast<uint64_t>(static_cast<double>(search_ticks) * static_cast<double>(opts_.bvasearcheffort) / 1000.0));
+  bva_round(budget, budget + limit, false, true);
+  ++stats_.bva_search_rounds;
+  stats_.bva_search_vars += stats_.bva_vars - vars_before;
+  if (opts_.verbose >= 2) {
+    std::printf("c [%.2f s] bva in search: %llu variables, clauses removed %llu added %llu\n", seconds(),
+                static_cast<unsigned long long>(stats_.bva_vars - vars_before),
+                static_cast<unsigned long long>(stats_.bva_removed - removed_before),
+                static_cast<unsigned long long>(stats_.bva_added - added_before));
+  }
 }
 
 void Solver::bva_run(uint64_t& budget) {
@@ -374,13 +544,18 @@ void Solver::bva_run(uint64_t& budget) {
     const uint64_t clauses = irredundant_ + binaries_irredundant_;
     const int64_t trial = bva_round(budget, budget + extra, true);
     ++stats_.bva_trials;
+    // --bvavarsrel: re-encodings that add more variables than a share of the formula's are
+    // declined (41-119494 / qwh.60.1728: 1.37 / 1.31 new variables per variable, and the search
+    // slower; the gains of the larger budget add 0.06-0.58).
     const bool go = clauses > 0 && trial > 0 &&
-                    static_cast<uint64_t>(trial) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses;
+                    static_cast<uint64_t>(trial) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses &&
+                    (!opts_.bvavarsrel ||
+                     uint64_t{bva_last_added_} * 1000 <= static_cast<uint64_t>(opts_.bvavarsrel) * num_vars_);
     if (opts_.verbose >= 2) {
-      std::printf("c [%.2f s] bva trial: reduction %lld of %llu irredundant clauses (%.1f%%), %s\n", seconds(),
-                  static_cast<long long>(trial), static_cast<unsigned long long>(clauses),
-                  clauses ? 100.0 * static_cast<double>(trial) / static_cast<double>(clauses) : 0.0,
-                  go ? "replacing" : "skipped");
+      std::printf("c [%.2f s] bva trial: reduction %lld of %llu irredundant clauses (%.1f%%), %u new variables (of %u), %s\n",
+                  seconds(), static_cast<long long>(trial), static_cast<unsigned long long>(clauses),
+                  clauses ? 100.0 * static_cast<double>(trial) / static_cast<double>(clauses) : 0.0, bva_last_added_,
+                  num_vars_, go ? "replacing" : "skipped");
     }
     if (!go) return;
     ++stats_.bva_rounds;

@@ -1,5 +1,96 @@
 # Changelog
 
+## v0.4.1 — 2026-11-08
+
+BVA during search, a solver for linear equations mod p, congruence closure over XOR and ITE gates,
+changes to vivification and sweeping, and a walk that looks for models, all on by default. Faster
+propagation and inprocessing, lower memory use and faster-checking proofs, all with an unchanged
+search.
+
+On the 168 SAT Competition 2026 instances (AMD EPYC 4465P, Linux, 1000 s), 0.4.1, 0.4.0 and Kissat
+4.0.4 ran side by side:
+
+| | 0.4.1 | 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved (SAT / UNSAT) | 108 (43 / 65) | 101 (38 / 63) | 82 (35 / 47) |
+| PAR-2 (s) | 783 | 896 | 1132 |
+
+All 65 of 0.4.1's UNSAT answers were verified with their proofs. See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **BVA during search** (`--bvasearch`, on): elimination rounds after the first run BVA again,
+  on literals of touched variables and least frequent first, when the first round added
+  variables. Elimination keeps BVA variables unless removing one adds no clause.
+  - sc2026 (300 s): 87 solved against 84.
+  - The three schooltt UNSAT instances, which only Kissat solved before, take 39–142 s.
+- **Linear equations mod p** (`--linmod`, on):
+  - It finds exactly-one domains of 3, 5 or 7 values, and constraints whose allowed tuples are
+    exactly one equation mod p.
+  - It solves the system by Gaussian elimination over GF(p) and tries the solution as a model.
+  - The four linear-equations instances of sc2026 (unsolved by v0.4.0 and Kissat 4.0.4 at
+    1000 s) take 0.01 s, as do all 20 known instances of the family.
+  - Elsewhere it finds no equations: median cost 0.4 ms, at most 0.6 s.
+- **Congruence closure over XOR and ITE gates** (`--congruencegates`, on), and duplicate binary
+  clause removal (`--dedup`, on).
+  - linked_list: 29 → 19 s (M4).
+  - T92: 150 → 138 s.
+- **Vivification** deletes the clauses that the conflicting clause subsumes (`--vivifysubsume`)
+  and decides literals by occurrence counts (`--vivifysort`). Both are on.
+- **Sweeping** (`--sweepknown`, `--sweepphase`, `--sweepqueue`, on):
+  - it skips pairs whose binary clauses are already in the formula;
+  - it keeps Kitten's phases and queue between calls;
+  - minandmaxor128: sweep time −41%.
+  - sc2026 (300 s): 84 solved against 81, including jkkk-one-one-11-38 (Kissat-only before).
+- **XOR substitution reversal** (`--xorsub`, on): xor_op_n40_d3 is refuted in 0.4 s.
+- **Elimination growth cap** (`--eliminategrowth=100` above 10M irredundant literals): cabp k290
+  peak memory 3.5 → 1.4 GB.
+- **Walk for models** (`--walkmode=3`, on): the ProbSAT walk still sets the phases. Then a DDFW
+  clause-weighting walk (Ishtaiwi et al. 2005; Chowdhury, Codel and Heule 2023) runs from its
+  best assignment, only to look for a model.
+  - sc2026 at 300 s on the EPYC: 103 solved against 101.
+  - schooltt-5-7-11 (SAT) solves in 4 s.
+  - UNSAT instances are about 3% slower.
+- **Speed, with an identical search:**
+  - Propagation:
+    - the assignment is inlined;
+    - analysis uses radix sorts;
+    - backtracking is cheaper;
+    - the watch lists share one pool (watch memory −28 to −47%).
+  - Inprocessing: Kitten, sweeping, the walk, the parser, the Gauss-Jordan refutation check,
+    XOR / ITE extraction, congruence classes and substitution.
+  - On the M4: −5% user time on 15 instances each for the propagation and the inprocessing
+    changes; start-up −16%.
+  - On the i7, the software prefetches cost time (one of them about 20%), so they are now
+    compiled only on 64-bit ARM. The propagation prefetch is also behind `--prefetch`, off.
+- **Memory, with an identical search:**
+  - the model-check copy of the input is compressed (velev 204 → 92 MB);
+  - the watch pool is compacted at restarts and after elimination;
+  - the walk reads clauses in place;
+  - XOR rows are stored by size;
+  - per-variable arrays grow by an eighth when BVA adds variables.
+  - Peak bytes in use: velev 1456 → 1203 MB, as-p147 1650 → 1327 MB, T92 3016 → 2804 MB.
+  - `--reportmem` shows the heap in use.
+- **Proofs** (a checker timeout counts as unsolved):
+  - Counting-certificate proofs delete the clauses their PR steps do not need. dpr-trim time:
+    exam_90_80 1031 → 248 s, miles1500 683 → 177 s, chnl-030x091 21.9 → 0.9 s.
+  - Root-level strengthening no longer writes an add / delete pair: constraints_17's proof is
+    77% smaller and dpr-trim needs 2.7× less memory.
+  - Substitution deletes each old clause right after its rewritten copy.
+- **Limits:** the time limit and SIGINT / SIGTERM are honoured inside every inprocessing pass, and
+  the solver stops within about 0.4 s. Before, an inprocessing pass could run on: satcoin went
+  10.5 s past a 300 s limit.
+- **New options, off by default:**
+  - `--renumber`: internal variable renumbering for memory locality; proofs and models keep the
+    input numbering.
+  - `--walkmode`: DDFW clause-weighting walks.
+  - `--queueorder`: initial decision order.
+  - `--eliminateheap`, `--eliminatecomplete`, `--eliminatelongskip`, `--eliminatetouched`.
+  - `--chrono=2`, `--chronounits`, `--randec`.
+  - `--bvasched`, `--bvaextend`, `--subsumerel`, `--bvavarsrel`.
+  - `--tier1age`: deletes tier-1 clauses left unused.
+  - `--stopfault` (testing).
+- **Determinism:** ties in three sorts are broken deterministically, so the Linux box and the Mac
+  run the same search.
+
 ## v0.4.0 — 2026-11-06
 
 Counting certificates: pigeonhole, parity and counting formulas are refuted before search, with

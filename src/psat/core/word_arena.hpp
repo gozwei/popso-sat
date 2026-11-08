@@ -42,6 +42,11 @@ class WordArena {
     if (n > size_) std::memset(data_ + size_, 0, (n - size_) * sizeof(uint32_t));
     size_ = n;
   }
+  // resize() without zeroing new words, for callers that write every one of them at once.
+  void resize_uninitialized(size_t n) {
+    if (n > capacity_) set_capacity(n);
+    size_ = n;
+  }
   void clear() { size_ = 0; }
   // Appending grows the capacity by a quarter at a time (with realloc, see above).
   void push_back(uint32_t x) {

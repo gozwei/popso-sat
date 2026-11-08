@@ -12,12 +12,12 @@ bool Solver::lucky() {
   const PassTimer pass_timer(*this, kPassLucky);
   if (inconsistent_ || level() > 0) return false;
   if (!propagate_vivify(kNoReason)) return false;  // root conflicts are left to search
-  for (int attempt = 0; attempt < 4; ++attempt) {
+  for (int attempt = 0; attempt < 4 && !stop_requested(); ++attempt) {
     const bool backward = attempt & 1;
     const bool negative = attempt < 2;
     bool ok = true;
     for (Var i = 0; i < num_vars_ && ok; ++i) {
-      const Var v = backward ? num_vars_ - 1 - i : i;
+      const Var v = internal_var(backward ? num_vars_ - 1 - i : i);  // (input order)
       if (eliminated_[v] || vals_[make_lit(v, false)] != 0) continue;
       control_.push_back(static_cast<uint32_t>(trail_.size()));
       assign(make_lit(v, negative), kNoReason);

@@ -12,9 +12,15 @@ void Kitten::clear() {
   ante_.clear();
   ante_begin_.assign(1, 0);
   core_conflict_ = kNone;
+  track_cores_ = false;
+  needed_.clear();
+  final_reasons_.clear();
   trail_.clear();
   control_.clear();
   heap_.clear();
+  queue_ = false;
+  queue_first_ = queue_last_ = queue_search_ = kNone;
+  queue_stamps_ = 0;
   assumptions_.clear();
   final_.clear();
   propagated_ = 0;
@@ -23,6 +29,17 @@ void Kitten::clear() {
   inconsistent_ = false;
   inc_ = 1.0;
   nvars_ = 0;
+}
+
+size_t Kitten::bytes() const {
+  size_t b = (arena_.capacity() + learned_refs_.capacity() + ante_.capacity() + ante_begin_.capacity() +
+              stamp_.capacity() + final_reasons_.capacity()) * 4 + needed_.capacity();
+  b += watches_.capacity() * sizeof(std::vector<uint32_t>);
+  for (const auto& w : watches_) b += w.capacity() * 4;
+  b += vals_.capacity() + phase_.capacity() + seen_.capacity() + score_.capacity() * 8;
+  b += (levels_.capacity() + reasons_.capacity() + heap_.capacity() + heap_pos_.capacity() + trail_.capacity() +
+        control_.capacity() + queue_prev_.capacity() + queue_next_.capacity()) * 4 + queue_stamp_.capacity() * 8;
+  return b;
 }
 
 void Kitten::resize(uint32_t n) {
@@ -37,6 +54,11 @@ void Kitten::resize(uint32_t n) {
   seen_.resize(n);
   score_.resize(n);
   heap_pos_.resize(n);
+  if (queue_) {
+    queue_prev_.resize(n);
+    queue_next_.resize(n);
+    queue_stamp_.resize(n);
+  }
   for (uint32_t v = old; v < n; ++v) {
     vals_[2 * v] = vals_[2 * v + 1] = 0;
     phase_[v] = -1;
@@ -45,7 +67,50 @@ void Kitten::resize(uint32_t n) {
     seen_[v] = 0;
     score_[v] = 0;
     heap_pos_[v] = kNone;
-    heap_push(v);
+    if (!queue_) heap_push(v);
+  }
+  if (queue_) {
+    // New variables go before the old ones, the lowest index last (decided first, as the heap
+    // does with equal scores): the queue is rebuilt with fresh stamps.
+    std::vector<uint32_t> order;
+    order.reserve(n);
+    for (uint32_t v = n; v-- > old;) order.push_back(v);
+    for (uint32_t v = queue_first_; v != kNone; v = queue_next_[v]) order.push_back(v);
+    queue_first_ = queue_last_ = queue_search_ = kNone;
+    queue_stamps_ = 0;
+    for (const uint32_t v : order) queue_enqueue(v);
+    for (uint32_t v = queue_last_; v != kNone; v = queue_prev_[v]) {
+      if (!vals_[2 * v]) {
+        queue_search_ = v;
+        break;
+      }
+    }
+  }
+}
+
+void Kitten::queue_enqueue(uint32_t v) {
+  queue_prev_[v] = queue_last_;
+  queue_next_[v] = kNone;
+  if (queue_last_ != kNone) {
+    queue_next_[queue_last_] = v;
+  } else {
+    queue_first_ = v;
+  }
+  queue_last_ = v;
+  queue_stamp_[v] = ++queue_stamps_;
+}
+
+void Kitten::queue_dequeue(uint32_t v) {
+  const uint32_t p = queue_prev_[v], q = queue_next_[v];
+  if (p != kNone) {
+    queue_next_[p] = q;
+  } else {
+    queue_first_ = q;
+  }
+  if (q != kNone) {
+    queue_prev_[q] = p;
+  } else {
+    queue_last_ = p;
   }
 }
 
@@ -104,39 +169,57 @@ void Kitten::assign(KLit lit, uint32_t reason) {
 }
 
 bool Kitten::propagate() {
-  while (propagated_ < trail_.size()) {
+  // The array bases, the list being visited and the tick counter live in locals: the int8_t
+  // stores of an assignment may alias any member for the compiler, which otherwise reloads them
+  // for every watch. Nothing here reallocates the arena or the values; a replacement watch goes
+  // to another literal's list (a non-false literal, never the false one being visited).
+  int8_t* const vals = vals_.data();
+  uint32_t* const arena = arena_.data();
+  uint64_t ticks = ticks_;
+  bool ok = true;
+  while (ok && propagated_ < trail_.size()) {
     const KLit nl = neg(trail_[propagated_++]);  // false now
-    std::vector<uint32_t>& ws = watches_[nl];
+    std::vector<uint32_t>& wl = watches_[nl];
+    uint32_t* const ws = wl.data();
+    const size_t n = wl.size();
     size_t i = 0, j = 0;
-    while (i < ws.size()) {
+    while (i < n) {
       const uint32_t ref = ws[i++];
-      ++ticks_;
-      const uint32_t size = arena_[ref];
-      KLit* c = &arena_[ref + 2];
-      if (c[0] == nl) std::swap(c[0], c[1]);  // c[1] is the false watch
-      if (vals_[c[0]] > 0) {
+      ++ticks;
+      const uint32_t size = arena[ref];
+      KLit* const c = arena + ref + 2;
+      // c[1] becomes the false watch: nl is one of the two watches, so the other one is
+      // c[0] ^ c[1] ^ nl (stored without a branch on which one it was).
+      const KLit other = c[0] ^ c[1] ^ nl;
+      c[0] = other;
+      c[1] = nl;
+      const int8_t ov = vals[other];
+      if (ov > 0) {
         ws[j++] = ref;
         continue;
       }
       uint32_t k = 2;
-      while (k < size && vals_[c[k]] < 0) ++k;
+      while (k < size && vals[c[k]] < 0) ++k;
       if (k < size) {
-        std::swap(c[1], c[k]);
-        watches_[c[1]].push_back(ref);
+        const KLit r = c[k];
+        c[k] = c[1];
+        c[1] = r;
+        watches_[r].push_back(ref);
         continue;
       }
       ws[j++] = ref;
-      if (vals_[c[0]] < 0) {
+      if (ov < 0) {
         conflict_ = ref;
-        while (i < ws.size()) ws[j++] = ws[i++];
-        ws.resize(j);
-        return false;
+        while (i < n) ws[j++] = ws[i++];
+        ok = false;
+        break;
       }
-      assign(c[0], ref);
+      assign(other, ref);
     }
-    ws.resize(j);
+    wl.resize(j);
   }
-  return true;
+  ticks_ = ticks;
+  return ok;
 }
 
 void Kitten::backtrack(uint32_t lvl) {
@@ -147,7 +230,11 @@ void Kitten::backtrack(uint32_t lvl) {
     const uint32_t v = var(l);
     phase_[v] = vals_[2 * v] > 0 ? 1 : -1;  // (the value: flip() can change it after a model)
     vals_[l] = vals_[neg(l)] = 0;
-    if (heap_pos_[v] == kNone) heap_push(v);
+    if (queue_) {
+      if (queue_search_ == kNone || queue_stamp_[v] > queue_stamp_[queue_search_]) queue_search_ = v;
+    } else if (heap_pos_[v] == kNone) {
+      heap_push(v);
+    }
   }
   trail_.resize(start);
   control_.resize(lvl);
@@ -156,32 +243,42 @@ void Kitten::backtrack(uint32_t lvl) {
 
 bool Kitten::flip(KLit lit) {
   if (status_ != kSat || vals_[lit] <= 0 || levels_[var(lit)] == 0) return false;
-  std::vector<uint32_t>& ws = watches_[lit];
+  // (local bases as in propagate(); a replacement is a true literal, never lit itself)
+  const int8_t* const vals = vals_.data();
+  uint32_t* const arena = arena_.data();
+  std::vector<uint32_t>& wl = watches_[lit];
+  uint32_t* const ws = wl.data();
+  const size_t n = wl.size();
+  uint64_t ticks = ticks_;
   size_t i = 0, j = 0;
   bool ok = true;
-  while (i < ws.size()) {
+  while (i < n) {
     const uint32_t ref = ws[i++];
-    ++ticks_;
-    const uint32_t size = arena_[ref];
-    KLit* c = &arena_[ref + 2];
-    if (c[0] == lit) std::swap(c[0], c[1]);  // c[1] is lit
-    if (vals_[c[0]] > 0) {
+    ++ticks;
+    const uint32_t size = arena[ref];
+    KLit* const c = arena + ref + 2;
+    c[0] ^= c[1] ^ lit;  // c[1] is lit (see propagate())
+    c[1] = lit;
+    if (vals[c[0]] > 0) {
       ws[j++] = ref;
       continue;
     }
     uint32_t k = 2;
-    while (k < size && vals_[c[k]] <= 0) ++k;
+    while (k < size && vals[c[k]] <= 0) ++k;
     if (k < size) {
-      std::swap(c[1], c[k]);
-      watches_[c[1]].push_back(ref);
+      const KLit r = c[k];
+      c[k] = c[1];
+      c[1] = r;
+      watches_[r].push_back(ref);
       continue;
     }
     ws[j++] = ref;  // only lit satisfies the clause: no flip (watches moved so far are true)
     ok = false;
     break;
   }
-  while (i < ws.size()) ws[j++] = ws[i++];
-  ws.resize(j);
+  while (i < n) ws[j++] = ws[i++];
+  wl.resize(j);
+  ticks_ = ticks;
   if (!ok) return false;
   vals_[lit] = -1;
   vals_[neg(lit)] = 1;
@@ -200,6 +297,14 @@ void Kitten::randomize_phases(uint64_t& state) {
 }
 
 void Kitten::bump(uint32_t v) {
+  if (queue_) {  // to the end of the queue (the search pointer: if unassigned)
+    if (queue_last_ == v) return;
+    if (queue_search_ == v) queue_search_ = queue_prev_[v];
+    queue_dequeue(v);
+    queue_enqueue(v);
+    if (!vals_[2 * v]) queue_search_ = v;
+    return;
+  }
   score_[v] += inc_;
   if (score_[v] > 1e100) {
     for (uint32_t u = 0; u < nvars_; ++u) score_[u] *= 1e-100;
@@ -288,12 +393,63 @@ void Kitten::compute_core(std::vector<uint32_t>& ids) {
   }
 }
 
+void Kitten::mark_core() {
+  std::vector<uint32_t> work;
+  if (inconsistent_) {
+    if (core_conflict_ != kNone) work.push_back(core_conflict_);
+  } else {
+    work = final_reasons_;
+  }
+  mark_from(work);
+}
+
+void Kitten::mark_learned(size_t i) {
+  std::vector<uint32_t> work{learned_refs_[i]};
+  mark_from(work);
+}
+
+// Marks the learned clauses among the clauses in work and their antecedents, following the
+// reasons of literals false at the root (those were skipped by the derivations). A clause marked
+// before keeps its antecedents marked, but its root literals are followed again (they may have
+// become false since).
+void Kitten::mark_from(std::vector<uint32_t>& work) {
+  if (needed_.size() < learned_refs_.size()) needed_.resize(learned_refs_.size(), 0);
+  if (stamp_.size() < arena_.size()) stamp_.resize(arena_.size(), 0);
+  if (++epoch_ == 0) {
+    std::fill(stamp_.begin(), stamp_.end(), 0);
+    epoch_ = 1;
+  }
+  while (!work.empty()) {
+    const uint32_t ref = work.back();
+    work.pop_back();
+    if (stamp_[ref] == epoch_) continue;
+    stamp_[ref] = epoch_;
+    const uint32_t size = arena_[ref], aux = arena_[ref + 1];
+    if (aux & kLearnedBit) {
+      const uint32_t i = aux & ~kLearnedBit;
+      if (!needed_[i]) {
+        needed_[i] = 1;
+        for (uint32_t a = ante_begin_[i]; a < ante_begin_[i + 1]; ++a) work.push_back(ante_[a]);
+      }
+    }
+    for (uint32_t k = 0; k < size; ++k) {
+      const KLit l = arena_[ref + 2 + k];
+      const uint32_t v = var(l);
+      if (vals_[l] < 0 && levels_[v] == 0 && reasons_[v] != kNone) work.push_back(reasons_[v]);
+    }
+  }
+}
+
 void Kitten::analyze_final(KLit failed) {
   // final_ = negations of the assumptions that imply -failed (plus -failed itself).
   final_.clear();
   final_.push_back(neg(failed));
+  final_reasons_.clear();
   const uint32_t fv = var(failed);
-  if (levels_[fv] == 0) return;
+  if (levels_[fv] == 0) {
+    if (reasons_[fv] != kNone) final_reasons_.push_back(reasons_[fv]);
+    return;
+  }
   seen_[fv] = 1;
   std::vector<uint32_t> marked{fv};
   for (size_t t = trail_.size(); t-- > (control_.empty() ? trail_.size() : control_[0]);) {
@@ -305,6 +461,7 @@ void Kitten::analyze_final(KLit failed) {
       final_.push_back(neg(l));
       continue;
     }
+    final_reasons_.push_back(r);
     const uint32_t size = arena_[r];
     const KLit* c = &arena_[r + 2];
     for (uint32_t k = 0; k < size; ++k) {
@@ -318,6 +475,15 @@ void Kitten::analyze_final(KLit failed) {
 }
 
 bool Kitten::decide() {
+  if (queue_) {
+    uint32_t v = queue_search_;
+    while (v != kNone && vals_[2 * v] != 0) v = queue_prev_[v];
+    queue_search_ = v;
+    if (v == kNone) return false;
+    control_.push_back(static_cast<uint32_t>(trail_.size()));
+    assign(2 * v + (phase_[v] > 0 ? 0u : 1u), kNone);
+    return true;
+  }
   while (!heap_.empty()) {
     const uint32_t v = heap_pop();
     if (vals_[2 * v] != 0) continue;
@@ -369,6 +535,7 @@ int Kitten::solve(uint64_t ticks_limit) {
     }
   }
   if (result == kUnsat && inconsistent_) final_.clear();
+  if (result == kUnsat && track_cores_) mark_core();
   assumptions_.clear();
   status_ = result;
   return result;

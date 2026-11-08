@@ -361,31 +361,54 @@ bool Solver::gauss_refute(const XorList& xors) {
       // Row r: wc words of columns, then wr words of the combination.
       std::vector<uint64_t> m(size_t{nr} * w, 0);
       std::vector<uint8_t> rhs(nr, 0), used(nr, 0);
+      // Per row, word ranges that hold all its set bits (upper bounds): columns up to col_hi,
+      // combination words comb_lo..comb_hi. Adding the pivot row then touches only the pivot's
+      // nonzero words (adding zero words changes nothing), and the rows not yet used as pivots
+      // are kept in order in `open`, so that a column is looked up only in those. The pivot is
+      // the first open row with the column (rows before it lack it), the rows after it with the
+      // column get the pivot added: the same matrix as scanning every row, and the same
+      // `work`, which still counts every row per column and every word of the full row range.
+      std::vector<uint32_t> col_hi(nr, 0), comb_lo(nr), comb_hi(nr), open(nr);
       for (uint32_t r = 0; r < nr; ++r) {
         uint64_t* R = m.data() + size_t{r} * w;
         const uint32_t i = rows[r];
         for (uint32_t q = xors.start[i]; q < xors.start[i + 1]; ++q) {
           const uint32_t c = col[xors.vars[q]];
           R[c >> 6] ^= uint64_t{1} << (c & 63);
+          col_hi[r] = std::max(col_hi[r], c >> 6);
         }
         R[wc + (r >> 6)] |= uint64_t{1} << (r & 63);
+        comb_lo[r] = comb_hi[r] = wc + (r >> 6);
         rhs[r] = xors.rhs[i];
+        open[r] = r;
       }
       for (uint32_t c = 0; c < nc && work <= kMaxWork; ++c) {
-        uint32_t p = 0;
-        while (p < nr && (used[p] || !((m[size_t{p} * w + (c >> 6)] >> (c & 63)) & 1u))) ++p;
+        const uint32_t cw = c >> 6;
+        const uint64_t bit = uint64_t{1} << (c & 63);
+        const size_t no = open.size();
+        size_t k = 0;
+        while (k < no && !(m[size_t{open[k]} * w + cw] & bit)) ++k;
         work += nr;
-        if (p == nr) continue;
+        if (k == no) continue;
+        const uint32_t p = open[k];
         used[p] = 1;
         const uint64_t* P = m.data() + size_t{p} * w;
-        for (uint32_t r = 0; r < nr; ++r) {
-          if (used[r]) continue;
+        const uint32_t phi = col_hi[p], plo = comb_lo[p], pchi = comb_hi[p];
+        size_t out = k;
+        for (size_t q = k + 1; q < no; ++q) {
+          const uint32_t r = open[q];
+          open[out++] = r;
           uint64_t* R = m.data() + size_t{r} * w;
-          if (!((R[c >> 6] >> (c & 63)) & 1u)) continue;
-          for (uint32_t x = c >> 6; x < w; ++x) R[x] ^= P[x];
+          if (!(R[cw] & bit)) continue;
+          for (uint32_t x = cw; x <= phi; ++x) R[x] ^= P[x];
+          for (uint32_t x = plo; x <= pchi; ++x) R[x] ^= P[x];
+          col_hi[r] = std::max(col_hi[r], phi);
+          comb_lo[r] = std::min(comb_lo[r], plo);
+          comb_hi[r] = std::max(comb_hi[r], pchi);
           rhs[r] ^= rhs[p];
-          work += w - (c >> 6);
+          work += w - cw;
         }
+        open.resize(out);
       }
       uint32_t best = nr;
       if (work > kMaxWork) {

@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+#include "psat/core/lit_stack.hpp"
 #include "psat/core/options.hpp"
 #include "psat/core/types.hpp"
 #include "psat/core/word_arena.hpp"
@@ -29,6 +30,7 @@
 #include "psat/solver/heap.hpp"
 #include "psat/solver/kitten.hpp"
 #include "psat/solver/occs.hpp"
+#include "psat/solver/watches.hpp"
 
 namespace psat {
 
@@ -43,7 +45,7 @@ struct Clause {
   uint32_t garbage : 1;
   uint32_t redundant : 1;
   uint32_t vivified : 1;  // already vivified in the current pass
-  uint32_t spare : 5;
+  uint32_t age : 5;  // --tier1age: reductions in a row a tier1 clause went unused
   uint32_t pos;  // where the last replacement-watch search ended; GC forwarding address
 
   Lit* lits() { return reinterpret_cast<Lit*>(this + 1); }
@@ -52,7 +54,6 @@ struct Clause {
 static_assert(sizeof(Clause) == 12, "clause header must be three words");
 constexpr uint32_t kHeaderWords = 3;
 
-constexpr uint32_t kBinaryTag = 0x80000000u;
 constexpr uint32_t kNoReason = 0xFFFFFFFFu;
 constexpr uint32_t kMaxArenaWords = 0x7FFFFFF0u;
 // Gauss-Jordan reasons (--gauss, detached solver only): kGaussTag | offset into the reason buffer.
@@ -62,13 +63,6 @@ constexpr uint32_t kGaussTag = 0xC0000000u;
 constexpr uint32_t kGaussMask = 0x3FFFFFFFu;
 constexpr uint32_t kGaussConflict = 0x7FFFFFFFu;  // conflict_ref_ of a Gauss-Jordan conflict
 
-struct Watch {
-  Lit blit;      // blocking literal (the other literal for binary clauses)
-  uint32_t ref;  // clause reference, or kBinaryTag | redundant-flag for binary clauses
-
-  bool binary() const { return (ref & kBinaryTag) != 0; }
-  bool redundant_binary() const { return (ref & 1u) != 0; }
-};
 
 // Per-variable analysis flags (Solver::flags_).
 constexpr uint8_t kSeen = 1, kPoison = 2, kRemovable = 4, kShrinkable = 8;
@@ -133,6 +127,10 @@ enum Pass : uint8_t {
   kPassCount
 };
 
+// Proof statistics by source (ProofWriter::set_source): search (learned clauses), each pass
+// (1 + Pass), root simplification and eager subsumption.
+enum ProofSource : int { kProofSearch = 0, kProofSimplify = 1 + kPassCount, kProofEager, kProofSources };
+
 // Cardinality constraints found by detection (cardinality.cpp; --cardinality, statistics only).
 struct CardinalityStats {
   uint64_t amo = 0, amo_lits = 0, amo_pos = 0, amo_neg = 0, amo_mixed = 0;  // cliques of >= 3 literals
@@ -151,24 +149,48 @@ struct CardinalityStats {
 
 struct Stats {
   uint64_t conflicts = 0, decisions = 0, propagations = 0, ticks = 0;
-  uint64_t reused_levels = 0;
+  uint64_t reused_levels = 0, restart_levels = 0, backjump_levels = 0, conflict_levels = 0;
   uint64_t restarts = 0, reductions = 0, rephased = 0, switched = 0, collections = 0;
   uint64_t collections_full = 0, collected_words = 0;  // words scanned and moved from the start on
-  uint64_t learned = 0, learned_units = 0, learned_binary = 0, learned_literals = 0, minimized_literals = 0;
+  uint64_t learned = 0, learned_units = 0, learned_binary = 0, learned_literals = 0, minimized_literals = 0, learned_glue = 0;
   uint64_t eager_subsumed = 0;
-  uint64_t chrono_backtracks = 0, chrono_conflict_backtracks = 0, chrono_missed = 0;
-  uint64_t reduced_clauses = 0, simplified_root = 0, fixed = 0;
+  uint64_t chrono_backtracks = 0, chrono_conflict_backtracks = 0, chrono_missed = 0, chrono_fallbacks = 0;
+  uint64_t reduced_clauses = 0, reduced_tier1 = 0, simplified_root = 0, fixed = 0;
   uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0;
+  // Elimination breakdown: candidates tried and why they failed (occurrence limit, resolvent size,
+  // clause bound, literal bound or growth cap, XOR merge), tries of a variable that failed in an
+  // earlier round with its clauses unchanged since (same bound / raised bound), and the round's
+  // work units by phase (occurrence lists, subsumption, congruence, gathering the clauses of a
+  // candidate, syntactic gates, semantic definitions, counting resolvents, adding them) plus the
+  // units of the tries that failed.
+  uint64_t elim_tried = 0, elim_fail_occ = 0, elim_fail_size = 0, elim_fail_bound = 0, elim_fail_lits = 0,
+           elim_fail_xor = 0, elim_retried_same = 0, elim_retried_raised = 0, elim_resolutions = 0,
+           elim_long_skipped = 0;  // (--eliminatelongskip: of elim_fail_size)
+  uint64_t elim_w_occs = 0, elim_w_subsume = 0, elim_w_congruence = 0, elim_w_gather = 0, elim_w_gates = 0,
+           elim_w_defs = 0, elim_w_count = 0, elim_w_add = 0, elim_w_failed = 0;
   uint64_t vivifications = 0, vivify_ticks = 0, vivify_checked = 0, vivified = 0, vivified_literals = 0, vivify_instantiated = 0, vivify_implied_deleted = 0,
            vivify_asym = 0;
+  uint64_t vivify_checked_learned = 0, vivified_learned = 0;  // (of vivify_checked / vivified)
+  uint64_t vivify_subsumed = 0;
+  uint64_t randec_sequences = 0, random_decisions = 0;
   uint64_t unhides = 0, unhide_units = 0, unhide_transitive = 0, unhide_tautologies = 0, unhide_strengthened = 0,
            unhide_literals = 0, unhide_ticks = 0;
   uint64_t sweeps = 0, swept_vars = 0, sweep_units = 0, sweep_equivalences = 0, sweep_ticks = 0, sweep_flips = 0, sweep_solves = 0, sweep_kitten_ticks = 0;
+  // Sweeping breakdown: Kitten calls per purpose (env: the first model of an environment; bb: backbone
+  // checks; eq: equivalence checks) and result, candidates and how they were refuted.
+  uint64_t sweep_env_solves = 0, sweep_bb_solves = 0, sweep_bb_sat = 0, sweep_bb_unsat = 0, sweep_bb_unknown = 0,
+           sweep_eq_solves = 0, sweep_eq_sat = 0, sweep_eq_unsat = 0, sweep_eq_unknown = 0;
+  uint64_t sweep_bb_cands = 0, sweep_bb_by_flip = 0, sweep_bb_by_model = 0, sweep_eq_cands = 0, sweep_eq_by_flip = 0,
+           sweep_eq_by_model = 0, sweep_eq_checks = 0, sweep_eq_known = 0, sweep_var_limit = 0, sweep_env_vars = 0,
+           sweep_env_clauses = 0, sweep_outer_dropped = 0, sweep_followed = 0, sweep_clean_skipped = 0;
   uint64_t simulations = 0, sim_gates = 0, sim_candidates = 0, sim_checked = 0, sim_equivalences = 0, sim_units = 0,
            sim_failed = 0, sim_ticks = 0, sim_ites = 0;
   uint64_t probes = 0, failed_literals = 0, probe_uips = 0, gates = 0, xor_gates = 0, xor_merges_skipped = 0, ite_gates = 0, definitions = 0, shrunk_literals = 0;
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0, bva_trials = 0, bva_rounds = 0;
-  uint64_t walks = 0, walk_flips = 0, walk_ticks = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
+  uint64_t bva_search_vars = 0, bva_search_rounds = 0;  // --bvasearch
+  uint64_t deduplicated = 0;  // duplicate binary clauses removed
+  uint64_t stop_faults = 0;   // --stopfault (testing): stops injected
+  uint64_t walks = 0, walks_kept = 0, walk_flips = 0, walk_ticks = 0, walk_models = 0, walk_transfers = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
   // Counting certificates (counting.cpp): structures found, PR clauses and units added, structures
@@ -198,7 +220,7 @@ class Solver {
   int val(int lit) const;
   int max_var() const { return static_cast<int>(num_vars_); }
 
-  void set_proof(ProofWriter* proof) { proof_ = proof; }
+  void set_proof(ProofWriter* proof);
   void set_terminate(const std::atomic<bool>* flag) { terminate_ = flag; }
   void set_time_limit(double seconds) { time_limit_ = seconds; }
   void set_conflict_limit(int64_t conflicts) { conflict_limit_ = conflicts; }
@@ -209,10 +231,26 @@ class Solver {
   const CardinalityStats& cardinality_stats() const { return card_stats_; }
   // XOR detection and Gauss-Jordan elimination (--gauss).
   const GaussStats& gauss_stats() const { return gauss_stats_; }
+  const XorSubStats& xorsub_stats() const { return xorsub_stats_; }
+  const LinmodStats& linmod_stats() const { return linmod_stats_; }
   const Options& options() const { return opts_; }
   // Why the last solve() returned kUnknown ("" otherwise).
   const char* unknown_reason() const { return unknown_reason_; }
   size_t memory_bytes() const;
+  // --reportmem: the resident size (current and peak) and the main structures, one line.
+  void report_memory(const char* where);
+  // --reportmem, in the search: cumulative counts, the learned clauses by tier, the schedules
+  // (mode, rephase, reduce) and the pass times, one line of key=value pairs (output only).
+  void report_progress();
+  static double current_rss_mb();
+  // Bytes the C library's allocator has handed out and not got back (macOS: malloc zone
+  // statistics; glibc 2.33+: mallinfo2); -1 where unknown. Resident size minus this is memory the
+  // allocator keeps (freed blocks cached or not returned, fragmentation) plus untouched code/stack.
+  static double heap_in_use_mb();
+  // --reportmem: memory the caller holds for the solver (the model-check copy of the input).
+  void set_input_copy_bytes(size_t bytes) { input_copy_bytes_ = bytes; }
+  size_t input_copy_bytes_ = 0;
+  double report_next_ = 0, progress_next_ = 0;
   double seconds() const;
   static double peak_rss_mb();  // of the process (getrusage)
   void print_statistics(std::FILE* out) const;
@@ -238,6 +276,14 @@ class Solver {
     if (!lvl) on_root_fixed(l);
   }
   void on_root_fixed(Lit l);
+  // A root unit whose clause is already in the proof (or the formula): assigned without logging
+  // it a second time (its propagated consequences are logged as usual).
+  void assign_unit_in_proof(Lit l) {
+    unit_in_proof_ = true;
+    assign(l, kNoReason);
+    unit_in_proof_ = false;
+  }
+  bool unit_in_proof_ = false;
 
   // --- clauses --------------------------------------------------------------------------------
   Clause& clause(uint32_t ref) { return *reinterpret_cast<Clause*>(arena_.data() + ref); }
@@ -253,9 +299,10 @@ class Solver {
   // --- search ---------------------------------------------------------------------------------
   int search();
   bool propagate();
+  bool propagate_search();  // propagate() without Gauss-Jordan
   bool propagate_vivify(uint32_t ignore);
-  template <bool kVivify>
-  bool propagate_impl(uint32_t ignore);
+  template <bool kVivify, bool kPrefetch>
+  bool propagate_impl(uint32_t ignore);  // (propagate.cpp only)
   bool analyze();  // false: the conflict is at the root (unsatisfiable)
   uint32_t conflict_level(Lit& forced, uint32_t& count);
   void remove_long_watch(Lit l, uint32_t ref);
@@ -284,13 +331,30 @@ class Solver {
   void heap_bump(Var v);
   void rebuild_heap();
   void drop_inactive_decisions();
+  // --queueorder (order.cpp): the initial focused-mode order (lowest input index first, where
+  // and when the option value says so).
+  void initial_queue_order();
+  void queue_lowest_first();
+  struct GateDirection {
+    uint64_t gates = 0, forward = 0, backward = 0, outputs = 0, work = 0;
+    bool complete = true;
+  };
+  GateDirection gate_direction(uint64_t budget);
+  bool gates_forward();
+  void queue_default_order_unbumped();
 
   // --- schedules ------------------------------------------------------------------------------
   bool restarting() const;
   void restart();
   uint64_t focused_restart_interval() const;
   uint32_t reuse_trail_level();
-  bool rephasing() const { return opts_.rephase && stats_.conflicts >= rephase_limit_; }
+  // (--rephasestable: only in stable mode, unless the search never enters it; 2: the interval
+  // counts stable-mode conflicts)
+  bool rephasing() const {
+    if (!opts_.rephase) return false;
+    if (opts_.rephasestable && !stable_ && opts_.stable != 0) return false;
+    return (opts_.rephasestable == 2 && opts_.stable != 0 ? stats_.stable_conflicts : stats_.conflicts) >= rephase_limit_;
+  }
   void rephase();
   bool reducing() const { return stats_.conflicts >= reduce_limit_; }
   void reduce();
@@ -299,6 +363,35 @@ class Solver {
   void switch_mode();
   void update_conflict_statistics(uint32_t glue);
   bool check_limits();
+  // Inprocessing passes and the work before search call stop_requested() in their main loops
+  // (per candidate, variable, clause or Kitten call, per flip of the walk): true once the time
+  // limit has passed or termination was requested. When it is, the pass ends as when its budget
+  // runs out, and so does every pass after it (the answer stays true until solve() starts again),
+  // until the search loop's check_limits() returns with the reason. The terminate flag is read on
+  // every call, the clock every stop_period_ calls: the period doubles while the clock reads come
+  // less than 0.1 ms apart and drops to a quarter when they are more than 1 ms apart, from 1 at
+  // the start and at the end of every pass (PassTimer), whose calls differ in cost.
+  // --stopfault=n (testing): every n-th call requests a stop that check_limits() then drops, so
+  // the search goes on after the interrupted passes (their formula must be consistent).
+  bool stop_requested() {
+    if (stop_reason_) return true;
+    if (terminate_ && terminate_->load(std::memory_order_relaxed)) {
+      stop_reason_ = "interrupted";
+      return true;
+    }
+    if (--stop_countdown_ != 0) return false;
+    return stop_check();
+  }
+  bool stop_check();
+  void stop_period_reset() {
+    if (!opts_.stopfault) stop_period_ = stop_countdown_ = 1;
+  }
+  static constexpr const char* kStopFault = "stop fault (testing)";
+  // A sub-solver (the detached Gauss-Jordan solver, an isolated counting refutation) that stopped
+  // on the shared limits: this solver stops too.
+  void stop_after(const Solver& sub) {
+    if (sub.stop_reason_ && sub.stop_reason_ != kStopFault) stop_reason_ = sub.stop_reason_;
+  }
   bool memory_exceeded(bool accounting) const;
   void debug_check(const char* where);
 
@@ -316,14 +409,35 @@ class Solver {
   void reconnect_long_watches();
   void subsume_round(uint64_t& budget);
   bool substitute();
+  uint64_t dedup_binaries();
   void substitute_now();  // outside elimination rounds, at the root
   uint32_t congruence(uint64_t& budget);
   uint32_t congruent_xors(uint64_t& budget);
   uint32_t congruent_ites(uint64_t& budget);
+  // Gate extraction for congruence: XOR constraints (complete clause sets of 3..5 variables: the
+  // variables and the parity of their sum) and ITE gates o = ITE(c, t, e) (c and t positive).
+  struct CongruenceXor {
+    Var vars[5];
+    uint8_t n, parity;
+  };
+  struct CongruenceIte {
+    Lit c, t, e, o;
+  };
+  void extract_xor_constraints(std::vector<CongruenceXor>& out, uint64_t& budget);
+  void extract_ites(std::vector<CongruenceIte>& out, uint64_t& budget);
   void prove_by_cases(std::vector<Lit>& clause, const std::vector<Var>& cases, size_t depth);
-  int64_t bva_round(uint64_t& budget, uint64_t limit, bool dry);  // -> clauses removed (estimated if dry)
+  // -> clauses removed (estimated if dry); touched_only: matchings start only from literals of
+  // touched variables (--bvasearch rounds during search)
+  int64_t bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touched_only = false);
+  uint32_t bva_last_added_ = 0;  // variables the last round added (would add, if dry)
   void bva_run(uint64_t& budget);  // a trial round first with --bvamin
   size_t bva_count(Lit l, uint64_t& budget);
+  // --bvasearch: BVA in an elimination round after the first (after its eliminations), and the
+  // elimination bound of a variable (0 for BVA variables, so that elimination does not undo BVA).
+  void bva_search(uint64_t& budget);
+  uint32_t bva_elim_bound(Var v, uint32_t bound) const {
+    return opts_.bvasearch && v < bva_added_.size() && bva_added_[v] ? 0 : bound;
+  }
   bool try_eliminate(Var v, uint32_t bound, uint64_t& budget);
   void gather_occurrences(Lit l, std::vector<uint32_t>& out, uint64_t& budget);
   void delete_irredundant(uint32_t ref);
@@ -340,6 +454,7 @@ class Solver {
   void vivify_clauses(bool redundant, uint64_t ticks_limit);
   bool vivify_clause(uint32_t ref, const Lit* lits, uint32_t n);
   void vivify_analyze(Lit implied, bool track_redundant);
+  bool vivify_subsumed(Lit implied, bool redundant);
   bool irredundant_binary(Lit a, Lit b);
   bool viv_used_redundant_ = false;  // the last vivify_analyze used a learned clause
   void probe_failed_literals(uint64_t ticks_limit);
@@ -354,6 +469,7 @@ class Solver {
   bool sweep_variable(Var v, const std::vector<uint32_t>& start, const std::vector<uint32_t>& occ, uint64_t& ticks);
   bool sweep_classes(uint32_t n);  // backbone / equivalence candidates as classes (Kissat)
   void sweep_emit_learned();
+  void sweep_mark_learned_units();
   bool sweep_add(const Lit* lits, uint32_t size);
   void sweep_retire_learned();
   void simulate_equivalences();
@@ -367,6 +483,7 @@ class Solver {
   bool counting_detect_clique(CountingState& st);
   bool counting_detect_rphp(CountingState& st);
   bool counting_detect_embedded(CountingState& st);
+  bool counting_virtual(CountingState& st);
   bool counting_isolated(CountingState& st);
   bool counting_add(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
   bool counting_add_unit(CountingState& st, Lit u);
@@ -395,6 +512,13 @@ class Solver {
   void extract_xors(XorList& out, uint64_t max_size);
   bool gauss_start();   // true: the detached solver found a model (imported); inconsistent_: refuted
   bool gauss_refute(const XorList& xors);
+  void gauss_facts(const XorList& xors);  // root units / equivalences implied (--gaussfacts)
+  void xor_unsubstitute();  // XOR-substitution reversal before search (xorsub.cpp, --xorsub)
+  XorSubStats xorsub_stats_;
+  bool xorsub_tried_ = false;
+  bool linmod();  // linear equations mod p on one-hot domains (linmod.cpp, --linmod); true: model found
+  LinmodStats linmod_stats_;
+  bool linmod_tried_ = false;
   bool gauss_prove(const std::vector<uint32_t>& rows, const XorList& xors);
   bool gauss_round();   // true: likewise
   bool gauss_run(uint64_t ticks);
@@ -449,15 +573,20 @@ class Solver {
   std::vector<Var> sweep_env_;          // environment variables (local index -> variable)
   std::vector<uint32_t> sweep_stamp_;   // per long clause (CSR index): environment stamp
   uint32_t sweep_stamp_now_ = 0;
-  size_t sweep_emitted_ = 0;            // kitten learned clauses already in the proof
+  std::vector<uint8_t> sweep_emitted_;  // per kitten learned clause: already in the proof
   std::vector<Lit> sweep_emitted_lits_; // their literals (flat, size-prefixed) for deletion
   std::vector<uint32_t> sweep_backbone_, sweep_partition_, sweep_next_;  // Kitten literals (sweep_classes)
-  std::vector<uint32_t> sweep_merged_;  // per variable: the sweep round that proved it equivalent
+  std::vector<uint32_t> sweep_merged_;  // per variable: the sweep round (--sweepknown=2: substitute_epoch_ + 1) that proved it equivalent
+  uint32_t substitute_epoch_ = 0;       // substitute() calls (equivalences proved before are merged after one)
   uint32_t sweep_lim_vars_ = 0, sweep_lim_clauses_ = 0, sweep_lim_depth_ = 0;  // this round's environment limits
   std::vector<uint8_t> bva_added_;  // per variable: introduced by BVA
   uint32_t sweep_growth_ = 0;              // growth steps of the limits (--sweepgrow)
   uint64_t sweep_cycle_found_ = 0, sweep_cycle_swept_ = 0;  // finds before / variables swept in this cycle
   std::vector<Lit> sweep_added_;        // binary clauses added to the formula for this variable
+  std::vector<uint32_t> sweep_depth_;   // per environment variable: its depth (steps from the swept one)
+  std::vector<Var> sweep_follow_;       // --sweepfollow: variables to sweep next (before the cursor)
+  std::vector<uint8_t> sweep_dirty_;    // per variable: clauses changed (touch_var) since it was swept
+  std::vector<uint8_t> sweep_queued_;   // per variable: in sweep_follow_
   Var sweep_cursor_ = 0;
   std::vector<Kitten::KLit> def_lits_;
   std::vector<uint32_t> def_core_;
@@ -470,13 +599,13 @@ class Solver {
   std::vector<int8_t> vals_;  // per literal
   std::vector<VarData> vdata_;
   std::vector<int8_t> saved_, target_, best_;  // phases per variable (+1 / -1)
-  std::vector<Lit> trail_;
+  LitStack trail_;  // (lit_stack.hpp: push_back small enough to inline)
   size_t propagated_ = 0;
   std::vector<uint32_t> control_;  // trail size at each decision
 
   WordArena arena_;
   std::vector<uint32_t> clauses_;  // live clause references in arena order
-  std::vector<std::vector<Watch>> watches_;  // per literal
+  WatchLists watches_;  // per literal, in one pool (watches.hpp)
   uint64_t irredundant_ = 0, redundant_ = 0, binaries_irredundant_ = 0, binaries_redundant_ = 0;
   uint64_t garbage_words_ = 0;
   uint64_t shrunk_words_ = 0;  // dead words left by clauses shortened in place (upper bound)
@@ -500,8 +629,13 @@ class Solver {
   std::vector<Var> probe_marked_;  // probe_uip()
   std::vector<Var> minimized_;
   std::vector<Var> shrunk_;
+  std::vector<uint64_t> sort_keys_, sort_tmp_;  // bump_variables() and shrink_clause() scratch
   std::vector<Lit> learned_;
   std::vector<Lit> backtrack_tmp_;  // literals unassigned by a chronological backtrack
+  // --chrono=2: the backjump level of the last chronological backtrack and the decision count
+  // then (a missed implication before the next decision falls back to that backjump).
+  uint32_t chrono_jump_ = UINT32_MAX;
+  uint64_t chrono_decisions_ = 0;
   struct LevelInfo {
     uint32_t seen = 0;          // learned-clause literals on this level
     uint32_t trail = UINT32_MAX;  // earliest trail position of those literals
@@ -532,6 +666,15 @@ class Solver {
   Ema ema_fast_, ema_slow_;
   Reluctant reluctant_;
   uint64_t restart_limit_ = 0;
+  // Random decision sequences (--randec): due at randec_limit_ conflicts (the next restart starts
+  // one from the root), then randec_left_ conflicts with random decisions and no restarts.
+  uint64_t randec_limit_ = 0, randec_left_ = 0;
+  uint64_t randec_rng_ = 0;
+  bool randec_due() const {
+    return opts_.randec && !randec_left_ && stats_.conflicts >= randec_limit_ && (!stable_ || opts_.randecstable);
+  }
+  void end_random_sequence();
+  Var random_decision();
   uint32_t target_assigned_ = 0, best_assigned_ = 0;
   uint64_t rephase_limit_ = 0, rephase_count_ = 0;
   uint64_t reduce_limit_ = 0;
@@ -542,6 +685,7 @@ class Solver {
   uint64_t used_glue_[kGlueBuckets] = {};
   uint64_t last_simplify_fixed_ = 0, simplify_ticks_limit_ = 0;
   uint64_t fixed_ = 0;
+  Stats progress_;  // statistics at the last progress line (-v 3, at reductions)
 
   // Simplification state.
   std::vector<uint8_t> eliminated_;  // per variable
@@ -551,6 +695,14 @@ class Solver {
   bool model_valid_ = false;
   OccLists occs_;  // per literal: irredundant long clauses (rounds only)
   std::vector<uint8_t> touched_;    // per variable: occurrences changed since the last round
+  uint64_t touched_count_ = 0;      // variables marked in touched_ (recounted after each round)
+  void touch_var(Var v) {
+    if (v < sweep_dirty_.size()) sweep_dirty_[v] = 1;
+    if (!touched_[v]) {
+      touched_[v] = 1;
+      ++touched_count_;
+    }
+  }
   std::vector<int8_t> marks_;       // per literal scratch marks
   struct OccClause {
     uint32_t ref;  // kNoReason for a binary clause (pivot, other)
@@ -564,10 +716,35 @@ class Solver {
   std::vector<uint32_t> elim_refs_;
   std::vector<uint8_t> elim_gate_[2];
   std::vector<Lit> elim_res_;
+  // Growth of the irredundant formula by the eliminations of the current round (resolvents minus
+  // removed clauses, and the same in literals; eliminations that added clauses).
+  int64_t elim_round_clauses_ = 0, elim_round_lits_ = 0;
+  uint64_t elim_round_growing_ = 0;
+  // --eliminategrowth: irredundant literals before the first round (the reference) and the cap on
+  // the irredundant literals during the current round (UINT64_MAX: none); rejected eliminations.
+  uint64_t elim_ref_lits_ = 0, elim_cap_lits_ = UINT64_MAX, elim_round_lits_start_ = 0;
+  uint64_t elim_capped_ = 0;
+  // Per variable: the bound of the round in which its last try failed plus one (0: none since its
+  // clauses last changed; statistics of repeated tries).
+  std::vector<uint32_t> elim_failed_bound_;
+  // --eliminatelongskip: per variable, its last try failed on the resolvent size limit.
+  std::vector<uint8_t> elim_size_failed_;
+  // --eliminateheap: per literal its irredundant clauses (long and binary) during a round's
+  // eliminations, and the variables whose counts the last try changed.
+  std::vector<uint32_t> elim_noccs_;
+  std::vector<uint64_t> elim_nlits_;  // (--eliminateheap=2: literals of those clauses)
+  std::vector<Var> elim_changed_;
+  std::vector<uint8_t> elim_changed_mark_;
+  void elim_count(const Lit* lits, uint32_t size, int delta);
+  uint64_t irredundant_literals() const;
   uint64_t vivify_limit_ = 0, vivify_rounds_ = 0, vivify_last_ticks_ = 0;
   uint64_t vivify_ticks_per_clause_ = 200;  // running estimate, to order only what a round can afford
   uint32_t congruence_delay_ = 0, congruence_skip_ = 0;  // back-off after unproductive rounds
   uint64_t walk_last_ticks_ = 0;
+  bool queue_ordered_ = false;  // --queueorder applied
+  uint64_t order_stamp_ = 0;   // --queueorder=3 / 4: queue stamp after the lowest-first order
+  bool order_revert_ = false;  // --queueorder=3 / 4: lowest first in the first focused phase only
+  size_t walk_record_ = SIZE_MAX;  // fewest unsatisfied clauses a walk ended with (--walkrecord)
   uint64_t lucky_limit_ = 0;
   bool lucky_tried_ = false;
   std::vector<Lit> viv_lits_, viv_decided_;
@@ -580,10 +757,31 @@ class Solver {
   uint64_t eliminate_last_fixed_ = UINT64_MAX, eliminate_last_irredundant_ = 0;
   uint32_t eliminate_delay_ = 0;     // unproductive rounds in a row (back-off exponent)
   uint32_t eliminate_last_bound_ = 0;
+  // --eliminatecomplete: bound raises so far (each after a round that tried all its candidates)
+  // and whether the last round left candidates untried.
+  uint32_t eliminate_level_ = 0;
+  bool eliminate_incomplete_ = false;
+  uint32_t elimination_bound() const;  // the bound of the next round
 
   // Input.
   std::vector<int> adding_;
   std::vector<Lit> clause_buf_;
+
+  // --- renumbering (renumber.cpp, --renumber) --------------------------------------------------
+  // Once, at the first solve() before anything else: the variables get new internal indices in a
+  // locality order. Input variable v (0-based) is internal variable renum_int_[v]; internal
+  // literal l is renum_ext_[l] in the input numbering (the proof writer's map). Variables added
+  // later (BVA, XOR substitution) keep their index on both sides, above the input's. Empty: none.
+  void renumber();
+  void renumber_bfs(std::vector<Var>& order) const;
+  void renumber_apply(const std::vector<Var>& order);
+  double renumber_span(const std::vector<Var>* to_new) const;
+  Var internal_var(Var input) const { return input < renum_int_.size() ? renum_int_[input] : input; }
+  Lit external_lit(Lit l) const { return l < renum_ext_.size() ? renum_ext_[l] : l; }
+  std::vector<Var> renum_int_;
+  std::vector<Lit> renum_ext_;
+  bool renumber_tried_ = false;
+  double renumber_seconds_ = 0;
 
   // Limits and output.
   ProofWriter* proof_ = nullptr;
@@ -592,6 +790,10 @@ class Solver {
   int64_t conflict_limit_ = -1;
   uint64_t memory_limit_ = 0;
   uint64_t limit_check_ = 0;
+  uint64_t clock_ticks_ = 0;  // check_limits(): the clock is read again at this many search ticks
+  const char* stop_reason_ = nullptr;  // "time limit" or "interrupted" once noticed (see stop_requested())
+  uint32_t stop_countdown_ = 1, stop_period_ = 1;
+  double stop_last_ = 0;  // seconds() at the last clock read of stop_requested()
   const char* unknown_reason_ = "";
   std::chrono::steady_clock::time_point start_;
   uint64_t rng_ = 0;
@@ -607,17 +809,43 @@ class Solver {
     PassTimer* parent;
     double nested = 0;
     std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-    PassTimer(Solver& solver, Pass p) : s(solver), acc(solver.pass_seconds_[p]), parent(solver.pass_top_) {
+    int proof_saved;
+    Pass pass;
+    double rss0 = 0;  // --reportmem: resident size at the start
+    PassTimer(Solver& solver, Pass p)
+        : s(solver), acc(solver.pass_seconds_[p]), parent(solver.pass_top_), proof_saved(solver.proof_enter(1 + p)),
+          pass(p) {
       s.pass_top_ = this;
+      s.stop_period_reset();
+      if (s.opts_.reportmem) rss0 = current_rss_mb();
     }
     PassTimer(const PassTimer&) = delete;
     PassTimer& operator=(const PassTimer&) = delete;
     ~PassTimer() {
-      const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      const std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+      const double t = std::chrono::duration<double>(t1 - t0).count();
       acc += t - nested;
       if (parent) parent->nested += t;
       s.pass_top_ = parent;
+      s.stop_period_reset();
+      s.proof_leave(proof_saved);
+      if (s.opts_.reportmem) s.report_pass_rss(pass, rss0, t);
+      if (s.time_limit_ > 0 && s.opts_.verbose) s.report_late_pass(pass, t0, t1);
     }
+  };
+  void report_pass_rss(Pass p, double rss0, double seconds);
+  // -v with a time limit: a pass that was running when the limit passed (its start and end).
+  void report_late_pass(Pass p, std::chrono::steady_clock::time_point t0, std::chrono::steady_clock::time_point t1) const;
+  // Proof lines written in a scope are counted for a source (statistics only).
+  int proof_enter(int source);
+  void proof_leave(int saved);
+  struct ProofScope {
+    Solver& s;
+    int saved;
+    ProofScope(Solver& solver, int source) : s(solver), saved(solver.proof_enter(source)) {}
+    ProofScope(const ProofScope&) = delete;
+    ProofScope& operator=(const ProofScope&) = delete;
+    ~ProofScope() { s.proof_leave(saved); }
   };
 };
 

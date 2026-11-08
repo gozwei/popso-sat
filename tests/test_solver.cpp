@@ -4,8 +4,10 @@
 // reduction, garbage collection, mode switching and rephasing.
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <iterator>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -104,10 +106,30 @@ std::vector<Options> option_variants() {
   a.modeinit = 10;
   a.rephaseint = 10;
   v.push_back(a);
+  a.rephasestable = 1;  // the same with rephasing only in stable mode, target phases per restart,
+  a.targetrestart = 1;  // linear mode growth and walks adopted only at a new record
+  a.modeschedule = 2;
+  a.modepower = 100;
+  a.walkrecord = 1;
+  v.push_back(a);
+  a.rephasestable = 2;  // (the rephase interval in stable-mode conflicts, sub-linear mode growth)
+  a.modepower = 50;
+  v.push_back(a);
+  a.queueorder = 3;  // the same with lowest first in the first focused phase only, where some AND
+  a.queueordergates = 0;  // gate is found
+  a.queueorderforward = 0;
+  v.push_back(a);
+  a.queueorder = 0;
   Options b;
   b.stable = 0;
   b.minimize = 0;
   b.bumpreasons = 0;
+  v.push_back(b);
+  b.queueorder = 1;  // the same deciding the lowest variable index first
+  v.push_back(b);
+  b.queueorder = 2;  // the same where some AND gate is found
+  b.queueordergates = 0;
+  b.queueorderforward = 0;
   v.push_back(b);
   Options k;  // chronological backtracking on every backjump, frequent restarts and reductions
   k.chrono = 1;
@@ -121,6 +143,15 @@ std::vector<Options> option_variants() {
   k.chronolevels = 2;
   k.stable = 2;
   v.push_back(k);
+  k.chrono = 2;  // with the fallback after missed implications, learned units out of order and
+  k.chronounits = 1;  // frequent random decision sequences in both modes
+  k.chronolevels = 0;
+  k.stable = 1;
+  k.randec = 1;
+  k.randecint = 5;
+  k.randeclength = 3;
+  k.randecstable = 1;
+  v.push_back(k);
   Options c;
   c.stable = 2;
   c.target = 2;
@@ -129,6 +160,11 @@ std::vector<Options> option_variants() {
   c.tier1 = 1;
   c.tier2 = 1;
   c.dynamictiers = 1;
+  v.push_back(c);
+  c.dynamictiers = 0;  // the same with a wide tier1 whose clauses age out after one unused reduction
+  c.tier1 = 4;
+  c.tier2 = 6;
+  c.tier1age = 1;
   v.push_back(c);
   Options d;
   d.seed = 12345;
@@ -148,6 +184,15 @@ std::vector<Options> option_variants() {
   e.eliminateclslim = 5;
   e.eliminatexorlim = 0;  // XOR merges allowed (limited by the default otherwise)
   v.push_back(e);
+  e.eliminateheap = 2;      // the same with candidates from the literal-weighted heap, the bound
+  e.eliminatecomplete = 1;  // raised only after rounds that tried every candidate, variables
+  e.eliminatelongskip = 1;  // that failed on the size limit skipped while a long clause remains
+  e.eliminateeffort = 1;
+  v.push_back(e);
+  e.eliminateheap = 0;
+  e.eliminatecomplete = 0;
+  e.eliminatelongskip = 0;
+  e.eliminateeffort = 100;
   e.vivifyint = 10;  // the same with frequent vivification, BVA, shrinking and sweeping
   e.probeuip = 1;  // (failed probes learn their first UIP)
   e.bva = 1;
@@ -171,6 +216,11 @@ std::vector<Options> option_variants() {
   e.sweepclasses = 0;  // the same with the earlier sweeping candidates (only with the swept variable)
   e.sweepgrow = 0;     // and fixed environment limits
   v.push_back(e);
+  e.vivifysubsume = 1;  // the same with subsumed clauses deleted by vivification, literals
+  e.vivifysort = 2;     // ordered by all their occurrences
+  e.randec = 1;
+  e.randecint = 10;
+  v.push_back(e);
   Options s;  // sweeping with small environments
   s.sweep = 1;
   s.sweepdepth = 1;
@@ -178,6 +228,8 @@ std::vector<Options> option_variants() {
   s.sweepclauses = 16;
   s.vivifyint = 20;
   s.probeuip = 1;
+  s.vivifysubsume = 0;  // (the earlier vivification: copies of subsuming clauses, literals by
+  s.vivifysort = 0;     // their occurrences among the candidates)
   v.push_back(s);
   Options f;  // no simplification at all
   f.eliminate = 0;
@@ -214,6 +266,24 @@ std::vector<Options> option_variants() {
   g.bvaevery = 0;
   g.bvaprotect = 0;
   v.push_back(g);  // a trial, then (almost always) the round
+  g.bvavarsrel = 100;
+  v.push_back(g);  // the same, declined when the trial adds more than a tenth of the variables
+  g.bvavarsrel = 0;
+  g.bvasched = 1;  // the class-scheduled budget (tiny: the classes take turns), BVA variables
+  g.bvaexplore = 10;  // decided last
+  g.bvaticks = 2000;
+  g.bvadecide = 1;
+  v.push_back(g);
+  g.bvadecide = 0;
+  g.bvaextend = 8;  // the same with shares past the budget while productive
+  g.bvaextendticks = 100;
+  v.push_back(g);
+  g.bvasched = 0;
+  g.bvaextend = 1;
+  g.bvasearch = 1;  // BVA in later rounds too (touched literals, least frequent first; BVA
+  g.bvasearcheffort = 10000;  // variables eliminated only without growth), forward subsumption
+  g.subsumerel = 1000;        // with a share of the search
+  v.push_back(g);
   Options h;  // semantic definitions only (no syntactic gates), frequent rounds
   h.eliminategates = 0;
   h.definitions = 1;
@@ -222,6 +292,21 @@ std::vector<Options> option_variants() {
   h.eliminateint = 10;
   h.eliminatebound = 8;
   v.push_back(h);
+  h.eliminateheap = 1;      // the same with candidates from the occurrence heap, the bound raised
+  h.eliminatecomplete = 2;  // after complete or unproductive rounds
+  v.push_back(h);
+  Options w;  // clause-weighting walks with frequent rephases (a model found by a walk is the answer)
+  w.walkmode = 1;
+  w.rephaseint = 10;
+  w.modeinit = 10;
+  w.walkeffort = 1000;
+  v.push_back(w);
+  w.walkmode = 2;  // the linear transfer rule, walks adopted only at a new record, frequent rounds
+  w.walkrecord = 1;
+  w.eliminateint = 10;
+  v.push_back(w);
+  w.walkmode = 3;  // the same with ProbSAT phases and a clause-weighting walk for models
+  v.push_back(w);
   return v;
 }
 
@@ -287,6 +372,45 @@ TEST(solver_random_vs_brute_force) {
   }
   CHECK(sat > 200);
   CHECK(unsat > 200);
+}
+
+TEST(walk_clause_weighting_models) {
+  // Satisfiable random 3-SAT below the threshold with early walks: clause-weighting walks
+  // (--walkmode=1, 2, and 3 after the ProbSAT walk) find models, and a model found by a walk is
+  // the answer (checked against the formula). The walks' cached counters, scores, weights and
+  // lazily kept best assignment are checked after every walk (--invariants). ProbSAT walks
+  // (--walkmode=0) hand their models to the search.
+  std::mt19937_64 rng(31);
+  int found[4] = {0, 0, 0, 0};
+  for (int it = 0; it < 10; ++it) {
+    const int n = 400;
+    const ClauseList cl = random_formula(rng, n, static_cast<int>(n * 4.0), 3, 3);
+    for (int mode = 0; mode <= 3; ++mode) {
+      Options o;
+      o.walkmode = mode;
+      o.lucky = 0;
+      o.invariants = 1;
+      o.rephaseint = 10;
+      o.walkeffort = 1000;
+      Solver s(o);
+      s.reserve(n);
+      for (const auto& c : cl) s.add_clause(c.data(), c.size());
+      const int result = s.solve();
+      REQUIRE(result == kSat || result == kUnsat);
+      if (result == kSat) {
+        bool ok = true;
+        for (const auto& c : cl) ok = ok && std::any_of(c.begin(), c.end(), [&](int l) { return s.val(l) == l; });
+        CHECK(ok);
+      }
+      if (s.stats().walk_models) {
+        ++found[mode];
+        if (mode) CHECK_EQ(s.stats().walk_models, 1u);  // (the solve ends with the walk)
+      }
+    }
+  }
+  CHECK(found[1] >= 5);
+  CHECK(found[2] >= 5);
+  CHECK(found[3] >= 5);
 }
 
 TEST(solver_random_3sat_medium) {
@@ -391,6 +515,51 @@ TEST(solver_structured_miters_with_invariants) {
   }
 }
 
+TEST(walk_model_search_keeps_the_search) {
+  // --walkmode=3 sets the phases with the ProbSAT walk as --walkmode=0 does; its clause-weighting
+  // walk only looks for a model. Without one, the search is the same: the same counters and the
+  // same proof (unsatisfiable formulas, frequent walks, and with walks adopted only at a record).
+  std::mt19937_64 rng(57);
+  std::vector<std::pair<int, ClauseList>> formulas = {adder_miter(8), adder_miter(12)};
+  for (int it = 0; it < 4; ++it) formulas.emplace_back(60, random_formula(rng, 60, 300, 3, 3));
+  for (const auto& f : formulas) {
+    for (int record = 0; record <= 1; ++record) {
+      Stats ref;
+      std::string ref_proof;
+      int ref_result = 0;
+      for (int mode : {0, 3}) {
+        Options o;
+        o.walkmode = mode;
+        o.walkrecord = record;
+        o.rephaseint = 10;
+        o.walkeffort = 1000;
+        o.invariants = 1;
+        std::string proof_text;
+        ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+        Solver s(o);
+        s.set_proof(&proof);
+        s.reserve(f.first);
+        for (const auto& c : f.second) s.add_clause(c.data(), c.size());
+        const int result = s.solve();
+        proof.flush();
+        if (mode == 0) {
+          ref = s.stats();
+          ref_proof = proof_text;
+          ref_result = result;
+          continue;
+        }
+        if (result == kSat && s.stats().walk_models > ref.walk_models) continue;  // a model ended it
+        CHECK_EQ(result, ref_result);
+        CHECK_EQ(s.stats().conflicts, ref.conflicts);
+        CHECK_EQ(s.stats().decisions, ref.decisions);
+        CHECK_EQ(s.stats().propagations, ref.propagations);
+        CHECK_EQ(s.stats().walks, ref.walks);
+        CHECK(proof_text == ref_proof);
+      }
+    }
+  }
+}
+
 TEST(solver_regression_adder_miter_256) {
   // The formula that exposed the duplicate-binary bug: a 256-bit ripple-carry vs. generate/
   // propagate adder miter (tests/data/adder_miter_256.cnf.gz). With the bug, the second
@@ -447,7 +616,9 @@ TEST(solver_congruent_ite_gates) {
     }
     const int result = s.solve();
     proof.flush();
-    CHECK(s.stats().congruent_ites >= 2);
+    // (variant 0: substitution merges o5 with -o4 first, so the closure sees o4 = ITE(1,2,3) and
+    // -o4 = ITE(1,2,3): a gate equal to its own negation is left to search; o6 still merges)
+    CHECK(s.stats().congruent_ites >= (variant == 0 ? 1u : 2u));
     if (variant == 0) {
       CHECK_EQ(result, kUnsat);
       psat_test::RupChecker checker(6);
@@ -500,6 +671,51 @@ TEST(solver_incremental_add_after_solve) {
   s.add(-2);
   s.add(0);
   CHECK_EQ(s.solve(), kUnsat);
+}
+
+TEST(reduce_tier1_aging) {
+  // --tier1age: tier1 clauses unused through n reductions are deleted (with proofs checked); the
+  // same formulas with tier1 kept for good give the same answers.
+  std::mt19937_64 rng(11);
+  uint64_t aged = 0;
+  for (int it = 0; it < 24; ++it) {
+    const int n = 60 + static_cast<int>(rng() % 50);
+    const ClauseList cl = random_formula(rng, n, static_cast<int>(n * 4.26), 3, 3);
+    Options o;
+    o.reduceint = 10;
+    o.tier1 = 3 + it % 4;
+    o.tier2 = 8;
+    o.tier1age = 1 + it % 3;
+    std::string proof_text;
+    ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+    Solver s(o);
+    s.set_proof(&proof);
+    s.reserve(n);
+    for (const auto& c : cl) {
+      for (int l : c) s.add(l);
+      s.add(0);
+    }
+    const int res = s.solve();
+    proof.flush();
+    aged += s.stats().reduced_tier1;
+    REQUIRE(res == kSat || res == kUnsat);
+    if (res == kUnsat) {
+      psat_test::RupChecker checker(n);
+      for (const auto& c : cl) checker.add_original(c);
+      const auto r = checker.check_text_proof(proof_text);
+      CHECK(r.ok && r.has_empty);
+    } else {
+      for (const auto& c : cl) {
+        bool sat = false;
+        for (int l : c) sat = sat || s.val(l) == l;
+        CHECK(sat);
+      }
+    }
+    o.tier1age = 0;
+    Outcome kept = run(n, cl, o, false);
+    CHECK_EQ(kept.result, res);
+  }
+  CHECK(aged > 0);
 }
 
 TEST(solver_conflict_limit_unknown) {
@@ -584,6 +800,70 @@ TEST(proof_binary_encoding) {
     p.del(a, 2);
   }
   CHECK(text == "-7 3 0\nd -7 3 0\n");
+}
+
+TEST(proof_shortened_clauses_delete_the_longer_clause) {
+  auto lits = [](std::initializer_list<int> ds) {
+    std::vector<Lit> v;
+    for (int d : ds) v.push_back(from_dimacs(d));
+    return v;
+  };
+  std::string text;
+  {
+    ProofWriter p([&](const char* d, size_t k) { text.append(d, k); }, false);
+    const std::vector<Lit> c = lits({1, -2, 3, 4, 5}), d = lits({6, 7, 8});
+    p.add(c.data(), c.size());
+    p.add(d.data(), d.size());
+    // Two rounds on c (4 and 5 false, then 3), one on d (8 false); nothing is written for them.
+    const std::vector<Lit> c1 = lits({1, -2, 3}), r1 = lits({5, 4}), c2 = lits({-2, 1}), r2 = lits({3});
+    p.shorten(c1.data(), c1.size(), r1.data(), r1.size());
+    p.shorten(c2.data(), c2.size(), r2.data(), r2.size());
+    const std::vector<Lit> d1 = lits({7, 6}), s1 = lits({8});
+    p.shorten(d1.data(), d1.size(), s1.data(), s1.size());
+    CHECK(p.shortened() == 3 && p.shortened_live() == 2);
+    // Deleting the shorter clauses (in any order) deletes the longer ones; other clauses as given.
+    const std::vector<Lit> e = lits({2, 1});
+    p.del(e.data(), e.size());
+    const std::vector<Lit> c3 = lits({1, -2});
+    p.del(c3.data(), c3.size());
+    p.del(c3.data(), c3.size());  // (no longer clause left: as given)
+    const std::vector<Lit> d2 = lits({6, 7});
+    p.del(d2.data(), d2.size());
+    CHECK(p.shortened_live() == 0);
+  }
+  CHECK(text == "1 -2 3 4 5 0\n6 7 8 0\nd 2 1 0\nd 1 -2 3 4 5 0\nd 1 -2 0\nd 6 7 8 0\n");
+  // With a literal map (renumbered solver): the removed literals are mapped too.
+  std::string mapped;
+  {
+    ProofWriter p([&](const char* d, size_t k) { mapped.append(d, k); }, false);
+    std::vector<Lit> map(8);
+    for (Lit l = 0; l < 8; ++l) map[l] = l ^ 2;  // variables 1 <-> 2, 3 <-> 4 (DIMACS)
+    p.set_map(&map);
+    const std::vector<Lit> c = lits({1, 2, 3}), k = lits({1, 2}), r = lits({-3});
+    p.shorten(k.data(), k.size(), r.data(), r.size());
+    p.del(k.data(), k.size());
+    (void)c;
+  }
+  CHECK(mapped == "d 2 1 -4 0\n");
+  // Early deletions (forget): written at once, the solver's later deletion is not; a shortened
+  // forgotten clause stays forgotten. Over the memory budget: the pair as before / nothing.
+  std::string early;
+  {
+    ProofWriter p([&](const char* d, size_t k) { early.append(d, k); }, false);
+    const std::vector<Lit> c = lits({1, 2, 3}), k = lits({1, 2}), r = lits({3}), e = lits({4, 5});
+    p.forget(c.data(), c.size());
+    p.shorten(k.data(), k.size(), r.data(), r.size());
+    p.del(k.data(), k.size());  // (nothing)
+    p.forget(e.data(), e.size());
+    p.del(e.data(), e.size());  // (nothing)
+    p.del(e.data(), e.size());  // (a second copy)
+    CHECK(p.forgotten() == 2 && p.shortened_live() == 0);
+    p.set_shorten_budget(0);
+    p.shorten(k.data(), k.size(), r.data(), r.size());
+    p.forget(e.data(), e.size());
+    CHECK(p.shortened_live() == 0);
+  }
+  CHECK(early == "d 1 2 3 0\nd 4 5 0\nd 4 5 0\n1 2 0\nd 1 2 3 0\n");
 }
 
 namespace {
@@ -1193,6 +1473,79 @@ ClauseList graph_colouring(int n, int m, int clique, double p, bool amo, std::mt
 
 }  // namespace
 
+// At-most-one constraints in auxiliary encodings: sequential counter (Sinz), commander (groups
+// of three, commanders recursively) and product (a grid of row and column variables).
+enum class Amo { kPairwise, kSequential, kCommander, kProduct };
+
+void at_most_one(ClauseList& cl, const std::vector<int>& xs, Amo enc, int& next) {
+  const size_t n = xs.size();
+  if (n <= 1) return;
+  if (enc == Amo::kPairwise || n <= 3) {
+    for (size_t i = 0; i < n; ++i) {
+      for (size_t j = i + 1; j < n; ++j) cl.push_back({-xs[i], -xs[j]});
+    }
+    return;
+  }
+  if (enc == Amo::kSequential) {
+    std::vector<int> s(n - 1);
+    for (int& v : s) v = ++next;
+    cl.push_back({-xs[0], s[0]});
+    for (size_t i = 1; i + 1 < n; ++i) {
+      cl.push_back({-xs[i], s[i]});
+      cl.push_back({-s[i - 1], s[i]});
+      cl.push_back({-xs[i], -s[i - 1]});
+    }
+    cl.push_back({-xs[n - 1], -s[n - 2]});
+    return;
+  }
+  if (enc == Amo::kCommander) {
+    std::vector<int> commanders;
+    for (size_t g = 0; g < n; g += 3) {
+      const std::vector<int> group(xs.begin() + static_cast<std::ptrdiff_t>(g),
+                                   xs.begin() + static_cast<std::ptrdiff_t>(std::min(n, g + 3)));
+      const int c = ++next;
+      commanders.push_back(c);
+      at_most_one(cl, group, Amo::kPairwise, next);
+      for (int x : group) cl.push_back({-x, c});
+      std::vector<int> back = {-c};
+      back.insert(back.end(), group.begin(), group.end());
+      cl.push_back(back);
+    }
+    at_most_one(cl, commanders, Amo::kCommander, next);
+    return;
+  }
+  size_t side = 1;
+  while (side * side < n) ++side;
+  std::vector<int> rows((n + side - 1) / side), cols(side);
+  for (int& v : rows) v = ++next;
+  for (int& v : cols) v = ++next;
+  for (size_t i = 0; i < n; ++i) {
+    cl.push_back({-xs[i], rows[i / side]});
+    cl.push_back({-xs[i], cols[i % side]});
+  }
+  at_most_one(cl, rows, Amo::kPairwise, next);
+  at_most_one(cl, cols, Amo::kPairwise, next);
+}
+
+// Pigeonhole with the at-most-one constraints in an encoding (functional: also per pigeon).
+ClauseList pigeonhole_amo(int pigeons, int holes, bool functional, Amo enc) {
+  ClauseList cl;
+  int next = pigeons * holes;
+  auto x = [holes](int p, int h) { return p * holes + h + 1; };
+  for (int p = 0; p < pigeons; ++p) {
+    std::vector<int> row;
+    for (int h = 0; h < holes; ++h) row.push_back(x(p, h));
+    cl.push_back(row);
+    if (functional) at_most_one(cl, row, enc, next);
+  }
+  for (int h = 0; h < holes; ++h) {
+    std::vector<int> col;
+    for (int p = 0; p < pigeons; ++p) col.push_back(x(p, h));
+    at_most_one(cl, col, enc, next);
+  }
+  return cl;
+}
+
 // Relativized pigeonhole (rphp_p<n>_r<r>): n pigeons rest at r places, a place hosts at most one
 // pigeon, the places in use map injectively into h holes. Unsatisfiable iff n > h (with r >= n).
 ClauseList relativized_php(int n, int r, int h) {
@@ -1256,6 +1609,51 @@ TEST(counting_relativized_pigeonhole) {
   CHECK_EQ(res.stats.counting_failed, 1u);
   CHECK_EQ(res.stats.counting_pr, 3u);
   CHECK(res.check.ok && res.check.has_empty);
+}
+
+TEST(counting_auxiliary_at_most_one) {
+  // At-most-one constraints over auxiliary variables: the exclusions are found by probing and
+  // derived by RUP, then the pigeonhole is refuted in isolation (the auxiliary clauses deleted).
+  std::mt19937_64 rng(18);
+  for (Amo enc : {Amo::kSequential, Amo::kCommander, Amo::kProduct}) {
+    for (const auto& [pigeons, holes, functional] : std::vector<std::tuple<int, int, bool>>{{7, 6, false}, {6, 5, true}}) {
+      for (int scrambled = 0; scrambled < 2; ++scrambled) {
+        Options o;
+        o.counting = 1;
+        o.countingprobe = 1;
+        const ClauseList f = pigeonhole_amo(pigeons, holes, functional, enc);
+        const CountingRun r = run_counting(scrambled ? scramble(f, rng) : f, o);
+        CHECK_EQ(r.result, kUnsat);
+        CHECK_EQ(r.stats.counting_found, 1u);
+        CHECK_EQ(r.stats.counting_failed, 0u);
+        CHECK_EQ(r.stats.conflicts, 0u);
+        CHECK(r.check.ok && r.check.has_empty);
+        if (!r.check.ok || !r.check.has_empty || r.stats.counting_found != 1) {
+          std::fprintf(stderr, "  encoding %d php %d %d: %s\n", static_cast<int>(enc), pigeons, holes, r.check.error.c_str());
+        }
+      }
+    }
+    // As many pigeons as holes: nothing found, the same search.
+    const ClauseList f = pigeonhole_amo(6, 6, true, enc);
+    Stats ref;
+    for (int counting = 0; counting <= 1; ++counting) {
+      Options o;
+      o.counting = counting;
+      o.countingprobe = counting;
+      Solver s(o);
+      s.reserve(max_var_of(f));
+      for (const auto& c : f) s.add_clause(c.data(), c.size());
+      CHECK_EQ(s.solve(), kSat);
+      CHECK_EQ(s.stats().counting_found, 0u);
+      if (!counting) {
+        ref = s.stats();
+      } else {
+        CHECK_EQ(s.stats().conflicts, ref.conflicts);
+        CHECK_EQ(s.stats().propagations, ref.propagations);
+        CHECK_EQ(s.stats().ticks, ref.ticks);
+      }
+    }
+  }
 }
 
 TEST(counting_clique_colouring) {
@@ -1852,4 +2250,977 @@ TEST(gauss_adaptive_share) {
   }
   CHECK(stopped > 10);
   CHECK(maxed > 10);
+}
+
+TEST(gauss_root_facts) {
+  // --gaussfacts: the units and equivalences implied by the echelon form of the XORs. Counting
+  // (1) leaves the search unchanged; adding them without a proof (2, an experiment) keeps the
+  // answers right (brute-force oracle, models checked) and is ignored when a proof is written.
+  std::mt19937_64 rng(4242);
+  uint64_t units = 0, equivalences = 0, applied = 0;
+  for (int it = 0; it < 300; ++it) {
+    int n = 6 + static_cast<int>(rng() % 10);
+    const int base = n;
+    const ClauseList cl = random_xor_formula(rng, n, base - 1 + static_cast<int>(rng() % 4), static_cast<int>(rng() % 3));
+    const bool expected = psat_test::brute_force_sat(n, cl);
+    Stats ref;
+    for (int mode = 0; mode < 3; ++mode) {
+      Options o;
+      o.gauss = 1;
+      o.gaussmin = 0;
+      o.gaussxors = 1;
+      o.gaussproof = 0;
+      o.gaussfacts = mode;
+      o.lucky = 0;
+      const bool with_proof = mode != 2 || it % 2;
+      Solver s(o);
+      std::string proof_text;
+      ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+      if (with_proof) s.set_proof(&proof);
+      s.reserve(n);
+      for (const auto& c : cl) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      const int r = s.solve();
+      proof.flush();
+      CHECK_EQ(r, expected ? kSat : kUnsat);
+      if (r == kSat) {
+        for (const auto& c : cl) {
+          bool sat = false;
+          for (int l : c) sat = sat || s.val(l) == l;
+          CHECK(sat);
+        }
+      }
+      if (r == kUnsat && with_proof) {
+        psat_test::RupChecker checker(n);
+        for (const auto& c : cl) checker.add_original(c);
+        const auto pr = checker.check_text_proof(proof_text);
+        CHECK(pr.ok && pr.has_empty);
+      }
+      const GaussStats& gs = s.gauss_stats();
+      if (mode == 0) {
+        ref = s.stats();
+      } else if (mode == 1) {
+        CHECK_EQ(s.stats().conflicts, ref.conflicts);
+        CHECK_EQ(s.stats().decisions, ref.decisions);
+        units += gs.facts_units;
+        equivalences += gs.facts_new_equivalences;
+      } else {
+        CHECK(with_proof ? gs.facts_applied == 0 : true);
+        applied += gs.facts_applied;
+      }
+    }
+  }
+  CHECK(units > 50);
+  CHECK(equivalences > 50);
+  CHECK(applied > 50);
+}
+
+namespace {
+
+// XOR substitution: variable x of `base` (1..n) becomes the XOR of d[x] new variables (d = 1:
+// unsubstituted) plus a random constant; the new variables get shuffled numbers and each clause
+// becomes the complete CNF expansion; the clause order is shuffled. Returns the new variable count.
+int xor_substitute(std::mt19937_64& rng, int n, const ClauseList& base, const std::vector<int>& d, ClauseList& out) {
+  std::vector<std::vector<int>> tuple(static_cast<size_t>(n) + 1);
+  int total = 0;
+  for (int x = 1; x <= n; ++x) total += d[static_cast<size_t>(x)];
+  std::vector<int> ids(static_cast<size_t>(total));
+  for (int i = 0; i < total; ++i) ids[static_cast<size_t>(i)] = i + 1;
+  std::shuffle(ids.begin(), ids.end(), rng);
+  std::vector<int> flip(static_cast<size_t>(n) + 1, 0);
+  size_t next = 0;
+  for (int x = 1; x <= n; ++x) {
+    for (int k = 0; k < d[static_cast<size_t>(x)]; ++k) tuple[static_cast<size_t>(x)].push_back(ids[next++]);
+    flip[static_cast<size_t>(x)] = static_cast<int>(rng() & 1);
+  }
+  out.clear();
+  for (const auto& c : base) {
+    // For each literal: the assignments of its tuple that make it false (as partial clauses).
+    std::vector<ClauseList> parts;
+    for (const int l : c) {
+      const int x = std::abs(l);
+      const std::vector<int>& t = tuple[static_cast<size_t>(x)];
+      ClauseList p;
+      if (t.size() == 1 && !flip[static_cast<size_t>(x)]) {
+        p.push_back({l > 0 ? t[0] : -t[0]});
+      } else {
+        const int false_value = (l > 0 ? 0 : 1) ^ flip[static_cast<size_t>(x)];  // XOR(t) when l is false
+        const int k = static_cast<int>(t.size());
+        for (int m = 0; m < (1 << k); ++m) {
+          int ones = 0;
+          for (int i = 0; i < k; ++i) ones += (m >> i) & 1;
+          if ((ones & 1) != false_value) continue;
+          std::vector<int> e;
+          for (int i = 0; i < k; ++i) e.push_back(((m >> i) & 1) ? -t[static_cast<size_t>(i)] : t[static_cast<size_t>(i)]);
+          p.push_back(e);
+        }
+      }
+      parts.push_back(p);
+    }
+    ClauseList acc{{}};
+    for (const ClauseList& p : parts) {
+      ClauseList nacc;
+      for (const auto& a : acc) {
+        for (const auto& e : p) {
+          std::vector<int> z = a;
+          z.insert(z.end(), e.begin(), e.end());
+          nacc.push_back(z);
+        }
+      }
+      acc.swap(nacc);
+    }
+    for (auto& z : acc) {
+      std::shuffle(z.begin(), z.end(), rng);
+      out.push_back(z);
+    }
+  }
+  std::shuffle(out.begin(), out.end(), rng);
+  return total;
+}
+
+// Ordering principle on m elements (UNSAT): x(i, j) = i before j, antisymmetric, total,
+// transitive, and every element has a predecessor.
+std::pair<int, ClauseList> ordering_principle(int m) {
+  ClauseList cl;
+  auto x = [m](int i, int j) { return i * m + j + 1; };
+  for (int i = 0; i < m; ++i) {
+    std::vector<int> pred;
+    for (int j = 0; j < m; ++j) {
+      if (j == i) continue;
+      pred.push_back(x(j, i));
+      if (i < j) {
+        cl.push_back({-x(i, j), -x(j, i)});
+        cl.push_back({x(i, j), x(j, i)});
+      }
+      for (int k = 0; k < m; ++k) {
+        if (k != i && k != j) cl.push_back({-x(i, j), -x(j, k), x(i, k)});
+      }
+    }
+    cl.push_back(pred);
+  }
+  return {m * m, cl};
+}
+
+}  // namespace
+
+TEST(xorsub_reversal_vs_brute_force) {
+  // XOR-substituted random formulas (pairs, triples, some variables left alone, shuffled
+  // numbering and polarities): the substitution is found and reversed, the answers agree with the
+  // brute-force oracle, models are checked against the substituted formula and proofs (with the
+  // RAT definitions) by the checker.
+  std::mt19937_64 rng(2718);
+  int sat = 0, unsat = 0, detected = 0, triples = 0;
+  for (int it = 0; it < 400; ++it) {
+    const int n = 3 + static_cast<int>(rng() % 5);
+    const ClauseList base = random_formula(rng, n, n * (2 + static_cast<int>(rng() % 4)), 1, 3);
+    std::vector<int> d(static_cast<size_t>(n) + 1, 2);
+    int width = 0;
+    for (int x = 1; x <= n; ++x) {
+      const uint64_t r = rng() % 8;
+      d[static_cast<size_t>(x)] = r == 0 ? 1 : (r == 1 && width < 12 ? 3 : 2);
+      width += d[static_cast<size_t>(x)];
+    }
+    ClauseList cl;
+    const int nv = xor_substitute(rng, n, base, d, cl);
+    if (nv > 20) continue;
+    const bool expected = psat_test::brute_force_sat(nv, cl);
+    Options o;
+    o.lucky = 0;
+    o.xorsubmin = 0;
+    if (it % 3 == 1) o.eliminate = 0;  // (the definitions stay: models without reconstruction)
+    if (it % 3 == 2) o = option_variants()[static_cast<size_t>(it) % option_variants().size()], o.xorsubmin = 0;
+    std::string proof_text;
+    ProofWriter proof([&](const char* p, size_t k) { proof_text.append(p, k); }, false);
+    Solver s(o);
+    s.set_proof(&proof);
+    s.reserve(nv);
+    for (const auto& c : cl) {
+      for (int l : c) s.add(l);
+      s.add(0);
+    }
+    const int r = s.solve();
+    proof.flush();
+    CHECK_EQ(r, expected ? kSat : kUnsat);
+    if (s.xorsub_stats().tuples) ++detected;
+    if (s.xorsub_stats().triples) ++triples;
+    if (r == kSat) {
+      ++sat;
+      for (const auto& c : cl) {
+        bool ok = false;
+        for (int l : c) ok = ok || s.val(l) == l;
+        CHECK(ok);
+      }
+    } else if (r == kUnsat) {
+      ++unsat;
+      psat_test::RupChecker checker(nv);
+      for (const auto& c : cl) checker.add_original(c);
+      const auto pr = checker.check_text_proof(proof_text);
+      CHECK(pr.ok && pr.has_empty);
+      if (!pr.ok) {
+        std::fprintf(stderr, "  xorsub proof (formula %d): %s\n", it, pr.error.c_str());
+        print_formula(nv, cl);
+      }
+    }
+  }
+  CHECK(sat > 50);
+  CHECK(unsat > 50);
+  CHECK(detected > 150);
+  CHECK(triples > 20);
+}
+
+TEST(xorsub_ordering_principle) {
+  // The XOR-substituted ordering principle (as xor_op in the SAT Competition 2026, smaller):
+  // reversed completely, refuted with a checked proof; with --xorsub=0 the same answer. A
+  // satisfiable variant (one predecessor clause dropped) gives a model of the substituted formula.
+  std::mt19937_64 rng(31337);
+  for (int m = 3; m <= 5; ++m) {
+    for (int variant = 0; variant < 2; ++variant) {
+      auto op = ordering_principle(m);
+      if (variant == 1) op.second.pop_back();  // the last element needs no predecessor: SAT
+      std::vector<int> d(static_cast<size_t>(op.first) + 1, 2);
+      ClauseList cl;
+      const int nv = xor_substitute(rng, op.first, op.second, d, cl);
+      for (int x = 0; x < 2; ++x) {
+        Options o;
+        o.xorsub = x;
+        GaussStats gs;
+        const Outcome r = run_with_stats(nv, cl, o, gs);
+        CHECK_EQ(r.result, variant == 0 ? kUnsat : kSat);
+        if (r.result == kUnsat) CHECK(r.proof_ok);
+        if (r.result == kSat) CHECK(r.model_ok);
+      }
+      Options o;
+      Solver s(o);
+      s.reserve(nv);
+      for (const auto& c : cl) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      s.solve();
+      CHECK(s.xorsub_stats().tuples > 0);
+    }
+  }
+}
+
+TEST(xorsub_absent_keeps_the_search) {
+  // Formulas without the structure: the pass changes nothing (same search as --xorsub=0).
+  std::mt19937_64 rng(99);
+  for (int it = 0; it < 20; ++it) {
+    const int n = 50;
+    const ClauseList f = random_formula(rng, n, 213, 3, 3);
+    Stats ref;
+    for (int x = 0; x < 2; ++x) {
+      Options o;
+      o.xorsub = x;
+      Solver s(o);
+      s.reserve(n);
+      for (const auto& c : f) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      s.solve();
+      if (x == 0) {
+        ref = s.stats();
+        continue;
+      }
+      CHECK_EQ(s.xorsub_stats().tuples, 0u);
+      CHECK_EQ(s.stats().conflicts, ref.conflicts);
+      CHECK_EQ(s.stats().decisions, ref.decisions);
+      CHECK_EQ(s.stats().propagations, ref.propagations);
+    }
+  }
+}
+
+// --- linear equations mod p on one-hot domains (--linmod) ----------------------------------------
+
+namespace {
+
+// Domains of p values (exactly-one groups, value v of domain d is variable d * p + v + 1) and
+// equations over 2..kmax domains, each written as one clause per forbidden tuple (as the sc2026
+// linear-equations family). Planted solution or random right-hand sides; scrambled: variables
+// renumbered, polarities flipped, clauses and literals shuffled.
+ClauseList linmod_formula(std::mt19937_64& rng, int p, int domains, int equations, int kmax, bool planted,
+                          bool scrambled) {
+  std::vector<int> sol(static_cast<size_t>(domains));
+  for (int& x : sol) x = static_cast<int>(rng() % static_cast<uint64_t>(p));
+  auto var = [p](int d, int v) { return d * p + v + 1; };
+  ClauseList cl;
+  for (int d = 0; d < domains; ++d) {
+    std::vector<int> alo;
+    for (int v = 0; v < p; ++v) alo.push_back(var(d, v));
+    cl.push_back(alo);
+    for (int a = 0; a < p; ++a) {
+      for (int b = a + 1; b < p; ++b) cl.push_back({-var(d, a), -var(d, b)});
+    }
+  }
+  for (int e = 0; e < equations; ++e) {
+    const int k = 2 + static_cast<int>(rng() % static_cast<uint64_t>(std::min(kmax, domains) - 1));
+    std::vector<int> ds, coef;
+    while (static_cast<int>(ds.size()) < k) {
+      const int d = static_cast<int>(rng() % static_cast<uint64_t>(domains));
+      if (std::find(ds.begin(), ds.end(), d) == ds.end()) ds.push_back(d);
+    }
+    int rhs = 0;
+    for (int t = 0; t < k; ++t) {
+      coef.push_back(1 + static_cast<int>(rng() % static_cast<uint64_t>(p - 1)));
+      rhs += coef.back() * sol[static_cast<size_t>(ds[static_cast<size_t>(t)])];
+    }
+    rhs = planted ? rhs % p : static_cast<int>(rng() % static_cast<uint64_t>(p));
+    int total = 1;
+    for (int t = 0; t < k; ++t) total *= p;
+    for (int idx = 0; idx < total; ++idx) {
+      std::vector<int> c;
+      int x = idx, s = 0;
+      for (int t = 0; t < k; ++t) {
+        s += coef[static_cast<size_t>(t)] * (x % p);
+        c.push_back(-var(ds[static_cast<size_t>(t)], x % p));
+        x /= p;
+      }
+      if (s % p != rhs) cl.push_back(c);
+    }
+  }
+  if (scrambled) {
+    const int n = domains * p;
+    std::vector<int> perm(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) perm[static_cast<size_t>(i)] = i + 1;
+    std::shuffle(perm.begin(), perm.end(), rng);
+    std::vector<int> flip(static_cast<size_t>(n) + 1);
+    for (int& f : flip) f = rng() % 4 == 0 ? -1 : 1;
+    for (auto& c : cl) {
+      for (int& l : c) l = (l > 0 ? 1 : -1) * perm[static_cast<size_t>(std::abs(l) - 1)] * flip[static_cast<size_t>(std::abs(l))];
+      std::shuffle(c.begin(), c.end(), rng);
+    }
+    std::shuffle(cl.begin(), cl.end(), rng);
+  }
+  return cl;
+}
+
+}  // namespace
+
+TEST(linmod_systems_vs_default_search) {
+  // Small systems mod 3, 5 and 7 (planted or random right-hand sides, scrambled or not, some with
+  // random extra clauses): --linmod gives the answers of the default search, every model satisfies
+  // the formula and every proof checks (the pass adds nothing to the proof). Planted systems are
+  // solved by the pass; inconsistent ones are recognized (and left to search).
+  std::mt19937_64 rng(4242);
+  const auto variants = option_variants();
+  int sat = 0, unsat = 0, by_pass = 0, inconsistent = 0, detected = 0;
+  for (int it = 0; it < 300; ++it) {
+    const int p = it % 5 < 3 ? 3 : it % 5 == 3 ? 5 : 7;
+    const int kmax = p == 3 ? 4 : p == 5 ? 3 : 2;
+    const int domains = 2 + static_cast<int>(rng() % (p == 3 ? 9 : 5));
+    const int equations = 1 + static_cast<int>(rng() % static_cast<uint64_t>(2 * domains));
+    const bool planted = rng() % 2 == 0, scrambled = rng() % 3 == 0;
+    ClauseList cl = linmod_formula(rng, p, domains, equations, kmax, planted, scrambled);
+    int n = domains * p;
+    if (it % 7 == 6) {  // extra clauses over the domain variables and two new ones
+      n += 2;
+      for (const auto& c : random_formula(rng, n, 1 + static_cast<int>(rng() % 6), 2, 4)) cl.push_back(c);
+    }
+    const bool units = it % 11 == 10;  // a few units (often a conflict at the root, which the lucky
+    if (units) {                        // pass finds first and leaves to search)
+      for (const auto& c : random_formula(rng, n, 1 + static_cast<int>(rng() % 3), 1, 1)) cl.push_back(c);
+    }
+    Options ref_opts;
+    const Outcome ref = run(n, cl, ref_opts);
+    Options o = it % 4 == 3 ? variants[static_cast<size_t>(it) % variants.size()] : Options();
+    o.linmod = 1;
+    o.linmodmin = it % 2 ? 0 : 500;
+    o.lucky = units ? 1 : 0;  // (it would find many of the small models first)
+    std::string proof_text;
+    ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+    Solver s(o);
+    s.set_proof(&proof);
+    s.reserve(n);
+    for (const auto& c : cl) {
+      for (int l : c) s.add(l);
+      s.add(0);
+    }
+    const int r = s.solve();
+    proof.flush();
+    CHECK_EQ(r, ref.result);
+    const LinmodStats& ls = s.linmod_stats();
+    if (ls.equations) ++detected;
+    if (ls.models) ++by_pass;
+    if (ls.inconsistent) {
+      ++inconsistent;
+      CHECK_EQ(r, kUnsat);
+    }
+    if (r == kSat) {
+      ++sat;
+      for (const auto& c : cl) {
+        bool ok = false;
+        for (int l : c) ok = ok || s.val(l) == l;
+        CHECK(ok);
+      }
+    } else if (r == kUnsat) {
+      ++unsat;
+      psat_test::RupChecker checker(n);
+      for (const auto& c : cl) checker.add_original(c);
+      const auto pr = checker.check_text_proof(proof_text);
+      CHECK(pr.ok && pr.has_empty);
+    }
+  }
+  CHECK(sat > 150);
+  CHECK(unsat > 40);
+  CHECK(detected > 150);
+  CHECK(by_pass > 80);
+  CHECK(inconsistent > 15);
+}
+
+TEST(linmod_root_conflict) {
+  // The fuzzer's formula (linmod family, seed 7102427: domains of 3 values, two equations, four
+  // units): the units falsify a clause at the root. The lucky pass's propagation meets the
+  // conflict first and leaves it to search; the pass then decided on top of it and reported a
+  // "model" that the model check rejected (s UNKNOWN). Unsatisfiable, with a checked proof, with
+  // and without the lucky pass.
+  const ClauseList cl = {
+      {1, 2, 3}, {-1, -2}, {-3}, {-1, -3}, {-2, -3}, {4, 5, 6}, {-4, -5}, {-4, -6}, {-5, -6}, {-5},
+      {7, 8, 9}, {-7, -8}, {-7, -9}, {-8, -9}, {-7, -1}, {-9, -1}, {-7, -2}, {-8, -2}, {-8, -3},
+      {-9, -3}, {-1, -7, -4}, {2}, {-2, -7, -4}, {-1, -8, -4}, {-3, -8, -4}, {-2, -9, -4},
+      {-3, -9, -4}, {-2, -7, -5}, {-3, -7, -5}, {-1, -8, -5}, {-2, -8, -5}, {-1, -9, -5},
+      {-3, -9, -5}, {-1, -7, -6}, {-3, -7, -6}, {-2, -8, -6}, {-3, -8, -6}, {-1, -9, -6}, {8},
+      {-2, -9, -6}};
+  for (int lucky = 0; lucky < 2; ++lucky) {
+    for (int seed = 0; seed < 3; ++seed) {
+      Options o;
+      o.linmod = 1;
+      o.linmodmin = 0;
+      o.lucky = lucky;
+      o.seed = seed == 2 ? 940185169 : seed;
+      GaussStats gs;
+      const Outcome r = run_with_stats(9, cl, o, gs);
+      CHECK_EQ(r.result, kUnsat);
+      CHECK(r.proof_ok);
+    }
+  }
+}
+
+TEST(linmod_large_system_before_search) {
+  // A planted system mod 3 of the sc2026 shape (4-term equations, more domains than equations):
+  // solved by the pass with no conflict; scrambled the same (every relabelling of a domain of 3
+  // values is affine). A system mod 5 in the input numbering as well.
+  for (int scrambled = 0; scrambled < 2; ++scrambled) {
+    for (const int p : {3, 5}) {
+      if (p == 5 && scrambled) continue;
+      std::mt19937_64 rng(77 + static_cast<uint64_t>(p));
+      const int domains = p == 3 ? 200 : 60;
+      const ClauseList cl = linmod_formula(rng, p, domains, domains * 9 / 10, p == 3 ? 5 : 3, true, scrambled != 0);
+      const int n = domains * p;
+      Options o;
+      o.linmod = 1;
+      o.lucky = 0;
+      Solver s(o);
+      s.reserve(n);
+      for (const auto& c : cl) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      CHECK_EQ(s.solve(), kSat);
+      CHECK_EQ(s.stats().conflicts, 0u);
+      CHECK_EQ(s.linmod_stats().models, 1u);
+      CHECK_EQ(s.linmod_stats().nonlinear, 0u);
+      for (const auto& c : cl) {
+        bool ok = false;
+        for (int l : c) ok = ok || s.val(l) == l;
+        CHECK(ok);
+      }
+    }
+  }
+}
+
+TEST(linmod_absent_keeps_the_search) {
+  // Formulas without the structure (random 3-SAT; pigeonhole has domains but no equations): the
+  // pass changes nothing (same search as --linmod=0).
+  std::mt19937_64 rng(1234);
+  for (int it = 0; it < 12; ++it) {
+    const int n = it < 10 ? 50 : 5 * 6;
+    const ClauseList f = it < 10 ? random_formula(rng, n, 213, 3, 3) : pigeonhole(5);
+    Stats ref;
+    for (int x = 0; x < 2; ++x) {
+      Options o;
+      o.linmod = x;
+      o.counting = 0;
+      Solver s(o);
+      s.reserve(n);
+      for (const auto& c : f) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      s.solve();
+      if (x == 0) {
+        ref = s.stats();
+        continue;
+      }
+      CHECK_EQ(s.linmod_stats().equations, 0u);
+      CHECK_EQ(s.stats().conflicts, ref.conflicts);
+      CHECK_EQ(s.stats().decisions, ref.decisions);
+      CHECK_EQ(s.stats().propagations, ref.propagations);
+    }
+  }
+}
+
+// --- renumbering (--renumber) --------------------------------------------------------------------
+
+TEST(renumber_vs_brute_force) {
+  // Random formulas (unused variables included) under each renumbering order and a spread of
+  // option variants: the answers agree with the oracle, the models (read in the input numbering)
+  // satisfy the formula and the proofs (written in the input numbering) check.
+  std::mt19937_64 rng(4242);
+  const auto variants = option_variants();
+  int sat = 0, unsat = 0;
+  for (int it = 0; it < 1200; ++it) {
+    const int n = 3 + static_cast<int>(rng() % 14);
+    const int m = static_cast<int>(n * (2 + rng() % 5));
+    const ClauseList cl = random_formula(rng, n, m, 1 + static_cast<int>(rng() % 2), 3 + static_cast<int>(rng() % 3));
+    const bool expected = psat_test::brute_force_sat(n, cl);
+    Options o = variants[static_cast<size_t>(it / 3) % variants.size()];
+    o.renumber = 1 + it % 3;
+    o.renumberrandom = it % 8 < 4 ? 0 : 950;  // (automatic: 0 renumbers whenever breadth-first is better)
+    const Outcome r = run(n, cl, o);
+    CHECK_EQ(r.result, expected ? kSat : kUnsat);
+    if (r.result == kSat) {
+      ++sat;
+      CHECK(r.model_ok);
+    } else if (r.result == kUnsat) {
+      ++unsat;
+      CHECK(r.proof_ok);
+      if (!r.proof_ok) {
+        std::fprintf(stderr, "  renumber %lld formula %d: %s\n", static_cast<long long>(o.renumber), it,
+                     r.proof_error.c_str());
+      }
+    }
+  }
+  CHECK(sat > 150);
+  CHECK(unsat > 150);
+}
+
+TEST(renumber_keeps_the_search) {
+  // Without the passes whose ties by variable index can fall differently (elimination,
+  // vivification, sweeping, counting, Gauss-Jordan, XOR substitution), a renumbering changes the
+  // memory layout only: the same conflicts, decisions and propagations, and the same proof (the
+  // same added lines in the same order; the same deletions, whose order and literal order follow
+  // loops over the watch lists in index order), in both initial decision orders, with a shuffled
+  // one (--seed), in stable mode only, with frequent mode switches, rephasing and walks (ProbSAT
+  // and both clause-weighting walks), with random decision sequences, and with the order chosen
+  // by the gate direction, also in the first focused phase only, and for every formula in the first
+  // focused phase only (--queueorder=2, 3, 4).
+  auto split = [](const std::string& proof, std::vector<std::string>& added, std::vector<std::string>& deleted) {
+    size_t at = 0;
+    while (at < proof.size()) {
+      const size_t end = proof.find('\n', at);
+      const std::string line = proof.substr(at, end - at);
+      at = end + 1;
+      if (line.rfind("d ", 0) != 0) {
+        added.push_back(line);
+        continue;
+      }
+      std::vector<int> lits;
+      for (size_t p = 2; p < line.size();) {
+        size_t q = 0;
+        lits.push_back(std::stoi(line.substr(p), &q));
+        p += q + 1;
+      }
+      std::sort(lits.begin(), lits.end());
+      std::string key;
+      for (int l : lits) key += std::to_string(l) + " ";
+      deleted.push_back(key);
+    }
+    std::sort(deleted.begin(), deleted.end());
+  };
+  std::mt19937_64 rng(5);
+  std::vector<std::pair<int, ClauseList>> formulas = {adder_miter(8), adder_miter(16)};
+  for (int it = 0; it < 3; ++it) formulas.emplace_back(70, random_formula(rng, 70, 300, 3, 3));
+  for (const auto& f : formulas) {
+    for (int variant = 0; variant < 12; ++variant) {
+      Stats ref;
+      std::string ref_proof;
+      int ref_result = 0;
+      for (int r = 0; r <= 3; ++r) {
+        Options o;
+        o.eliminate = 0;
+        o.vivify = 0;
+        o.sweep = 0;
+        o.counting = 0;
+        o.gauss = 0;
+        o.xorsub = 0;
+        o.queueorder = variant < 9 ? variant & 1 : variant - 7;  // (9-11: 2, 3, 4)
+        if (variant == 2) o.seed = 77;
+        if (variant == 3) o.stable = 2;
+        if (variant == 4 || variant >= 6) o.modeinit = o.rephaseint = 10;
+        if (variant >= 6 && variant <= 8) o.walkmode = variant - 5;  // (1, 2, 3)
+        if (variant == 5) {
+          o.randec = o.randecstable = 1;
+          o.randecint = 5;
+          o.randeclength = 3;
+        }
+        o.renumber = r;
+        o.renumberrandom = 0;
+        std::string proof_text;
+        ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+        Solver s(o);
+        s.set_proof(&proof);
+        s.reserve(f.first);
+        for (const auto& c : f.second) s.add_clause(c.data(), c.size());
+        const int result = s.solve();
+        proof.flush();
+        if (!r) {
+          ref = s.stats();
+          ref_proof = proof_text;
+          ref_result = result;
+          continue;
+        }
+        CHECK_EQ(result, ref_result);
+        CHECK_EQ(s.stats().conflicts, ref.conflicts);
+        CHECK_EQ(s.stats().decisions, ref.decisions);
+        CHECK_EQ(s.stats().propagations, ref.propagations);
+        std::vector<std::string> added, deleted, ref_added, ref_deleted;
+        split(proof_text, added, deleted);
+        split(ref_proof, ref_added, ref_deleted);
+        CHECK(added == ref_added);
+        CHECK(deleted == ref_deleted);
+      }
+    }
+  }
+}
+
+TEST(renumber_proofs_with_extensions) {
+  // The proof lines that do not come from search: PR clauses of counting certificates (and the
+  // isolated subsystem's proof, copied as encoded), Gauss-Jordan refutations with extension
+  // variables, XOR-substitution definitions; checked in the input numbering.
+  std::mt19937_64 rng(77);
+  for (const CountingCase& t : counting_cases(true)) {
+    Options o;
+    o.counting = 1;
+    o.renumber = 1 + static_cast<int64_t>(rng() % 3);
+    const CountingRun r = run_counting(scramble(t.f, rng), o);
+    CHECK_EQ(r.result, kUnsat);
+    CHECK_EQ(r.stats.counting_found, 1u);
+    CHECK(r.check.ok && r.check.has_empty);
+    if (!r.check.ok || !r.check.has_empty) std::fprintf(stderr, "  %s: %s\n", t.name.c_str(), r.check.error.c_str());
+  }
+  for (int amo = 0; amo < 2; ++amo) {  // embedded systems (the isolated solver's proof)
+    for (int r = 1; r <= 3; ++r) {
+      Options o;
+      o.counting = 1;
+      o.renumber = r;
+      const CountingRun c = run_counting(graph_colouring(14, 4, 5, 0.3, amo, rng), o);
+      CHECK_EQ(c.result, kUnsat);
+      CHECK_EQ(c.stats.counting_found, 1u);
+      CHECK(c.check.ok && c.check.has_empty);
+      CHECK(c.check.deletions > 0);
+    }
+  }
+  int refuted = 0;
+  for (int it = 0; it < 24; ++it) {  // Gauss-Jordan refutations
+    const int w = std::vector<int>{4, 5, 9, 11}[static_cast<size_t>(it) % 4];
+    Options o;
+    o.gauss = 1;
+    o.lucky = 0;
+    o.renumber = 1 + it % 3;
+    GaussStats gs;
+    const Outcome r = run_with_stats(w * w, lights_out(w, rng), o, gs);
+    if (r.result == kUnsat) {
+      CHECK(r.proof_ok);
+      if (!r.proof_ok) std::fprintf(stderr, "  lights out %d: %s\n", w, r.proof_error.c_str());
+    }
+    if (r.result == kSat) CHECK(r.model_ok);
+    if (gs.refutations) ++refuted;
+  }
+  CHECK(refuted > 5);
+  for (int m = 3; m <= 5; ++m) {  // XOR substitution
+    for (int variant = 0; variant < 2; ++variant) {
+      auto op = ordering_principle(m);
+      if (variant == 1) op.second.pop_back();
+      std::vector<int> d(static_cast<size_t>(op.first) + 1, 2);
+      ClauseList cl;
+      const int nv = xor_substitute(rng, op.first, op.second, d, cl);
+      Options o;
+      o.renumber = 1 + (m + variant) % 3;
+      GaussStats gs;
+      const Outcome r = run_with_stats(nv, cl, o, gs);
+      CHECK_EQ(r.result, variant == 0 ? kUnsat : kSat);
+      if (r.result == kUnsat) CHECK(r.proof_ok);
+      if (r.result == kSat) CHECK(r.model_ok);
+    }
+  }
+}
+
+TEST(renumber_incremental_clauses) {
+  // Clauses added after a solve() are read in the input numbering, a new variable beyond the
+  // input's included.
+  for (int r = 1; r <= 3; ++r) {
+    Options o;
+    o.eliminate = 0;  // (incremental use needs frozen variables)
+    o.renumber = r;
+    o.renumberrandom = 0;
+    Solver s(o);
+    const ClauseList f = {{1, 2, 3}, {-1, 4}, {-2, 4}, {-3, 5}, {-4, -5}, {2, 5}};
+    for (const auto& c : f) s.add_clause(c.data(), c.size());
+    CHECK_EQ(s.solve(), kSat);
+    auto satisfied = [&](const ClauseList& g) {
+      for (const auto& c : g) {
+        bool ok = false;
+        for (int l : c) ok = ok || s.val(l) == l;
+        if (!ok) return false;
+      }
+      return true;
+    };
+    CHECK(satisfied(f));
+    const ClauseList g = {{-4}, {7, -5}};
+    for (const auto& c : g) s.add_clause(c.data(), c.size());
+    CHECK_EQ(s.solve(), kSat);
+    CHECK(satisfied(f) && satisfied(g));
+    CHECK_EQ(s.val(4), -4);
+    CHECK_EQ(s.val(5), 5);
+    CHECK_EQ(s.val(7), 7);
+    const int u[1] = {-7};
+    s.add_clause(u, 1);
+    CHECK_EQ(s.solve(), kUnsat);
+  }
+}
+
+TEST(limits_stop_before_search) {
+  // A time limit already passed or a terminate flag already set: UNKNOWN with the reason, and the
+  // passes before the first decision (lucky, counting, Gauss-Jordan, ...) stop as well.
+  for (int mode = 0; mode < 2; ++mode) {
+    const std::atomic<bool> flag{true};
+    Solver s;
+    for (const auto& c : pigeonhole(9)) s.add_clause(c.data(), c.size());
+    if (mode == 0) {
+      s.set_terminate(&flag);
+    } else {
+      s.set_time_limit(1e-9);
+    }
+    CHECK_EQ(s.solve(), kUnknown);
+    CHECK(std::string(s.unknown_reason()) == (mode == 0 ? "interrupted" : "time limit"));
+    CHECK_EQ(s.stats().conflicts, 0u);
+    CHECK_EQ(s.stats().counting_pr, 0u);  // (the pigeonhole is not refuted by the counting pass)
+  }
+}
+
+TEST(limits_time_limit_during_inprocessing) {
+  // Pigeonholes that the search does not refute in time (no counting certificates), with the
+  // option sets that run the passes most often: the solver stops soon after the limit, UNKNOWN.
+  const auto variants = option_variants();
+  for (size_t i = 0; i < variants.size(); i += 3) {
+    Options o = variants[i];
+    o.counting = 0;
+    Solver s(o);
+    for (const auto& c : pigeonhole(11)) s.add_clause(c.data(), c.size());
+    s.set_time_limit(0.05);
+    CHECK_EQ(s.solve(), kUnknown);
+    CHECK(std::string(s.unknown_reason()) == "time limit");
+    CHECK(s.seconds() < 1.0);
+  }
+}
+
+TEST(limits_stop_fault_vs_default_answers) {
+  // --stopfault=n: every n-th stop check ends the pass as the time limit would, and the search
+  // goes on. Interrupted passes (elimination, BVA, substitution, congruence, sweeping, vivification,
+  // walks, counting, Gauss-Jordan) must leave a consistent formula: the same answers, models of
+  // the input and checked proofs.
+  std::mt19937_64 rng(77);
+  const auto variants = option_variants();
+  const int faults[] = {1, 2, 3, 5, 17, 64};
+  std::vector<std::pair<int, ClauseList>> formulas;
+  for (int bits : {4, 8, 12}) formulas.push_back(adder_miter(bits));
+  for (int h : {4, 5, 6}) formulas.emplace_back(h * (h + 1), pigeonhole(h));
+  for (int it = 0; it < 12; ++it) {
+    const int n = 30 + static_cast<int>(rng() % 40);
+    formulas.emplace_back(n, random_formula(rng, n, static_cast<int>(n * 4.26), 3, 3));
+  }
+  for (int it = 0; it < 6; ++it) {
+    int n = 12 + static_cast<int>(rng() % 12);
+    ClauseList f = random_xor_formula(rng, n, n - 2, n);
+    formulas.emplace_back(n, f);
+  }
+  int runs = 0;
+  uint64_t passes_cut = 0;
+  for (size_t fi = 0; fi < formulas.size(); ++fi) {
+    const auto& [n, f] = formulas[fi];
+    const int expected = run(n, f, Options(), false).result;
+    REQUIRE(expected == kSat || expected == kUnsat);
+    for (size_t vi = fi % 3; vi < variants.size(); vi += 3) {
+      Options o = variants[vi];
+      o.invariants = 1;
+      o.stopfault = faults[(fi + vi) % std::size(faults)];
+      const Outcome r = run(n, f, o);
+      ++runs;
+      CHECK_EQ(r.result, expected);
+      if (r.result == kSat) CHECK(r.model_ok);
+      if (r.result == kUnsat) CHECK(r.proof_ok);
+      if (r.result != expected || (r.result == kSat && !r.model_ok) || (r.result == kUnsat && !r.proof_ok)) {
+        std::fprintf(stderr, "  formula %zu, variant %zu, stopfault %lld: result %d %s\n", fi, vi,
+                     static_cast<long long>(o.stopfault), r.result, r.proof_error.c_str());
+      }
+    }
+    Options o;
+    o.stopfault = 1;
+    Solver s(o);
+    s.reserve(n);
+    for (const auto& c : f) s.add_clause(c.data(), c.size());
+    CHECK_EQ(s.solve(), expected);
+    passes_cut += s.stats().stop_faults;
+  }
+  CHECK(runs > 100);
+  CHECK(passes_cut > 0);
+}
+
+TEST(limits_checks_keep_the_search) {
+  // A time limit that is not reached and a terminate flag that is not set: the same search (the
+  // same counters and the same proof) as without them.
+  std::mt19937_64 rng(5);
+  const auto variants = option_variants();
+  std::vector<std::pair<int, ClauseList>> formulas = {adder_miter(8), {30, pigeonhole(5)}};
+  for (int it = 0; it < 4; ++it) {
+    const int n = 50 + static_cast<int>(rng() % 30);
+    formulas.emplace_back(n, random_formula(rng, n, static_cast<int>(n * 4.26), 3, 3));
+  }
+  const std::atomic<bool> flag{false};
+  for (size_t fi = 0; fi < formulas.size(); ++fi) {
+    const auto& [n, f] = formulas[fi];
+    for (size_t vi = fi % 2; vi < variants.size(); vi += 2) {
+      Stats ref;
+      std::string ref_proof;
+      for (int limited = 0; limited <= 1; ++limited) {
+        std::string text;
+        ProofWriter proof([&](const char* d, size_t k) { text.append(d, k); }, false);
+        Solver s(variants[vi]);
+        s.set_proof(&proof);
+        if (limited) {
+          s.set_time_limit(1e6);
+          s.set_terminate(&flag);
+        }
+        s.reserve(n);
+        for (const auto& c : f) s.add_clause(c.data(), c.size());
+        const int r = s.solve();
+        proof.flush();
+        CHECK(r == kSat || r == kUnsat);
+        if (!limited) {
+          ref = s.stats();
+          ref_proof = text;
+          continue;
+        }
+        CHECK_EQ(s.stats().conflicts, ref.conflicts);
+        CHECK_EQ(s.stats().decisions, ref.decisions);
+        CHECK_EQ(s.stats().propagations, ref.propagations);
+        CHECK_EQ(s.stats().ticks, ref.ticks);
+        CHECK(text == ref_proof);
+      }
+    }
+  }
+}
+
+// --- initial decision order (--queueorder) ------------------------------------------------------
+
+namespace {
+
+struct SearchTrace {
+  int result = 0;
+  uint64_t conflicts = 0, decisions = 0, propagations = 0;
+  std::string proof;
+  bool same(const SearchTrace& o) const {
+    return result == o.result && conflicts == o.conflicts && decisions == o.decisions &&
+           propagations == o.propagations && proof == o.proof;
+  }
+};
+
+SearchTrace search_trace(int n, const ClauseList& f, const Options& o) {
+  SearchTrace t;
+  ProofWriter proof([&](const char* d, size_t k) { t.proof.append(d, k); }, false);
+  Solver s(o);
+  s.set_proof(&proof);
+  s.reserve(n);
+  for (const auto& c : f) s.add_clause(c.data(), c.size());
+  t.result = s.solve();
+  proof.flush();
+  t.conflicts = s.stats().conflicts;
+  t.decisions = s.stats().decisions;
+  t.propagations = s.stats().propagations;
+  return t;
+}
+
+// The same formula with variable v renamed n + 1 - v (gate outputs numbered before their inputs).
+ClauseList reversed_numbering(int n, ClauseList f) {
+  for (auto& c : f) {
+    for (int& l : c) l = l > 0 ? n + 1 - l : -(n + 1 + l);
+  }
+  return f;
+}
+
+}  // namespace
+
+TEST(queueorder_gate_rule_chooses_one_of_the_two_orders) {
+  // --queueorder=2 (gate direction) chooses before the search: the search is the default one (=0)
+  // or the lowest-first one (=1), with the same counters and proof. Adder miters numbered inputs
+  // first take the lowest-first order, the same miters numbered the other way round and random
+  // 3-SAT formulas (no AND gates) the default one; so does =3 (first focused phase only) where =2
+  // takes the default.
+  std::mt19937_64 rng(11);
+  struct Case {
+    int n;
+    ClauseList f;
+    int expect;  // the order =2 must choose (-1: either)
+  };
+  std::vector<Case> cases;
+  for (int bits : {6, 10}) {
+    const auto [n, f] = adder_miter(bits);
+    cases.push_back({n, f, 1});
+    cases.push_back({n, reversed_numbering(n, f), 0});
+  }
+  for (int it = 0; it < 4; ++it) cases.push_back({60, random_formula(rng, 60, 256, 3, 3), 0});
+  cases.push_back({30, pigeonhole(5), -1});
+  int lowest_cases = 0;
+  for (int mode = 0; mode < 3; ++mode) {
+    for (const auto& c : cases) {
+      Options base;
+      base.stable = mode;  // (focused only, switching, stable only)
+      base.eliminate = mode != 1;
+      SearchTrace ref[2];
+      for (int q = 0; q < 2; ++q) {
+        Options o = base;
+        o.queueorder = q;
+        ref[q] = search_trace(c.n, c.f, o);
+      }
+      Options o = base;
+      o.queueorder = 2;
+      const SearchTrace t = search_trace(c.n, c.f, o);
+      const bool lowest = t.same(ref[1]), highest = t.same(ref[0]);
+      CHECK(lowest || highest);
+      if (c.expect >= 0 && !ref[0].same(ref[1])) {
+        CHECK_EQ(lowest ? 1 : 0, c.expect);
+        lowest_cases += lowest;
+      }
+      if (c.expect == 0) {
+        o.queueorder = 3;
+        CHECK(search_trace(c.n, c.f, o).same(ref[0]));
+      }
+    }
+  }
+  CHECK(lowest_cases > 0);
+}
+
+TEST(queueorder_focused_phases) {
+  // --queueorder=3 / 4 (lowest first in the first focused phase only, where AND gates point
+  // forward or always), with mode switches every few conflicts: right answers, models and proofs.
+  std::mt19937_64 rng(13);
+  std::vector<std::pair<int, ClauseList>> formulas = {adder_miter(8), {30, pigeonhole(5)}};
+  for (int it = 0; it < 6; ++it) formulas.emplace_back(70, random_formula(rng, 70, 298, 3, 3));
+  for (const auto& [n, f] : formulas) {
+    const int expected = search_trace(n, f, Options()).result;
+    for (int variant = 0; variant < 6; ++variant) {
+      Options o;
+      o.queueorder = 3 + variant % 2;
+      o.queueordergates = 0;
+      o.queueorderforward = 0;
+      o.modeinit = variant < 3 ? 10 : 30;
+      const Outcome r = run(n, f, o);
+      CHECK(r.result == expected);
+      if (r.result == kSat) CHECK(r.model_ok);
+      if (r.result == kUnsat) CHECK(r.proof_ok);
+    }
+  }
 }

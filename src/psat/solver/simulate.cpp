@@ -33,7 +33,7 @@ constexpr uint32_t kWindowVars = 8192, kWindowClauses = 32768;
 
 void Solver::simulate_equivalences() {
   const PassTimer pass_timer(*this, kPassSimulate);
-  if (inconsistent_ || !backtrack_to_root()) return;
+  if (inconsistent_ || stop_requested() || !backtrack_to_root()) return;
   // Per-variable arrays (about 30 bytes per variable while the pass runs): skipped on huge formulas.
   constexpr Var kMaxVars = Var{1} << 24;
   if (num_vars_ > kMaxVars) return;
@@ -459,7 +459,7 @@ void Solver::simulate_equivalences() {
   std::vector<Lit> implied[2];
   const uint32_t max_depth = static_cast<uint32_t>(opts_.simeqdepth);
   for (const Cand& cd : cands) {
-    if (ticks > limit || inconsistent_) break;
+    if (ticks > limit || inconsistent_ || stop_requested()) break;
     const bool constant = cd.rep == kNone;
     if (vals_[make_lit(cd.m, false)] != 0 || eliminated_[cd.m]) continue;
     if (!constant && (vals_[make_lit(cd.rep, false)] != 0 || eliminated_[cd.rep])) continue;
@@ -560,7 +560,8 @@ void Solver::simulate_equivalences() {
       kitten_.add_clause(kc.data(), static_cast<uint32_t>(kc.size()));
     }
     ticks += flat.size() / 4;
-    sweep_emitted_ = 0;
+    kitten_.track_cores(proof_ != nullptr);
+    sweep_emitted_.clear();
     sweep_emitted_lits_.clear();
     sweep_added_.clear();
     const uint64_t kitten_start = kitten_.ticks();

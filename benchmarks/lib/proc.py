@@ -13,6 +13,16 @@ so every solver / checker process started by the tooling is memory-capped:
   whole group is killed, so no grandchild (e.g. a solver started by a wrapper) survives.
 * The exit status is collected with os.wait4 in a helper thread: exact end time and the
   child's own peak RSS (ru_maxrss) and CPU time.
+* On Linux ru_maxrss is useless for small processes: the child starts as a copy of this
+  (Python) process, and the kernel carries that copy's high-water mark across execve, so every
+  child reports at least the runner's own size. The peak there is the child's VmHWM (the
+  high-water mark of the exec'ed image only), read from /proc at every poll.
+* On macOS the child gets MallocLargeCache=0 (unless the caller sets it): the system allocator
+  keeps freed large blocks in a per-process cache that counts as resident, so a solver freeing
+  and allocating blocks of changing sizes (inprocessing rounds) reached 2-3 GB resident for under
+  1 GB in use and hit the cap (velev-vliw-sat-4.0-b8, ncc_none_3001; resident 3.1 vs 1.4 GB).
+  Without the cache, large blocks go back to the system when freed, as with glibc (above its
+  mmap threshold), so Mac peaks are comparable with the Linux ones.
 """
 
 from __future__ import annotations
@@ -34,7 +44,7 @@ class RunResult:
     reason: str | None          # None, 'timeout' or 'memlimit'
     wall: float                 # seconds
     cpu: float                  # user + system seconds of the child (POSIX), else wall
-    peak_rss_mb: float          # max of sampled group RSS and the child's ru_maxrss
+    peak_rss_mb: float          # max of sampled group RSS and the child's peak (ru_maxrss / VmHWM)
 
 
 def limit_self(mb):
@@ -71,6 +81,21 @@ def _group_rss_mb(pgid: int) -> float:
         if len(f) == 2 and f[0] == str(pgid) and f[1].isdigit():
             total += int(f[1])
     return total / 1024.0
+
+
+def _hwm_mb(pid: int) -> float:
+    """Peak resident size (MB) of a running process's current image (Linux /proc VmHWM), else 0."""
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            for ln in f:
+                if ln.startswith("VmHWM:"):
+                    return int(ln.split()[1]) / 1024.0
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0.0
+
+
+IS_LINUX = sys.platform.startswith("linux")
 
 
 def _rss_mb_psutil(pid) -> float:
@@ -124,6 +149,8 @@ def run_capped(cmd, timeout, mem_mb=None, stdout=None, stderr=None, poll=0.5, cw
     (MB; None/0 = none).  If the caller is interrupted, the child's group is killed."""
     t0 = time.perf_counter()
     kw = {"start_new_session": True} if IS_POSIX else {}
+    if sys.platform == "darwin" and "MallocLargeCache" not in (os.environ if env is None else env):
+        env = dict(os.environ if env is None else env, MallocLargeCache="0")
     p = subprocess.Popen(cmd, stdout=stdout, stderr=stderr, stdin=stdin, cwd=cwd, env=env, **kw)
     with _live_lock:
         _live.add(p)
@@ -150,8 +177,11 @@ def run_capped(cmd, timeout, mem_mb=None, stdout=None, stderr=None, poll=0.5, cw
     th.start()
     reason = None
     peak = 0.0
+    hwm = 0.0  # Linux: the child's VmHWM, sampled
     try:
         while not done.wait(poll):
+            if IS_LINUX:
+                hwm = max(hwm, _hwm_mb(p.pid))
             if mem_mb:
                 rss = _group_rss_mb(p.pid) if IS_POSIX else _rss_mb_psutil(p.pid)
                 peak = max(peak, rss)
@@ -174,5 +204,8 @@ def run_capped(cmd, timeout, mem_mb=None, stdout=None, stderr=None, poll=0.5, cw
             _live.discard(p)
     p.returncode = res.get("rc") if res.get("rc") is not None else -9
     wall = res.get("t", time.perf_counter()) - t0
-    peak = max(peak, res.get("maxrss", 0.0))
+    if IS_LINUX and hwm > 0:
+        peak = max(peak, hwm)  # ru_maxrss includes the runner's size (see the module comment)
+    else:
+        peak = max(peak, res.get("maxrss", 0.0))
     return RunResult(None if reason else res.get("rc"), reason, wall, res.get("cpu", wall), peak)

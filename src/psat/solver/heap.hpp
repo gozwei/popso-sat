@@ -21,6 +21,7 @@ class ScoreHeap {
   explicit ScoreHeap(const std::vector<double>& score) : score_(score) {}
 
   void resize(size_t vars) { pos_.resize(vars, kAbsent); }
+  void reserve(size_t vars) { pos_.reserve(vars); }  // (the entries grow as variables are pushed)
   bool contains(Var v) const { return pos_[v] != kAbsent; }
   bool empty() const { return heap_.empty(); }
   size_t size() const { return heap_.size(); }

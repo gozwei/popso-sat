@@ -91,6 +91,64 @@ void DimacsParser::feed(const char* data, size_t n) {
       }
       continue;
     }
+    if (state_ == State::kInLine || state_ == State::kLineStart) {
+      // Fast path for clause text: single spaces, newlines and numbers, each number read in one
+      // go. Anything else (comments, the header, other whitespace, malformed text, a sign or a
+      // number cut off by the end of the chunk) is left to the state machine below, which then
+      // comes back here. The checks and errors are the state machine's, in the same order.
+      while (p != end) {
+        char c = *p;
+        if (c == ' ') {
+          ++p;
+          state_ = State::kInLine;
+          continue;
+        }
+        if (c == '\n') {
+          ++p;
+          ++line_;
+          state_ = State::kLineStart;
+          continue;
+        }
+        const char* q = p;
+        bool neg = false;
+        if (c == '-') {
+          if (q + 1 == end || q[1] < '1' || q[1] > '9') break;
+          neg = true;
+          c = *++q;
+        } else if (!is_digit(c)) {
+          break;
+        }
+        int64_t num = c - '0';
+        for (++q; q != end && is_digit(*q); ++q) {
+          num = num * 10 + (*q - '0');
+          if (num > kMaxVar) error("variable index too large (maximum " + std::to_string(kMaxVar) + ")");
+        }
+        negative_ = neg;
+        number_ = num;
+        if (q == end) {  // continued in the next chunk
+          state_ = State::kNumber;
+          return;
+        }
+        const char t = *q;
+        p = q + 1;
+        if (num != 0 && !(has_header_ && num > header_vars_)) {  // end_number(), the common case
+          const int v = static_cast<int>(num);
+          if (v > max_var_) max_var_ = v;
+          clause_.push_back(neg ? -v : v);
+        } else {
+          end_number();
+        }
+        if (t == '\n') {
+          ++line_;
+          state_ = State::kLineStart;
+        } else if (is_space(t)) {
+          state_ = State::kInLine;
+        } else {
+          error(std::string("unexpected character '") + t + "' after a number");
+        }
+      }
+      if (p == end) return;
+    }
     const char c = *p++;
     switch (state_) {
       case State::kLineStart:

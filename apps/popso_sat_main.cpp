@@ -5,8 +5,10 @@
 // Prints 'c' comments, then 's SATISFIABLE' with 'v ... 0' model lines, 's UNSATISFIABLE' or
 // 's UNKNOWN'; exit code 10 / 20 / 0, and 1 on errors.
 
+#include <algorithm>
 #include <atomic>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -16,6 +18,7 @@
 #include <vector>
 
 #include "psat/core/options.hpp"
+#include "psat/core/small_sort.hpp"
 #include "psat/io/dimacs.hpp"
 #include "psat/io/input.hpp"
 #include "psat/io/proof.hpp"
@@ -56,19 +59,97 @@ void usage(std::FILE* out) {
   psat::Options::print_help(out);
 }
 
-// The input formula for the final model check: flat clauses with 0 terminators in fixed-size
-// chunks (a growing vector would briefly hold two copies when it reallocates: hundreds of MB on
-// the largest competition formulas).
-struct Original {
-  static constexpr size_t kChunk = size_t{1} << 20;
-  std::vector<std::vector<int>> chunks;
-  void push(int x) {
-    if (chunks.empty() || chunks.back().size() == kChunk) {
-      chunks.emplace_back();
-      chunks.back().reserve(kChunk);
+// The input formula for the final model check, compressed: per clause its number of literals, then
+// the literals as codes 2 * |lit| + (lit < 0) in ascending order (the check does not need the
+// input order): the first as its difference to the previous clause's first code (zigzag: 2d for
+// d >= 0, -2d - 1 below), every other one as the difference to the previous code, all as LEB128
+// bytes (7 bits per byte, the high bit set on all but the last). Clauses over neighbouring
+// variables take one or two bytes per literal instead of four plus a 0 terminator (velev-vliw
+// 204 -> 92 MB, as-p147 228 -> 108 MB, T92.2.0 152 -> 60 MB, ncc_none_3001 88 -> 56 MB).
+// Fixed-size chunks of whole clauses (a growing vector would briefly hold two copies when it
+// reallocates: hundreds of MB on the largest competition formulas).
+class Original {
+ public:
+  static constexpr size_t kChunk = size_t{1} << 22;
+  void add(const int* lits, size_t n) {
+    codes_.resize(n);
+    for (size_t i = 0; i < n; ++i) {
+      const int64_t x = lits[i];
+      codes_[i] = 2 * static_cast<uint64_t>(x < 0 ? -x : x) + (x < 0 ? 1 : 0);
     }
-    chunks.back().push_back(x);
+    if (n <= 16) {  // (short clauses by insertion: the same order, without std::sort's overhead)
+      psat::small_sort(codes_.data(), static_cast<uint32_t>(n));
+    } else {
+      std::sort(codes_.begin(), codes_.end());
+    }
+    const size_t most = 10 * (n + 1);  // (a 64-bit value takes at most 10 bytes)
+    if (chunks_.empty() || chunks_.back().capacity() - chunks_.back().size() < most) {
+      chunks_.emplace_back();
+      chunks_.back().reserve(std::max(kChunk, most));
+    }
+    std::vector<uint8_t>& out = chunks_.back();
+    put(out, n);
+    if (!n) return;
+    put(out, codes_[0] >= first_ ? 2 * (codes_[0] - first_) : 2 * (first_ - codes_[0]) - 1);
+    first_ = codes_[0];
+    for (size_t i = 1; i < n; ++i) put(out, codes_[i] - codes_[i - 1]);
   }
+  // Index of the first clause that 'val' (DIMACS literal -> the literal if true) falsifies, or -1.
+  template <class Val>
+  long long first_falsified(Val val) const {
+    long long idx = 0;
+    uint64_t first = 0;
+    for (const std::vector<uint8_t>& chunk : chunks_) {
+      const uint8_t* p = chunk.data();
+      const uint8_t* const end = p + chunk.size();
+      while (p < end) {
+        const uint64_t n = get(p);
+        bool sat = false;
+        if (n) {
+          const uint64_t z = get(p);
+          first = z & 1 ? first - (z + 1) / 2 : first + z / 2;
+          uint64_t code = first;
+          for (uint64_t i = 0;; ) {
+            if (!sat) {
+              const int64_t v = static_cast<int64_t>(code >> 1);
+              const int lit = static_cast<int>(code & 1 ? -v : v);
+              sat = val(lit) == lit;
+            }
+            if (++i == n) break;
+            code += get(p);
+          }
+        }
+        if (!sat) return idx;
+        ++idx;
+      }
+    }
+    return -1;
+  }
+  size_t bytes() const {
+    size_t b = chunks_.capacity() * sizeof(std::vector<uint8_t>);
+    for (const std::vector<uint8_t>& chunk : chunks_) b += chunk.capacity();
+    return b;
+  }
+
+ private:
+  static void put(std::vector<uint8_t>& out, uint64_t x) {
+    while (x >= 0x80) {
+      out.push_back(static_cast<uint8_t>(x | 0x80));
+      x >>= 7;
+    }
+    out.push_back(static_cast<uint8_t>(x));
+  }
+  static uint64_t get(const uint8_t*& p) {
+    uint64_t x = 0;
+    for (int shift = 0;; shift += 7) {
+      const uint8_t b = *p++;
+      x |= static_cast<uint64_t>(b & 0x7f) << shift;
+      if (!(b & 0x80)) return x;
+    }
+  }
+  std::vector<std::vector<uint8_t>> chunks_;
+  std::vector<uint64_t> codes_;
+  uint64_t first_ = 0;  // the first code of the last non-empty clause
 };
 
 struct Loader : psat::DimacsHandler {
@@ -81,10 +162,7 @@ struct Loader : psat::DimacsHandler {
   }
   void clause(const int* lits, size_t n) override {
     solver.add_clause(lits, n);
-    if (original) {
-      for (size_t i = 0; i < n; ++i) original->push(lits[i]);
-      original->push(0);
-    }
+    if (original) original->add(lits, n);
   }
 };
 
@@ -130,20 +208,7 @@ int out_of_memory(bool quiet) {
 
 // Index of the first clause the model falsifies, or -1.
 long long check_model(const psat::Solver& solver, const Original& original) {
-  long long idx = 0;
-  bool sat = false;
-  for (const auto& chunk : original.chunks) {
-    for (const int lit : chunk) {
-      if (lit == 0) {
-        if (!sat) return idx;
-        ++idx;
-        sat = false;
-      } else if (!sat && solver.val(lit) == lit) {
-        sat = true;
-      }
-    }
-  }
-  return -1;
+  return original.first_falsified([&](int lit) { return solver.val(lit); });
 }
 
 int run(int argc, char** argv) {
@@ -270,6 +335,13 @@ int run(int argc, char** argv) {
     if (!quiet) {
       std::printf("c parsed %d variables, %lld clauses in %.2f s\n", max_var,
                   static_cast<long long>(parser.clauses()), solver.seconds());
+      if (opts.reportmem) {
+        const size_t copy = original.bytes();
+        solver.set_input_copy_bytes(copy);
+        std::printf("c memory after parsing: rss %.0f MB (peak %.0f, heap in use %.0f), model-check copy %.0f MB\n",
+                    psat::Solver::current_rss_mb(), psat::Solver::peak_rss_mb(), psat::Solver::heap_in_use_mb(),
+                    static_cast<double>(copy) / (1 << 20));
+      }
       std::fflush(stdout);
     }
   } catch (const std::bad_alloc&) {

@@ -91,3 +91,27 @@ TEST(dimacs_relaxed) {
   Collect d = parse("1 2 0\n", false);
   CHECK_EQ(d.clauses.size(), 1u);
 }
+
+// The fast path for clause text and the state machine agree at every chunk boundary: numbers,
+// signs and line ends cut anywhere, other whitespace, comments between clauses, errors.
+TEST(dimacs_fast_path_chunk_boundaries) {
+  const std::string text =
+      "c head\np cnf 12 6\n1 -2 3 0\n -4\t5 0\r\n6  -7 0\nc mid\n  c indented\n12 -11 10 9 0\n-8 0\n007 -1 0\n";
+  const std::vector<std::vector<int>> want = {{1, -2, 3}, {-4, 5}, {6, -7}, {12, -11, 10, 9}, {-8}, {7, -1}};
+  for (size_t chunk = 0; chunk <= text.size(); ++chunk) {
+    Collect c = parse(text, true, chunk);
+    CHECK(c.clauses == want);
+  }
+  const std::vector<std::string> bad = {"p cnf 2 1\n1 -0 0\n", "p cnf 2 1\n1 - 2 0\n",       "p cnf 2 1\n1 2x 0\n",
+                                        "p cnf 2 1\n1 3 0\n",  "p cnf 2 1\n1 -\n",           "p cnf 2 1\n1 -a 0\n",
+                                        "p cnf 2 1\n12345678901 0\n", "p cnf 2 1\n1 2 0\n2 0\n"};
+  for (const std::string& b : bad) {
+    for (size_t chunk = 0; chunk <= b.size(); ++chunk) CHECK_THROWS(parse(b, true, chunk), DimacsError);
+  }
+  // Relaxed: a variable above the header's count is taken.
+  for (size_t chunk = 0; chunk <= 16; ++chunk) {
+    Collect r = parse("p cnf 2 1\n1 -3 0\n", false, chunk);
+    REQUIRE(r.clauses.size() == 1);
+    CHECK((r.clauses[0] == std::vector<int>{1, -3}));
+  }
+}

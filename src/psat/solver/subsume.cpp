@@ -9,6 +9,7 @@
 // the resolvent of C and D).
 
 #include <algorithm>
+#include <cstdio>
 
 #include "psat/io/proof.hpp"
 #include "psat/solver/solver.hpp"
@@ -17,9 +18,19 @@ namespace psat {
 
 void Solver::subsume_round(uint64_t& budget) {
   const PassTimer pass_timer(*this, kPassSubsume);
-  const uint64_t limit = budget + (eliminate_rounds_ <= 1 ? std::max<uint64_t>(1'000'000, arena_.size() / 4)
-                                                         : std::max<uint64_t>(100'000, arena_.size() / 32)) *
-                                      static_cast<uint64_t>(opts_.subsumeeffort) / 100;
+  uint64_t effort = (eliminate_rounds_ <= 1 ? std::max<uint64_t>(1'000'000, arena_.size() / 4)
+                                            : std::max<uint64_t>(100'000, arena_.size() / 32)) *
+                    static_cast<uint64_t>(opts_.subsumeeffort) / 100;
+  // --subsumerel: later rounds also get a share of the search since the last round. The fixed
+  // effort (a 32nd of the arena) covers the smallest clauses of the formula, the same ones every
+  // round (schooltt-5-3-8: about 11k of 21-30k long irredundant clauses), and not the larger
+  // resolvents of the previous rounds.
+  if (eliminate_rounds_ > 1 && opts_.subsumerel) {
+    const uint64_t search_ticks = stats_.ticks - eliminate_last_ticks_;
+    effort = std::max<uint64_t>(
+        effort, static_cast<uint64_t>(static_cast<double>(search_ticks) * static_cast<double>(opts_.subsumerel) / 1000.0));
+  }
+  const uint64_t limit = budget + effort;
   std::vector<std::pair<uint32_t, uint32_t>> order;
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
@@ -28,8 +39,11 @@ void Solver::subsume_round(uint64_t& budget) {
   std::sort(order.begin(), order.end());
   std::vector<std::vector<uint32_t>> conn(2 * size_t{num_vars_});
 
+  size_t checked = 0;
+  const uint64_t subsumed_before = stats_.subsumed, strengthened_before = stats_.strengthened;
   for (const auto& item : order) {
-    if (budget > limit) break;
+    if (budget > limit || stop_requested()) break;
+    ++checked;
     const uint32_t ref = item.second;
     Clause& c = clause(ref);
     if (c.garbage) continue;
@@ -122,6 +136,12 @@ void Solver::subsume_round(uint64_t& budget) {
       if (conn[lits[k]].size() < conn[best].size()) best = lits[k];
     }
     conn[best].push_back(ref);
+  }
+  if (opts_.verbose >= 3) {
+    std::printf("c   subsume: checked %zu of %zu clauses, subsumed %llu, strengthened %llu, effort %llu\n", checked,
+                order.size(), static_cast<unsigned long long>(stats_.subsumed - subsumed_before),
+                static_cast<unsigned long long>(stats_.strengthened - strengthened_before),
+                static_cast<unsigned long long>(effort));
   }
 }
 

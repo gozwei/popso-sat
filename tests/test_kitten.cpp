@@ -42,13 +42,14 @@ bool brute_sat(int n, const std::vector<std::vector<int>>& cls) {
 TEST(kitten_random_with_assumptions) {
   std::mt19937_64 rng(4242);
   Kitten k;
-  int sat = 0, unsat = 0, unknown = 0, cores = 0;
+  int sat = 0, unsat = 0, unknown = 0, cores = 0, flips = 0;
   size_t core_clauses = 0, all_clauses = 0;
   for (int round = 0; round < 600; ++round) {
     const int n = 3 + static_cast<int>(rng() % 10);
     const int m = static_cast<int>(n * (2 + rng() % 4));
     std::vector<std::vector<int>> cls;
     k.clear();
+    k.use_queue(round & 1);  // decisions from the heap and from the queue
     k.resize(static_cast<uint32_t>(n));
     for (int i = 0; i < m; ++i) {
       std::vector<int> c;
@@ -84,13 +85,32 @@ TEST(kitten_random_with_assumptions) {
       CHECK_EQ(r == Kitten::kSat, expect);
       if (r == Kitten::kSat) {
         ++sat;
-        for (const auto& c : with) {
-          bool ok = false;
-          for (const int l : c) {
-            const Kitten::KLit kl = static_cast<Kitten::KLit>(2 * (std::abs(l) - 1) + (l < 0 ? 1 : 0));
-            ok = ok || k.value(kl) > 0;
+        auto model = [&]() {
+          for (const auto& c : with) {
+            bool ok = false;
+            for (const int l : c) {
+              const Kitten::KLit kl = static_cast<Kitten::KLit>(2 * (std::abs(l) - 1) + (l < 0 ? 1 : 0));
+              ok = ok || k.value(kl) > 0;
+            }
+            CHECK(ok);
           }
-          CHECK(ok);
+        };
+        model();
+        // Flips keep a model of the original clauses (assumptions aside): every true literal once.
+        if (s == 0) {
+          for (int v = 0; v < n; ++v) {
+            const Kitten::KLit kl = static_cast<Kitten::KLit>(2 * v + (k.value(static_cast<Kitten::KLit>(2 * v)) > 0 ? 0 : 1));
+            if (k.value(kl) <= 0 || !k.flip(kl)) continue;
+            ++flips;
+            for (const auto& c : cls) {
+              bool ok = false;
+              for (const int l : c) {
+                const Kitten::KLit fl = static_cast<Kitten::KLit>(2 * (std::abs(l) - 1) + (l < 0 ? 1 : 0));
+                ok = ok || k.value(fl) > 0;
+              }
+              CHECK(ok);
+            }
+          }
         }
         continue;
       }
@@ -132,7 +152,88 @@ TEST(kitten_random_with_assumptions) {
   }
   CHECK(sat > 100);
   CHECK(unsat > 100);
+  CHECK(flips > 50);
   CHECK_EQ(unknown, 0);
   CHECK(cores > 50);
   CHECK(core_clauses < all_clauses);  // cores are proper subsets on average
+}
+
+// With track_cores, the learned clauses marked as needed (in derivation order) suffice: each of
+// them is RUP, and so is the final clause of every unsatisfiable result, and every learned unit
+// once marked with mark_learned. Usually far fewer than all learned clauses are needed.
+TEST(kitten_core_lemmas) {
+  std::mt19937_64 rng(777);
+  Kitten k;
+  int checked = 0;
+  size_t needed = 0, learned = 0;
+  auto text = [](const Kitten::KLit* lits, size_t n) {
+    std::string s;
+    for (size_t j = 0; j < n; ++j) s += std::to_string(to_int(lits[j])) + " ";
+    return s + "0\n";
+  };
+  auto needed_proof = [&]() {
+    std::string proof;
+    for (size_t i = 0; i < k.num_learned(); ++i) {
+      if (k.needed(i)) proof += text(k.learned_lits(i), k.learned_size(i));
+    }
+    return proof;
+  };
+  for (int round = 0; round < 600; ++round) {
+    // Random 3-SAT near the threshold (some longer clauses): enough conflicts to learn from.
+    const int n = 10 + static_cast<int>(rng() % 30);
+    const int m = n * 4 + static_cast<int>(rng() % (n / 2 + 1));
+    std::vector<std::vector<int>> cls;
+    k.clear();
+    k.use_queue(round & 1);  // decisions from the heap and from the queue
+    k.resize(static_cast<uint32_t>(n));
+    k.track_cores(true);
+    for (int i = 0; i < m; ++i) {
+      std::vector<int> c;
+      std::vector<Kitten::KLit> kc;
+      const int len = 3 + (rng() % 8 == 0 ? 1 : 0);
+      for (int j = 0; j < len; ++j) {
+        const int v = static_cast<int>(rng() % n);
+        const bool negv = rng() & 1u;
+        c.push_back((v + 1) * (negv ? -1 : 1));
+        kc.push_back(static_cast<Kitten::KLit>(2 * v + (negv ? 1 : 0)));
+      }
+      k.add_clause(kc.data(), static_cast<uint32_t>(kc.size()), static_cast<uint32_t>(cls.size()));
+      cls.push_back(c);
+    }
+    for (int s = 0; s < 6; ++s) {
+      const int na = 1 + static_cast<int>(rng() % 3);
+      for (int a = 0; a < na; ++a) {
+        const int v = static_cast<int>(rng() % n);
+        k.assume(static_cast<Kitten::KLit>(2 * v + (rng() & 1u)));
+      }
+      if (k.solve(1'000'000) != Kitten::kUnsat) continue;
+      std::string proof = needed_proof();
+      proof += text(k.final_clause().data(), k.final_clause().size());
+      psat_test::RupChecker checker(n);
+      for (const auto& c : cls) checker.add_original(c);
+      const auto res = checker.check_text_proof(proof);
+      CHECK(res.ok);
+      if (!res.ok) std::fprintf(stderr, "  core lemmas (round %d, solve %d): %s\n", round, s, res.error.c_str());
+      ++checked;
+      if (k.inconsistent()) break;
+    }
+    if (!k.inconsistent()) {
+      // Learned units: marked, then derivable from the needed clauses.
+      for (size_t i = 0; i < k.num_learned(); ++i) {
+        if (k.learned_size(i) == 1) k.mark_learned(i);
+      }
+      psat_test::RupChecker checker(n);
+      for (const auto& c : cls) checker.add_original(c);
+      const auto res = checker.check_text_proof(needed_proof());
+      CHECK(res.ok);
+      if (!res.ok) std::fprintf(stderr, "  learned units (round %d): %s\n", round, res.error.c_str());
+    }
+    for (size_t i = 0; i < k.num_learned(); ++i) {
+      needed += k.needed(i) ? 1 : 0;
+      ++learned;
+    }
+  }
+  CHECK(checked > 300);
+  CHECK(learned > 1000);
+  CHECK(needed < learned);
 }

@@ -189,7 +189,7 @@ void Solver::unhide(uint64_t ticks_limit) {
       if (proof_) proof_->add_empty();
       break;
     }
-    assign(u, kNoReason);
+    assign_unit_in_proof(u);
     if (!propagate_vivify(kNoReason)) {
       inconsistent_ = true;
       if (proof_) proof_->add_empty();
@@ -206,7 +206,7 @@ void Solver::unhide(uint64_t ticks_limit) {
   const size_t count = clauses_.size();
   for (size_t done = 0; done < count && !inconsistent_; ++done, ++i) {
     if (i >= clauses_.size()) i = 0;
-    if (ticks - search_ticks > ticks_limit) break;
+    if (ticks - search_ticks > ticks_limit || stop_requested()) break;
     const uint32_t ref = clauses_[i];
     Clause& c = clause(ref);
     if (c.garbage) continue;
@@ -296,7 +296,7 @@ void Solver::unhide(uint64_t ticks_limit) {
     }
     if (kept.size() == 1) {
       if (vals_[kept[0]] == 0) {
-        assign(kept[0], kNoReason);
+        assign_unit_in_proof(kept[0]);
         if (!propagate_vivify(kNoReason)) {
           inconsistent_ = true;
           if (proof_) proof_->add_empty();

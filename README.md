@@ -8,10 +8,18 @@ Optimization Solver) but shares no code with popso.
 This is a side project by [Marcin Polkowski](https://marcinpolkowski.com), built with heavy
 use of AI coding agents. The goal is a fully open-source solver that holds its own against the
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
-first milestone. It is at an early stage. On a sample of 168 instances of the SAT Competition 2026
-it solves 98 within 1000 s, against 67 for version 0.3.3, all of the 61 UNSAT answers checked
-with their proofs. On 32 instances from earlier SAT Competitions that were not used for tuning it
-solves 21 within 120 s, where Kissat solves 24 (see [BENCHMARKS.md](BENCHMARKS.md)).
+first milestone. It is at an early stage.
+
+On a sample of 168 instances of the SAT Competition 2026, version 0.4.1 solves 108 within 1000 s.
+Kissat 4.0.4 solves 82 and version 0.4.0 solves 101, on the same machine at the same time. All
+65 UNSAT answers were checked with their proofs. Most of the lead over Kissat comes from
+reasoning Kissat does not have:
+- counting certificates;
+- Gauss-Jordan elimination;
+- linear equations mod p.
+
+On 32 instances from earlier SAT Competitions that were not used for tuning, 0.4.0 solved 21
+within 120 s, where Kissat solved 24 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -55,22 +63,31 @@ default every model is checked against the original formula before it is printed
 
 ## Performance
 
-A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.txt`): 1000 s
-and 12 GB per instance, Intel i7-7700K, Linux, four instances at a time. Every model was checked,
-and every UNSAT answer of 0.4.0 was checked with its proof by dpr-trim (solved / PAR-2 in
-seconds):
+A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.txt`). Setup:
+- 1000 s and 12 GB per instance, on an AMD EPYC 4465P running Linux;
+- the three solvers ran at the same time, seven instances each;
+- every model was checked;
+- every UNSAT answer of popso-sat was checked with its proof by dpr-trim.
 
-| set | popso-sat 0.4.0 | popso-sat 0.3.3 |
-|---|---|---|
-| sc2026 (168) | 98 / 926.4 | 67 / 1303.8 |
+Solved / PAR-2 in seconds:
 
-0.4.0 solves 35 of these instances that 0.3.3 does not, and loses 4 (all satisfiable).
-- 25 of the 35 are refuted by counting certificates within 2.5 s: pigeonhole-like, parity and
-  counting formulas whose resolution proofs are exponentially long.
-- 7 more are solved with Gauss-Jordan elimination: lights-out and parity formulas.
+| set | popso-sat 0.4.1 | popso-sat 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| sc2026 (168) | 108 / 783.2 | 101 / 896.1 | 82 / 1131.7 |
 
-The 0.4.0 defaults were chosen on this set, so it is no longer a held-out test. Kissat 4.0.4 is
-being run on it for the next release.
+**Against 0.4.0:** 0.4.1 solves 11 of these instances that 0.4.0 does not, and loses 4.
+- The 11:
+  - four linear-equations instances, solved by Gaussian elimination mod 3;
+  - two school timetabling instances, through BVA during search;
+  - an XOR ordering-principle instance;
+  - four satisfiable ones.
+- The 4: three satisfiable instances that 0.4.0 solved after 500 s, and gensys-ukn004.
+
+**Against Kissat 4.0.4:** 0.4.1 solves 37 instances that Kissat does not, most of them with
+counting, Gauss-Jordan or mod-p reasoning. Kissat solves 11 that 0.4.1 does not.
+
+**Earlier results:** on the Intel i7-7700K box, 0.4.0 solved 98 of the same instances, against
+80 for Kissat. The 0.4.1 defaults were chosen on this set, so it is not a held-out test.
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of
@@ -133,8 +150,14 @@ per-instance times and plots, and the earlier measurements, are in
   main one. It writes no proof, and only a model can come back from it. Its share of the
   search effort adapts: it grows while Gauss-Jordan finds a good part of the copy's conflicts,
   and the copy is stopped where Gauss-Jordan adds nothing to unit propagation.
-- Local search (ProbSAT with incrementally maintained break values) for rephasing, and lucky
-  assignments tried before search.
+- Bounded variable addition also during search, on literals of variables touched since the last
+  round.
+- Linear equations mod 3, 5 or 7 hidden in clauses: one-hot domains, plus constraints whose
+  allowed tuples form exactly one equation. They are solved by Gaussian elimination over GF(p),
+  and the solution is tried as a model.
+- Local search for rephasing: ProbSAT with incrementally maintained break values. A DDFW
+  clause-weighting walk then starts from ProbSAT's best assignment, only to look for a model.
+  Lucky assignments are tried before search.
 - Proofs in the DRAT format, with PR clauses (the DPR format) for counting certificates.
   Every UNSAT answer in the test suite and the benchmark runner is checked, with dpr-trim (and
   the formally verified cake_lpr on the competition chain).
@@ -154,7 +177,8 @@ solvers on random and structured formulas and shrink failures with delta debuggi
   tautologies and literals), and some vivification variants. No symmetry handling beyond the
   counting certificates.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
-- Memory per variable is larger than in Kissat; very large formulas need more memory.
+- Memory on the largest formulas is close to Kissat's since 0.4.1. The largest peak on the 2026
+  sample is 2.7 GB, against Kissat's 2.4 GB.
 
 ## Repository layout
 

@@ -1,7 +1,7 @@
 {
  "generator": "benchmarks/generators/generate.py",
  "note": "status_source: construction | gf2-elimination | published puzzle | reference (PySAT solve, see 'reference')",
- "updated": "2026-11-03",
+ "updated": "2026-11-06",
  "python": "3.12.7",
  "instances": {
   "benchmarks/instances/small/addereq_small_n64-bug.cnf.gz": {
@@ -565,6 +565,169 @@
    "nclauses": 240,
    "sha256": "631d15326f8f9c146fc442ee317195ca0c2c7949f14a7c57727f3544e68f3a0b",
    "formula_sha256": "c07bc339b638d6d131d3ab9b9673329369df6040be1352b032ca7d1b4d664876"
+  },
+  "benchmarks/instances/small/xorsubop_small_m8-d2-sat.cnf.gz": {
+   "family": "xorsubop",
+   "tier": "small",
+   "builder": "xorsub_op",
+   "params": {
+    "m": 8,
+    "d": 2,
+    "sat": true
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 112,
+   "nclauses": 3808,
+   "sha256": "812a31172ad772382b55ede665c521e015addfe93812e350f76be6ad30cdd8ee",
+   "formula_sha256": "d45bfbc99fbe458662989e3ecbdfa58357a989266e28c406d872198aed2387cc"
+  },
+  "benchmarks/instances/small/xorsubop_small_m8-d2-unsat.cnf.gz": {
+   "family": "xorsubop",
+   "tier": "small",
+   "builder": "xorsub_op",
+   "params": {
+    "m": 8,
+    "d": 2,
+    "sat": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 112,
+   "nclauses": 3936,
+   "sha256": "6742be889181ae50aef5e579b847440cea1879cd05e4ae98a0fcf5f64b64ea51",
+   "formula_sha256": "a24bf570bbb390b81c8cfd95a3b851bf88ffd729ca795ed36719c63e91f031e9"
+  },
+  "benchmarks/instances/small/xorsubpebbling_small_h10-d3.cnf.gz": {
+   "family": "xorsubpebbling",
+   "tier": "small",
+   "builder": "xorsub_pebbling",
+   "params": {
+    "h": 10,
+    "d": 3
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 165,
+   "nclauses": 2924,
+   "sha256": "5642c3a85d60e06ad2f41d8b49c1bc4a28d68f3149555d0015052bde8ac4b97c",
+   "formula_sha256": "06a9454948302de4aecab043b3cd5a87c576e6ed8d4ad62278a0f1bd9f713ef8"
+  },
+  "benchmarks/instances/small/xorsubpebbling_small_h15-d2.cnf.gz": {
+   "family": "xorsubpebbling",
+   "tier": "small",
+   "builder": "xorsub_pebbling",
+   "params": {
+    "h": 15,
+    "d": 2
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 240,
+   "nclauses": 872,
+   "sha256": "3088dae421c004ea521f647f5b8ae6e3ef9c86d9bf4efb44a07bbf6c63a4fe21",
+   "formula_sha256": "078de87e511a4c3dccf95def5498ff884bf991e7f89545debb6b1135bacf3f6e"
+  },
+  "benchmarks/instances/small/xorsubphp_small_n6-d2.cnf.gz": {
+   "family": "xorsubphp",
+   "tier": "small",
+   "builder": "xorsub_php",
+   "params": {
+    "n": 6,
+    "d": 2
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 84,
+   "nclauses": 952,
+   "sha256": "315d05d754d75226239cf2c322040dc296eb7e1050ccf7c33219dfe75531219b",
+   "formula_sha256": "140c9cf48a2f27c53bd7743ce8c2f56feb726325a93b8fcff1082223eeaf52d1"
+  },
+  "benchmarks/instances/small/xorsubrand3sat_small_n40-k3-ratio4p26-d2-s0.cnf.gz": {
+   "family": "xorsubrand3sat",
+   "tier": "small",
+   "builder": "xorsub_ksat",
+   "params": {
+    "n": 40,
+    "k": 3,
+    "ratio": 4.26,
+    "d": 2
+   },
+   "seed": 0,
+   "status": "sat",
+   "status_source": "reference",
+   "nvars": 80,
+   "nclauses": 1360,
+   "sha256": "0e7e1fc4dc99c26089f7250c88613fec0e4dbf9d82d29ed9e20e9aa68013070d",
+   "formula_sha256": "2cdd7b11469f96b30f8ceabf7541068a835d63333881412184003523e54b0639",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.083
+   }
+  },
+  "benchmarks/instances/small/xorsubrand3sat_small_n40-k3-ratio4p26-d2-s2.cnf.gz": {
+   "family": "xorsubrand3sat",
+   "tier": "small",
+   "builder": "xorsub_ksat",
+   "params": {
+    "n": 40,
+    "k": 3,
+    "ratio": 4.26,
+    "d": 2
+   },
+   "seed": 2,
+   "status": "unsat",
+   "status_source": "reference",
+   "nvars": 80,
+   "nclauses": 1360,
+   "sha256": "b9d5636ecfe2354738e6c15080da56b1642881625f6c27dc19fb12db2986df27",
+   "formula_sha256": "5a9fecac21c01161f03af15690e26e91c0d02bdf680c43eabebd6f2d8a5549b0",
+   "reference": {
+    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+    "time": 0.199,
+    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)"
+   }
+  },
+  "benchmarks/instances/small/xorsubtseitin_small_n20-deg3-even-d2.cnf.gz": {
+   "family": "xorsubtseitin",
+   "tier": "small",
+   "builder": "xorsub_tseitin",
+   "params": {
+    "n": 20,
+    "deg": 3,
+    "odd": false,
+    "d": 2
+   },
+   "seed": null,
+   "status": "sat",
+   "status_source": "construction",
+   "nvars": 60,
+   "nclauses": 640,
+   "sha256": "42c93d9e3d37b5e3e464a66bd3248bfe7f80fbf4f58d6507d13aa7313503e941",
+   "formula_sha256": "9bd6a33b826da7bf7798888c423da29328f5fea1344fbf855a262adc76283e65"
+  },
+  "benchmarks/instances/small/xorsubtseitin_small_n20-deg3-odd-d2.cnf.gz": {
+   "family": "xorsubtseitin",
+   "tier": "small",
+   "builder": "xorsub_tseitin",
+   "params": {
+    "n": 20,
+    "deg": 3,
+    "odd": true,
+    "d": 2
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 60,
+   "nclauses": 640,
+   "sha256": "7ceba3e9c57c8f2a6c128a310800edc44c0ba0fcd3dea349abb7940d376ae087",
+   "formula_sha256": "7b991b8323ba46dd2f2276d2b6be993002e107397e066b4be90214c699788af8"
   },
   "benchmarks/instances/tiny/addereq_tiny_n8-bug.cnf": {
    "family": "addereq",
@@ -1476,6 +1639,23 @@
    "nclauses": 1840,
    "sha256": "ee1c0587ff91a0de404f89da1167ef613e07d2a27a12a3748e2b26db4e4c119e",
    "formula_sha256": "91892e3a2d2b493695973aab97784818a030ef437fb3cb350ab5baf39abc6639"
+  },
+  "generated/medium/xorsubop_medium_m12-d2-unsat.cnf": {
+   "family": "xorsubop",
+   "tier": "medium",
+   "builder": "xorsub_op",
+   "params": {
+    "m": 12,
+    "d": 2,
+    "sat": false
+   },
+   "seed": null,
+   "status": "unsat",
+   "status_source": "construction",
+   "nvars": 264,
+   "nclauses": 35664,
+   "sha256": "6e3852563c180eb2b1cd5c94a06b245a43206ba3f1669bf8eb5f4a559ac6958f",
+   "formula_sha256": "9e2fafd947f799811e89d24d434b1fc0dd18757154bd6cbb77f02c4ae63861e7"
   }
  },
  "status_cache": {
@@ -1500,6 +1680,13 @@
    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
    "formula": "coloring_tiny_n30-k3-deg4p7-s9"
   },
+  "0fc26401e9014819eba8f44061b142da5ea2fe891b9be826f70a019d3926f116": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.067,
+   "time_limit": 300.0,
+   "formula": "xorsubrand3sat_small_n40-k3-ratio4p26-d2-s1"
+  },
   "121d14b79908c8977a9299a2fb80c22f6a562b873451d656d1ff399157821104": {
    "status": "unsat",
    "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
@@ -1520,6 +1707,13 @@
    "time": 0.223,
    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
    "formula": "coloring_tiny_n30-k3-deg4p7-s7"
+  },
+  "2cdd7b11469f96b30f8ceabf7541068a835d63333881412184003523e54b0639": {
+   "status": "sat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.083,
+   "time_limit": 300.0,
+   "formula": "xorsubrand3sat_small_n40-k3-ratio4p26-d2-s0"
   },
   "2f157511bb0ab2a28f38b0590fee097e5dda53b2dfa80c3ab08bae74fd77a241": {
    "status": "sat",
@@ -1594,6 +1788,14 @@
    "time": 0.153,
    "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
    "formula": "rand3sat_tiny_n50-k3-ratio4p26-s4"
+  },
+  "5a9fecac21c01161f03af15690e26e91c0d02bdf680c43eabebd6f2d8a5549b0": {
+   "status": "unsat",
+   "solver": "PySAT 1.9.dev18 cadical195 (CaDiCaL 1.9.5)",
+   "time": 0.199,
+   "time_limit": 300.0,
+   "confirmed_by": "PySAT 1.9.dev18 minisat22 (MiniSat 2.2.0)",
+   "formula": "xorsubrand3sat_small_n40-k3-ratio4p26-d2-s2"
   },
   "71fcd27bd98ed00831252093778088376de32e904dbafcea00344ebd62321e9e": {
    "status": "unsat",

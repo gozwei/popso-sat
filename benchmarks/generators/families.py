@@ -6,7 +6,8 @@ reference solve has to decide it (random k-SAT, random-graph coloring).
 
 Families (the family name is the file-name prefix, without '_'):
   rand3sat, rand5sat  uniform random k-SAT at the given clause/variable ratio
-  php                 pigeonhole PHP(n+1, n), pairwise at-most-one                 UNSAT
+  php                 pigeonhole PHP(n+1, n), at-most-one pairwise (or enc: seq / commander /
+                      product, over auxiliary variables)                            UNSAT
   xorsat              random 3-XORSAT (direct CNF of each equation); status by GF(2) elimination
   xorchain            two XOR chains over the same inputs in different orders, outputs forced
                       different (Tseitin)                                           UNSAT
@@ -19,6 +20,11 @@ Families (the family name is the file-name prefix, without '_'):
   multeq              miter of a*b and b*a array multipliers; buggy variant SAT, else UNSAT
   counter             BMC of an n-step counter with enable inputs: reach value v after T steps
                       (SAT iff v <= T)
+  xorsub*             XOR-substituted formulas (every variable replaced by the XOR of d new
+                      variables, each clause expanded, numbering / polarities / order shuffled):
+                      xorsubop ordering principle (UNSAT, or SAT without one predecessor
+                      clause), xorsubphp pigeonhole (UNSAT), xorsubtseitin (by charge),
+                      xorsubpebbling pyramid pebbling (UNSAT), xorsubrand3sat (reference)
 """
 
 from __future__ import annotations
@@ -105,6 +111,45 @@ class Cnf:
         for a, b in combinations(xs, 2):
             self.add(-a, -b)
 
+    def amo(self, xs, enc: str = "pairwise"):
+        """At-most-one over xs: pairwise, sequential counter (Sinz), commander (groups of three,
+        commanders recursively) or product (row and column variables)."""
+        n = len(xs)
+        if enc == "pairwise" or n <= 3:
+            self.amo_pairwise(xs)
+        elif enc == "seq":
+            s = self.vars(n - 1)
+            self.add(-xs[0], s[0])
+            for i in range(1, n - 1):
+                self.add(-xs[i], s[i])
+                self.add(-s[i - 1], s[i])
+                self.add(-xs[i], -s[i - 1])
+            self.add(-xs[-1], -s[-1])
+        elif enc == "commander":
+            commanders = []
+            for g in range(0, n, 3):
+                group = xs[g:g + 3]
+                c = self.var()
+                commanders.append(c)
+                self.amo_pairwise(group)
+                for x in group:
+                    self.add(-x, c)
+                self.add(-c, *group)
+            self.amo(commanders, "commander")
+        elif enc == "product":
+            side = 1
+            while side * side < n:
+                side += 1
+            rows = self.vars((n + side - 1) // side)
+            cols = self.vars(side)
+            for i, x in enumerate(xs):
+                self.add(-x, rows[i // side])
+                self.add(-x, cols[i % side])
+            self.amo_pairwise(rows)
+            self.amo_pairwise(cols)
+        else:
+            raise ValueError(f"unknown at-most-one encoding {enc!r}")
+
     def xor_eq(self, xs, rhs: int):
         """Direct CNF of XOR(xs) == rhs (2^(k-1) clauses)."""
         k = len(xs)
@@ -170,15 +215,16 @@ def rand_ksat(rng: Rng, n: int, k: int, ratio: float) -> Formula:
 
 # ------------------------------------------------------------------ pigeonhole
 
-def php(rng: Rng, n: int) -> Formula:
-    """n+1 pigeons, n holes."""
+def php(rng: Rng, n: int, enc: str = "pairwise") -> Formula:
+    """n+1 pigeons, n holes; the holes' at-most-one constraints in the encoding enc."""
     c = Cnf()
     p = [[c.var() for _ in range(n)] for _ in range(n + 1)]
     for i in range(n + 1):
         c.add(*p[i])
     for j in range(n):
-        c.amo_pairwise([p[i][j] for i in range(n + 1)])
-    return Formula(c.n, c.clauses, "unsat", "construction", [f"pigeonhole PHP({n + 1},{n})"])
+        c.amo([p[i][j] for i in range(n + 1)], enc)
+    note = f"pigeonhole PHP({n + 1},{n})" + ("" if enc == "pairwise" else f", at-most-one {enc}")
+    return Formula(c.n, c.clauses, "unsat", "construction", [note])
 
 
 # ------------------------------------------------------------------ parity
@@ -287,6 +333,89 @@ def tseitin(rng: Rng, n: int, d: int, odd: bool) -> Formula:
     return Formula(c.n, c.clauses, "unsat" if odd else "sat", "construction",
                    [f"Tseitin formula on a random {d}-regular graph, {n} vertices, "
                     f"{'odd' if odd else 'even'} total charge"])
+
+
+# ------------------------------------------------------------------ XOR substitution
+
+def xor_substitute(rng: Rng, nvars: int, clauses: list, d: int) -> tuple[int, list]:
+    """Variable x becomes the XOR of d new variables plus a random constant; each clause is
+    expanded completely (2^(d-1) choices per literal); variable numbers, literal order and clause
+    order are shuffled. Satisfiability is preserved."""
+    total = nvars * d
+    ids = rng.shuffle(list(range(1, total + 1)))
+    tuples = [None] + [ids[(x - 1) * d:x * d] for x in range(1, nvars + 1)]
+    flips = [0] + [int(rng.coin()) for _ in range(nvars)]
+    out = []
+    for c in clauses:
+        acc = [[]]
+        for lit in c:
+            t = tuples[abs(lit)]
+            false_value = (0 if lit > 0 else 1) ^ flips[abs(lit)]
+            parts = [[-v if (m >> i) & 1 else v for i, v in enumerate(t)]
+                     for m in range(1 << d) if bin(m).count("1") % 2 == false_value]
+            acc = [a + p for a in acc for p in parts]
+        for z in acc:
+            out.append(rng.shuffle(z))
+    return total, rng.shuffle(out)
+
+
+def _ordering(m: int, sat: bool) -> Cnf:
+    c = Cnf()
+    x = {(i, j): c.var() for i in range(m) for j in range(m) if i != j}
+    for i in range(m):
+        for j in range(m):
+            if i < j:
+                c.add(-x[i, j], -x[j, i])
+                c.add(x[i, j], x[j, i])
+            for k in range(m):
+                if len({i, j, k}) == 3:
+                    c.add(-x[i, j], -x[j, k], x[i, k])
+    for i in range(m - 1 if sat else m):  # element i has a predecessor
+        c.add(*[x[j, i] for j in range(m) if j != i])
+    return c
+
+
+def xorsub_op(rng: Rng, m: int, d: int, sat: bool) -> Formula:
+    base = _ordering(m, sat)
+    n, cl = xor_substitute(rng, base.n, base.clauses, d)
+    return Formula(n, cl, "sat" if sat else "unsat", "construction",
+                   [f"ordering principle on {m} elements{' without one predecessor clause' if sat else ''}, "
+                    f"every variable replaced by the XOR of {d}"])
+
+
+def xorsub_php(rng: Rng, n: int, d: int) -> Formula:
+    base = php(rng, n)
+    m, cl = xor_substitute(rng, base.nvars, base.clauses, d)
+    return Formula(m, cl, "unsat", "construction", [f"PHP({n + 1}, {n}), every variable replaced by the XOR of {d}"])
+
+
+def xorsub_tseitin(rng: Rng, n: int, deg: int, odd: bool, d: int) -> Formula:
+    base = tseitin(rng, n, deg, odd)
+    m, cl = xor_substitute(rng, base.nvars, base.clauses, d)
+    return Formula(m, cl, base.status, "construction",
+                   base.comments + [f"every variable replaced by the XOR of {d}"])
+
+
+def xorsub_pebbling(rng: Rng, h: int, d: int) -> Formula:
+    """Pyramid of height h: the sources (bottom row) true, every node implied by its two
+    predecessors, the top false."""
+    c = Cnf()
+    node = {(r, i): c.var() for r in range(h) for i in range(r + 1)}
+    for i in range(h):
+        c.add(node[h - 1, i])
+    for r in range(h - 1):
+        for i in range(r + 1):
+            c.add(-node[r + 1, i], -node[r + 1, i + 1], node[r, i])
+    c.add(-node[0, 0])
+    m, cl = xor_substitute(rng, c.n, c.clauses, d)
+    return Formula(m, cl, "unsat", "construction",
+                   [f"pyramid pebbling of height {h}, every variable replaced by the XOR of {d}"])
+
+
+def xorsub_ksat(rng: Rng, n: int, k: int, ratio: float, d: int) -> Formula:
+    base = rand_ksat(rng, n, k, ratio)
+    m, cl = xor_substitute(rng, base.nvars, base.clauses, d)
+    return Formula(m, cl, None, "reference", [f"random {k}-SAT n={n} ratio {ratio}, every variable replaced by the XOR of {d}"])
 
 
 def coloring_planted(rng: Rng, n: int, k: int, deg: float) -> Formula:

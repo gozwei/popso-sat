@@ -61,6 +61,20 @@ struct GaussClosed {
   uint32_t level, matrix, row;
 };
 
+// XOR-substitution reversal (xorsub.cpp, --xorsub).
+struct XorSubStats {
+  uint64_t runs = 0, candidates = 0, tuples = 0, triples = 0, removed = 0, reduced = 0, definition_clauses = 0;
+  double seconds = 0;
+};
+
+// Linear equations modulo a prime on one-hot domains (linmod.cpp, --linmod).
+struct LinmodStats {
+  uint64_t runs = 0, groups = 0, group_sizes[8] = {}, equations = 0, nonlinear = 0, covered = 0, clauses = 0;
+  uint64_t systems = 0, rows = 0, columns = 0, rank = 0, skipped = 0, inconsistent = 0;
+  uint64_t attempts = 0, models = 0, conflicts = 0;
+  double seconds = 0;
+};
+
 struct GaussStats {
   // Detection (main solver).
   uint64_t xors = 0, xor_sizes[9] = {}, covered = 0, clauses = 0, components = 0, subsumed = 0;
@@ -76,6 +90,9 @@ struct GaussStats {
   uint64_t propagations = 0, conflicts = 0, pivots = 0, row_checks = 0, reopened = 0, root_units = 0;
   // Refutation of inconsistent XOR systems before search (main solver, with a DRAT proof).
   uint64_t refutations = 0, proof_lines = 0, proof_positions = 0, refute_aborted = 0;
+  // Root facts implied by the echelon form (--gaussfacts).
+  uint64_t facts_rank = 0, facts_free = 0, facts_units = 0, facts_equivalences = 0, facts_new_equivalences = 0;
+  uint64_t facts_short[5] = {}, facts_skipped = 0, facts_applied = 0;
 };
 
 }  // namespace psat

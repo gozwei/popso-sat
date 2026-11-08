@@ -3,7 +3,9 @@
 // For a clause C = (l1 ... lk), assign the negations of its literals one by one and propagate
 // without C. If a literal li is already false it is dropped (implied by the earlier ones); if it
 // is already true, C can be replaced by the decided literals plus li; if propagation conflicts, C
-// can be replaced by the decided literals alone. Any such clause is RUP and a subset of C.
+// can be replaced by the decided literals alone. Any such clause is RUP and a subset of C. When
+// the clause that conflicted (or implied li) has only decided literals besides, it is itself a
+// subset of C: with --vivifysubsume C is deleted instead of being replaced by a copy of it.
 //
 // Rounds run at the root after the root formula has been cleaned. Learned clauses of tier1 and
 // tier2 (best glue first) get two thirds of the effort, irredundant clauses the rest. Phases
@@ -85,8 +87,9 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
   // margin) are selected and ordered: on large formulas sorting every irredundant clause each
   // round cost more than vivifying. The others keep their turn for later rounds. Taken in chunks
   // in that order; within a chunk the literals of each clause are sorted by their number of
-  // occurrences among the selected candidates and the clauses lexicographically, so that
-  // consecutive clauses share decision prefixes, which are kept instead of being propagated again.
+  // occurrences among the selected candidates (--vivifysort: in all clauses) and the clauses
+  // lexicographically, so that consecutive clauses share decision prefixes, which are kept
+  // instead of being propagated again.
   constexpr size_t kChunk = 1000;
   {
     const uint64_t budget = ticks_limit > stats_.vivify_ticks ? ticks_limit - stats_.vivify_ticks : 0;
@@ -100,9 +103,24 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
   std::sort(cands.begin(), cands.end());
   std::vector<uint32_t>& count = viv_count_;
   count.assign(2 * size_t{num_vars_}, 0);
-  for (const uint64_t cand : cands) {
-    const Clause& c = clause(static_cast<uint32_t>(cand));
-    for (uint32_t k = 0; k < c.size; ++k) ++count[c.lits()[k]];
+  if (opts_.vivifysort == 2 || (opts_.vivifysort == 1 && !redundant)) {
+    // Occurrences in all clauses (binary ones included): deciding the negation of a literal that
+    // occurs often propagates the most, so conflicts come after fewer decisions. (Irredundant
+    // clauses on schooltt-5-3-8: 7.2% of the checks shorten one instead of 2.0%.)
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage) continue;
+      for (uint32_t k = 0; k < c.size; ++k) ++count[c.lits()[k]];
+    }
+    for (Lit l = 0; l < 2 * num_vars_; ++l) {
+      for (const Watch& w : watches_[l]) count[l] += w.binary() ? 1u : 0u;
+    }
+    stats_.vivify_ticks += arena_.size() / 8 + num_vars_;
+  } else {
+    for (const uint64_t cand : cands) {
+      const Clause& c = clause(static_cast<uint32_t>(cand));
+      for (uint32_t k = 0; k < c.size; ++k) ++count[c.lits()[k]];
+    }
   }
   auto before = [&](Lit a, Lit b) { return count[a] != count[b] ? count[a] > count[b] : a < b; };
   std::vector<Lit> flat;
@@ -112,7 +130,7 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
   const uint64_t ticks_before = stats_.vivify_ticks;
   uint64_t processed = 0;
   for (size_t first = 0; first < cands.size(); first += kChunk) {
-    if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
+    if (inconsistent_ || stats_.vivify_ticks > ticks_limit || stop_requested()) break;
     const size_t last = std::min(cands.size(), first + kChunk);
     flat.clear();
     spans.clear();
@@ -125,13 +143,15 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
     }
     order.resize(last - first);
     for (uint32_t i = 0; i < order.size(); ++i) order[i] = i;
+    // (equal literal sequences by candidate order: std::sort leaves ties in a library-specific order)
     std::sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
-      return std::lexicographical_compare(flat.begin() + spans[a].first, flat.begin() + spans[a].first + spans[a].second,
-                                          flat.begin() + spans[b].first, flat.begin() + spans[b].first + spans[b].second,
-                                          before);
+      const auto fa = flat.begin() + spans[a].first, fb = flat.begin() + spans[b].first;
+      if (std::lexicographical_compare(fa, fa + spans[a].second, fb, fb + spans[b].second, before)) return true;
+      if (std::lexicographical_compare(fb, fb + spans[b].second, fa, fa + spans[a].second, before)) return false;
+      return a < b;
     });
     for (const uint32_t i : order) {
-      if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
+      if (inconsistent_ || stats_.vivify_ticks > ticks_limit || stop_requested()) break;
       vivify_clause(static_cast<uint32_t>(cands[first + i]), flat.data() + spans[i].first, spans[i].second);
       ++processed;
     }
@@ -152,16 +172,29 @@ void Solver::probe_failed_literals(uint64_t ticks_limit) {
   std::vector<Lit> roots;
   for (Lit l = 0; l < 2 * num_vars_; ++l) {
     if (vals_[l] != 0 || eliminated_[var_of(l)]) continue;
-    bool implies = false, implied = false;
-    for (const Watch& w : watches_[negate(l)]) implies = implies || w.binary();
-    for (const Watch& w : watches_[l]) implied = implied || w.binary();
-    if (implies && !implied) roots.push_back(l);
+    // (each scan stops at the first binary watch)
+    bool implied = false;
+    for (const Watch& w : watches_[l]) {
+      if (w.binary()) {
+        implied = true;
+        break;
+      }
+    }
+    if (implied) continue;
+    bool implies = false;
+    for (const Watch& w : watches_[negate(l)]) {
+      if (w.binary()) {
+        implies = true;
+        break;
+      }
+    }
+    if (implies) roots.push_back(l);
   }
   for (const Lit r : roots) {
     // With --probeuip a failed probe learns the negation of the conflict's first unique
     // implication point, which the probe implies; while the probe stays unassigned after that
     // unit, it is probed again (each round fixes a new variable).
-    while (!inconsistent_ && stats_.vivify_ticks <= ticks_limit && vals_[r] == 0) {
+    while (!inconsistent_ && stats_.vivify_ticks <= ticks_limit && vals_[r] == 0 && !stop_requested()) {
       ++stats_.probes;
       control_.push_back(static_cast<uint32_t>(trail_.size()));
       assign(r, kNoReason);
@@ -173,13 +206,13 @@ void Solver::probe_failed_literals(uint64_t ticks_limit) {
       if (uip != r) ++stats_.probe_uips;
       const Lit unit = negate(uip);
       if (proof_) proof_->add_unit(unit);
-      assign(unit, kNoReason);
+      assign_unit_in_proof(unit);
       if (!propagate_vivify(kNoReason)) {
         inconsistent_ = true;
         if (proof_) proof_->add_empty();
       }
     }
-    if (inconsistent_ || stats_.vivify_ticks > ticks_limit) break;
+    if (inconsistent_ || stats_.vivify_ticks > ticks_limit || stop_requested()) break;
   }
 }
 
@@ -236,6 +269,7 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
     Clause& c = clause(ref);
     if (c.garbage) return false;
     c.vivified = 1;
+    if (c.redundant) ++stats_.vivify_checked_learned;
   }
   ++stats_.vivify_checked;
   // Satisfied at the root: just remove it.
@@ -303,6 +337,24 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
       break;
     }
   }
+  // Subsumed: the clause that conflicted (or implied the true literal) has only decided literals
+  // besides (negations of literals of C), so it is a subset of C. C goes, unless C is
+  // irredundant and the subsuming clause learned (then C is replaced by a copy below as usual).
+  if (opts_.vivifysubsume && (conflict || implied != kNoLit) && vivify_subsumed(implied, clause(ref).redundant)) {
+    if (conflict) backtrack(level() - 1);
+    Clause& c = clause(ref);
+    if (c.redundant) {
+      delete_clause_proof(c);
+      c.garbage = 1;
+      note_garbage(c);
+      garbage_words_ += kHeaderWords + c.size;
+      --redundant_;
+    } else {
+      delete_irredundant(ref);
+    }
+    ++stats_.vivify_subsumed;
+    return true;
+  }
   // Keep only the decisions the conflict (or the implication of the true literal) depends on.
   const bool track = opts_.vivifyasym && !clause(ref).redundant;
   if (conflict || implied != kNoLit) vivify_analyze(conflict ? kNoLit : implied, track);
@@ -357,6 +409,7 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
   ++stats_.vivified;
   stats_.vivified_literals += old_size - viv_decided_.size();
   const bool red = clause(ref).redundant;
+  if (red) ++stats_.vivified_learned;
   const uint32_t glue = clause(ref).glue;
   if (proof_) proof_->add(viv_decided_.data(), viv_decided_.size());
   {
@@ -378,7 +431,7 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
     return true;
   }
   if (viv_decided_.size() == 1) {
-    assign(viv_decided_[0], kNoReason);
+    assign_unit_in_proof(viv_decided_[0]);  // added above
     // Garbage clauses are still watched until the round ends: skip them (they are deleted in the
     // proof, so they must not justify the root units found here).
     if (!propagate_vivify(kNoReason)) {
@@ -453,10 +506,41 @@ void Solver::vivify_analyze(Lit implied, bool track_redundant) {
   if (implied != kNoLit) viv_decided_.push_back(implied);
 }
 
+// Whether the conflict clause (implied == kNoLit) or the reason of the implied true literal has
+// only decisions besides (the negations of literals of the clause being vivified): then it is a
+// subset of that clause. For an irredundant clause the subsuming clause has to be irredundant.
+bool Solver::vivify_subsumed(Lit implied, bool redundant) {
+  auto decided = [&](Lit l) {
+    const VarData& d = vdata_[var_of(l)];
+    return vals_[l] < 0 && d.level > 0 && d.reason == kNoReason;
+  };
+  if (implied == kNoLit && conflict_ref_ == kNoReason) {
+    return decided(conflict_bin_[0]) && decided(conflict_bin_[1]) &&
+           (redundant || irredundant_binary(conflict_bin_[0], conflict_bin_[1]));
+  }
+  uint32_t r = conflict_ref_;
+  if (implied != kNoLit) {
+    r = vdata_[var_of(implied)].reason;
+    if (r == kNoReason) return false;
+    if (r & kBinaryTag) {
+      const Lit o = static_cast<Lit>(r & ~kBinaryTag);
+      return decided(o) && (redundant || irredundant_binary(implied, o));
+    }
+  }
+  const Clause& d = clause(r);
+  if (!redundant && d.redundant) return false;
+  stats_.vivify_ticks += 1 + d.size / 8;
+  for (uint32_t k = 0; k < d.size; ++k) {
+    const Lit l = d.lits()[k];
+    if (l != implied && !decided(l)) return false;
+  }
+  return true;
+}
+
 // Whether an irredundant copy of the binary clause (a b) exists; it is watched in watches_[a]
 // with blocking literal b. The scan is charged to vivification.
 bool Solver::irredundant_binary(Lit a, Lit b) {
-  const std::vector<Watch>& ws = watches_[a];
+  const auto ws = watches_[a];
   stats_.vivify_ticks += 1 + (ws.size() >> 3);
   for (const Watch& w : ws) {
     if (w.binary() && w.blit == b && !w.redundant_binary()) return true;
