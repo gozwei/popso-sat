@@ -10,6 +10,18 @@
 // Rounds run at the root after the root formula has been cleaned. Learned clauses of tier1 and
 // tier2 (best glue first) get two thirds of the effort, irredundant clauses the rest. Phases
 // are saved and restored around a round so that vivification decisions do not leak into search.
+//
+// Each clause gets one turn per pass over its candidates (the vivified flag); the turns restart
+// when every candidate had one. Tier1 and tier2 share one pass, so with tier2's inflow the turns
+// rarely restart and a tier1 clause is vivified about once, when it is new (booth28 wallace at
+// 720 s: 44.7k tier1 checks against 467k tier2). --vivifytier1=e gives tier1 a pass of its own,
+// first in a round, with e per mille of the search ticks besides the round's effort: every tier1
+// clause is tried once per turn, the next turn starting as soon as one ends (in the same round,
+// the clauses tried in it counting as done); tier2 keeps the learned share of the effort, in
+// turns of its own. Tried again, a tier1 clause rarely changes: with e = 50 booth29 has 593k tier1
+// checks instead of 24k (28 turns), 4% of them shortened (23% of the first checks); sbdp4_65 1%,
+// knight_18 13%. The miters need about as many conflicts (booth29 7.19M against 7.40M, wallace
+// 16.45M against 16.72M) at more vivification time; paired 120 s 67 solved against 72. Off.
 
 #include <algorithm>
 #include <cmath>
@@ -34,6 +46,9 @@ void Solver::vivify() {
     unhide(std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.unhideeffort / 1000.0), 100000));
     if (inconsistent_) return;
   }
+  if (opts_.binreduce) {
+    reduce_binaries(std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.binreduceeffort / 1000.0), 20000));
+  }
   const uint64_t start = stats_.vivify_ticks;
   if (opts_.probe) probe_failed_literals(start + effort / 5);
   if (inconsistent_) return;
@@ -46,8 +61,19 @@ void Solver::vivify() {
       if (inconsistent_) return;
     }
   }
-  vivify_clauses(true, stats_.vivify_ticks + (opts_.vivifyirred ? 2 * effort / 3 : effort));
-  if (opts_.vivifyirred && !inconsistent_) vivify_clauses(false, start + effort);
+  uint64_t tier1_ticks = 0;  // (--vivifytier1: on top of the round's effort)
+  if (opts_.vivifytier1) {
+    const uint64_t tier1_start = stats_.vivify_ticks;
+    const uint64_t tier1_effort =
+        std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.vivifytier1 / 1000.0), 10000);
+    vivify_clauses(VivifyPass::kTier1, tier1_start + tier1_effort);
+    tier1_ticks = stats_.vivify_ticks - tier1_start;
+  }
+  if (!inconsistent_) {
+    vivify_clauses(opts_.vivifytier1 ? VivifyPass::kTier2 : VivifyPass::kLearned,
+                   stats_.vivify_ticks + (opts_.vivifyirred ? 2 * effort / 3 : effort));
+  }
+  if (opts_.vivifyirred && !inconsistent_) vivify_clauses(VivifyPass::kIrredundant, start + effort + tier1_ticks);
   backtrack(0);
   saved_ = saved;
   maybe_collect_garbage();
@@ -56,32 +82,77 @@ void Solver::vivify() {
                                                            std::sqrt(static_cast<double>(vivify_rounds_ + 1)));
 }
 
-void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
+void Solver::vivify_clauses(VivifyPass pass, uint64_t ticks_limit) {
+  const bool redundant = pass != VivifyPass::kIrredundant;
+  const bool separate = pass == VivifyPass::kTier1 || pass == VivifyPass::kTier2;
+  auto candidate = [&](const Clause& c) {
+    if (c.garbage || c.redundant != redundant) return false;
+    if (!redundant) return true;
+    if (separate) {
+      const bool tier1 = c.keep || c.glue <= tier1_;
+      if (pass == VivifyPass::kTier1 || tier1) return pass == VivifyPass::kTier1 && tier1;
+    }
+    return c.glue <= tier2_ || opts_.vivifytier3 != 0;
+  };
   // Candidates packed as (glue 20 bits, size 12 bits, ref 32 bits) in one word, reserved up front:
   // on formulas with millions of clauses a growing vector of pairs cost hundreds of MB.
   std::vector<uint64_t>& cands = viv_cands_;
-  cands.clear();
   cands.reserve(redundant ? redundant_ : irredundant_);
-  size_t done = 0;
-  for (const uint32_t ref : clauses_) {
-    const Clause& c = clause(ref);
-    if (c.garbage || c.redundant != redundant) continue;
-    if (redundant && c.glue > tier2_ && !opts_.vivifytier3) continue;
-    if (c.vivified) {
-      ++done;
+  const size_t first_new = clauses_.size();  // (replacements added by this pass come after)
+  std::vector<uint32_t>& tried = viv_tried_;
+  tried.clear();
+  bool restarted = false;
+  for (;;) {
+    cands.clear();
+    size_t done = 0;
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (!candidate(c)) continue;
+      if (c.vivified) {
+        ++done;
+        continue;
+      }
+      const uint64_t key = (uint64_t{std::min<uint32_t>(c.glue, (1u << 20) - 1)} << 12) | std::min<uint32_t>(c.size, 4095);
+      cands.push_back((key << 32) | ref);
+    }
+    if (cands.empty()) {
+      if (!done) return;
+      // Every clause had its turn: start the next turn. The shared passes start it in the next
+      // round. The separate tier passes (--vivifytier1) start it at once, for their own clauses
+      // only, those this pass tried (and their replacements) counting as done: their inflow of
+      // new clauses would otherwise keep the turn from ending, as in the shared pass.
+      if (!separate) {
+        for (const uint32_t ref : clauses_) {
+          Clause& c = clause(ref);
+          if (!c.garbage && c.redundant == redundant) c.vivified = 0;
+        }
+        return;
+      }
+      if (restarted) return;  // (every candidate was tried in this pass)
+      for (size_t i = 0; i < first_new; ++i) {
+        Clause& c = clause(clauses_[i]);
+        if (candidate(c)) c.vivified = 0;
+      }
+      for (const uint32_t ref : tried) {
+        Clause& c = clause(ref);
+        if (!c.garbage) c.vivified = 1;
+      }
+      if (pass == VivifyPass::kTier1) ++stats_.vivify_tier1_turns;
+      restarted = true;
       continue;
     }
-    const uint64_t key = (uint64_t{std::min<uint32_t>(c.glue, (1u << 20) - 1)} << 12) | std::min<uint32_t>(c.size, 4095);
-    cands.push_back((key << 32) | ref);
+    // (the separate passes go on with the next turn when every candidate was tried)
+    if (!vivify_candidates(pass, ticks_limit, separate ? &tried : nullptr) || !separate) return;
   }
-  // Every clause had its turn: start the next pass.
-  if (cands.empty() && done) {
-    for (const uint32_t ref : clauses_) {
-      Clause& c = clause(ref);
-      if (!c.garbage && c.redundant == redundant) c.vivified = 0;
-    }
-    return;
-  }
+}
+
+// Vivifies the candidates in viv_cands_ (in the order below) until the ticks limit; whether all
+// of them were tried. With tried, their references are added to it.
+bool Solver::vivify_candidates(VivifyPass pass, uint64_t ticks_limit, std::vector<uint32_t>* tried) {
+  const bool redundant = pass != VivifyPass::kIrredundant;
+  std::vector<uint64_t>& cands = viv_cands_;
+  bool all = true;
+  uint64_t& ticks_per_clause = pass == VivifyPass::kTier1 ? vivify_ticks_per_tier1_ : vivify_ticks_per_clause_;
   // Learned clauses: lowest glue (most useful) first; irredundant: shortest first. Only the
   // clauses this round can afford (estimated from the ticks per clause of earlier rounds, with a
   // margin) are selected and ordered: on large formulas sorting every irredundant clause each
@@ -93,11 +164,12 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
   constexpr size_t kChunk = 1000;
   {
     const uint64_t budget = ticks_limit > stats_.vivify_ticks ? ticks_limit - stats_.vivify_ticks : 0;
-    const uint64_t afford = 2 * budget / std::max<uint64_t>(vivify_ticks_per_clause_, 1);
+    const uint64_t afford = 2 * budget / std::max<uint64_t>(ticks_per_clause, 1);
     const size_t take = std::min(cands.size(), std::max<size_t>(kChunk, static_cast<size_t>(afford)));
     if (take < cands.size()) {
       std::nth_element(cands.begin(), cands.begin() + static_cast<std::ptrdiff_t>(take), cands.end());
       cands.resize(take);
+      all = false;
     }
   }
   std::sort(cands.begin(), cands.end());
@@ -152,15 +224,20 @@ void Solver::vivify_clauses(bool redundant, uint64_t ticks_limit) {
     });
     for (const uint32_t i : order) {
       if (inconsistent_ || stats_.vivify_ticks > ticks_limit || stop_requested()) break;
-      vivify_clause(static_cast<uint32_t>(cands[first + i]), flat.data() + spans[i].first, spans[i].second);
+      const uint64_t clause_ticks = stats_.vivify_ticks;
+      const uint32_t ref = static_cast<uint32_t>(cands[first + i]);
+      vivify_clause(ref, flat.data() + spans[i].first, spans[i].second);
+      tier_stats_.viv_ticks[static_cast<int>(pass)] += stats_.vivify_ticks - clause_ticks;
+      if (tried) tried->push_back(ref);
       ++processed;
     }
   }
   backtrack(0);
   if (processed >= 100) {
     const uint64_t per = (stats_.vivify_ticks - ticks_before) / processed + 1;
-    vivify_ticks_per_clause_ = (vivify_ticks_per_clause_ + per) / 2;
+    ticks_per_clause = (ticks_per_clause + per) / 2;
   }
+  return all && processed == cands.size() && !inconsistent_;
 }
 
 // Failed literal probing on the roots of the binary implication graph (literals that occur in no
@@ -265,13 +342,16 @@ Lit Solver::probe_uip() {
 }
 
 bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
+  int kind;  // (--tierstats) irredundant, tier1, tier2, tier3
   {
     Clause& c = clause(ref);
     if (c.garbage) return false;
     c.vivified = 1;
     if (c.redundant) ++stats_.vivify_checked_learned;
+    kind = !c.redundant ? 0 : (c.keep || c.glue <= tier1_) ? 1 : c.glue <= tier2_ ? 2 : 3;
   }
   ++stats_.vivify_checked;
+  ++tier_stats_.viv_checked[kind];  // (counted always: the final statistics show them)
   // Satisfied at the root: just remove it.
   for (uint32_t i = 0; i < n; ++i) {
     const Lit l = lits[i];
@@ -353,6 +433,7 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
       delete_irredundant(ref);
     }
     ++stats_.vivify_subsumed;
+    ++tier_stats_.viv_deleted[kind];
     return true;
   }
   // Keep only the decisions the conflict (or the implication of the true literal) depends on.
@@ -389,6 +470,7 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
       garbage_words_ += kHeaderWords + c.size;
       --redundant_;
       ++stats_.vivify_implied_deleted;
+      ++tier_stats_.viv_deleted[kind];
       return true;
     }
     // An irredundant clause implied by the other irredundant clauses alone (an asymmetric
@@ -398,6 +480,7 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
       backtrack(0);
       delete_irredundant(ref);
       ++stats_.vivify_asym;
+      ++tier_stats_.viv_deleted[kind];
       return true;
     }
     return false;
@@ -407,7 +490,9 @@ bool Solver::vivify_clause(uint32_t ref, const Lit* lits, uint32_t n) {
 
   // Replace C by the shorter clause.
   ++stats_.vivified;
+  ++tier_stats_.viv_shortened[kind];
   stats_.vivified_literals += old_size - viv_decided_.size();
+  tier_stats_.viv_literals[kind] += old_size - viv_decided_.size();
   const bool red = clause(ref).redundant;
   if (red) ++stats_.vivified_learned;
   const uint32_t glue = clause(ref).glue;

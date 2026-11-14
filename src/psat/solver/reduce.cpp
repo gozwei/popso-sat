@@ -43,6 +43,33 @@ void Solver::update_tier_limits() {
   for (uint64_t& c : used_glue_) c /= 2;  // older samples fade
 }
 
+// --tier1revive=p: an age limit L (2-31; 32: none) that follows the age at which the chance of a
+// tier1 clause being used again falls below p per mille. At each reduction the oldest age kept,
+// L - 1, is looked at: if its unused clauses were used again (before the next reduction) in fewer
+// than p per mille of the cases (decayed counts, enough of them), L falls by one, otherwise it
+// rises by one. The chance falls with the age (--tierstats; per reduce interval at ages 1, 2-3,
+// 4-7, 8-15, 16-31: crn_40_1521_s 6.8, 4.4, 2.1, 1.3, 0.54%; knight_18 29, 21, 14, 6.7, 1.2%;
+// gensys-ukn004 31, 26, 20, 13, 2.5%). A first version jumped to the youngest age below p: noisy
+// single ages sent L from 32 to 6 at once on crn_40 (and back to 19). Between ages 5 and 20 the
+// chance is flat near 1% on crn_40, so that even the gradual L wandered from 22 to 5 and back to
+// 13: L stays at least --tier1revivemin (8, the tested --tier1age). Paired 120 s: 72 solved
+// against 74 (ps_200_300_70 and SC23_Timetable lost).
+void Solver::update_revive_limit() {
+  const double p = static_cast<double>(opts_.tier1revive) / 1000.0;
+  constexpr double kSamples = 1000;  // least decayed exposure to judge an age
+  const auto min_limit = static_cast<uint32_t>(opts_.tier1revivemin);
+  const uint32_t oldest = revive_limit_ - 1;
+  if (revive_exposure_[oldest] >= kSamples && revive_count_[oldest] < p * revive_exposure_[oldest]) {
+    if (revive_limit_ > min_limit) --revive_limit_;
+  } else if (revive_limit_ < 32) {
+    ++revive_limit_;
+  }
+  for (uint32_t a = 0; a < 32; ++a) {  // (a window of about 16 reductions)
+    revive_exposure_[a] *= 15.0 / 16.0;
+    revive_count_[a] *= 15.0 / 16.0;
+  }
+}
+
 void Solver::reduce() {
   const PassTimer pass_timer(*this, kPassReduce);
   ++stats_.reductions;
@@ -50,21 +77,68 @@ void Solver::reduce() {
   mark_reasons(true);
   // Candidates: unprotected learned clauses not used since the last reduction (tier2 clauses
   // survive two rounds unused, tier1 clauses are kept).
+  // Kept for good, tier1 grows with the run, mostly through promotion (the glue of a learned clause
+  // recomputed in conflict analysis falls to tier1: 72-96% of the tier1 inflow on crn_40, knight_18,
+  // gensys, asconhash H10): crn_40 2.98M tier1 clauses at 420 s (20x its 145k irredundant ones, 3%
+  // of them used in the last two intervals), knight_18 581k at 2160 s, gensys-ukn004 107k (6x).
   // --tier1age=n: a tier1 clause found unused (no use in the last two intervals) at n reductions in
-  // a row is deleted. Kept for good, tier1 grows with the run: knight_18 618k tier1 clauses at
-  // 2400 s (more than its 608k irredundant long clauses), gensys-ukn004 107k at 600 s (18k
-  // clauses); with n = 8 about 100k and 46k, conflicts per second +57% and +20% late in the run.
-  const uint32_t age_limit = static_cast<uint32_t>(opts_.tier1age);
-  std::vector<std::pair<uint64_t, uint32_t>> order;
+  // a row is deleted. With n = 8: knight_18 tier1 about 100k, gensys 46k, conflicts per second
+  // +57% and +20% late; asconhash H10 496 s against 1578 s; but paired 120 s 70 solved against 74.
+  // --tier1ageconf=k: the same with the limit in conflicts, about k thousand: ceil(k * 1000 / the
+  // interval that just ended) reductions (1-31), so the limit in reductions falls as the interval
+  // grows.
+  // --tier1revive: an adaptive age limit (update_revive_limit).
+  // --tier1limit=r: a tier1 budget of r % of the irredundant long clauses (at least --tier1min);
+  // above it the tier1 clauses unused through --tier1limitage reductions are deleted, the longest
+  // unused first, down to the budget. Aging alone lost on large formulas whose tier1 is a small
+  // part of the clauses (ps_200_300_70, 1.5M clauses, 216k tier1: 48 s -> unsolved at 120 s;
+  // spg_420_280 16 -> 48 s; SC23_Timetable 42 s -> unsolved) and gained where tier1 is many times
+  // the formula (case9, 4.5k clauses: 73 -> 16 s). r = 100: paired 120 s 75 solved against 74,
+  // crn_40 tier1 280k and twice the conflicts in 1800 s; asconhash and knight_18 (tier1 below the
+  // formula) unchanged. r = 25: asconhash 729 s, but knight_18 unsolved at 3000 s on seeds 0 and 1.
+  // --tier1agepromoted: these delete only clauses promoted into tier1 (not kept).
+  // --tier1keepglue=G: they delete only tier1 clauses above glue G, whose glue keeps being
+  // recomputed (kept ones are not): with G = 1 the clauses that propagate within one level stay for
+  // good (as Kissat's tier1, glue 1 under its dynamic limit on the miters) and glue-2 ones can go.
+  // With --tier1age=16 (glue-2 ones go after 16 reductions unused): booth28 wallace 1914 -> 1640 s
+  // at the same conflicts (tier1 at 1560 s 148k -> 113k), but ps_200_323_70 40 s -> unsolved at
+  // 120 s (large formula, tier1 a small part of it, as with --tier1age=8). With --tier1limit=100
+  // --tier1limitage=16 instead the same deletions happen only above the budget: wallace 1617 s,
+  // booth29 442 s against 420-450 s, paired 120 s 73 solved against 72, crn_40 peak RSS 332 MB
+  // against 640 MB (its glue-1 class still grows).
+  // --tierstats keeps the ages without deleting (and counts the exposure by age).
+  uint32_t age_limit = static_cast<uint32_t>(opts_.tier1age);
+  if (!age_limit && opts_.tier1ageconf) {
+    const double interval = static_cast<double>(opts_.reduceint) * std::sqrt(static_cast<double>(stats_.reductions));
+    const double limit = std::ceil(1000.0 * static_cast<double>(opts_.tier1ageconf) / interval);
+    age_limit = static_cast<uint32_t>(std::clamp(limit, 1.0, 31.0));
+  }
+  if (!age_limit && opts_.tier1revive) {
+    update_revive_limit();
+    if (revive_limit_ < 32) age_limit = revive_limit_;
+  }
+  const bool budget = opts_.tier1limit != 0;
+  const bool track_age = age_limit || budget || opts_.tierstats || opts_.tier1revive;
+  uint64_t tier1_count = 0;
+  std::vector<std::pair<uint64_t, uint32_t>> order, tier1_order;
   for (const uint32_t ref : clauses_) {
     Clause& c = clause(ref);
-    if (!c.redundant || c.garbage || c.reason) continue;
+    if (!c.redundant || c.garbage) continue;
+    const bool tier1 = c.keep || c.glue <= tier1_;
+    if (c.reason) {
+      tier1_count += tier1;
+      continue;
+    }
     const bool used = c.used != 0;
     if (used) --c.used;
-    if (age_limit && (c.keep || c.glue <= tier1_)) {
+    if (track_age && tier1) {
       if (used) {
         c.age = 0;
-      } else if (++c.age >= age_limit) {
+      } else if (c.age < 31) {
+        ++c.age;
+      }
+      const bool agable = !used && !((opts_.tier1agepromoted || opts_.tier1keepglue) && c.keep);
+      if (age_limit && agable && c.age >= age_limit) {
         delete_clause_proof(c);
         c.garbage = 1;
         note_garbage(c);
@@ -74,10 +148,39 @@ void Solver::reduce() {
         ++stats_.reduced_tier1;
         continue;
       }
+      if (!used) {
+        if (opts_.tierstats) ++tier_stats_.exposure[age_bucket(c.age)];
+        revive_exposure_[c.age] += 1;
+      }
+      ++tier1_count;
+      // Longest unused first, then high glue, then long.
+      if (budget && agable && c.age >= static_cast<uint32_t>(opts_.tier1limitage)) {
+        tier1_order.emplace_back((uint64_t{c.age} << 52) | (uint64_t{c.glue} << 32) | c.size, ref);
+      }
+      continue;
     }
-    if (used || c.keep || c.glue <= tier1_) continue;
+    if (used || tier1) continue;
     // Least useful first: high glue, then long.
     order.emplace_back((uint64_t{c.glue} << 32) | c.size, ref);
+  }
+  if (budget) {
+    const uint64_t limit = std::max<uint64_t>(static_cast<uint64_t>(opts_.tier1min),
+                                              irredundant_ * static_cast<uint64_t>(opts_.tier1limit) / 100);
+    if (tier1_count > limit) {
+      const size_t excess = static_cast<size_t>(std::min<uint64_t>(tier1_count - limit, tier1_order.size()));
+      std::sort(tier1_order.begin(), tier1_order.end(),
+                [](const auto& a, const auto& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
+      for (size_t i = 0; i < excess; ++i) {
+        Clause& c = clause(tier1_order[i].second);
+        delete_clause_proof(c);
+        c.garbage = 1;
+        note_garbage(c);
+        garbage_words_ += kHeaderWords + c.size;
+        --redundant_;
+        ++stats_.reduced_clauses;
+        ++stats_.reduced_tier1;
+      }
+    }
   }
   // Ties (same glue and size) by arena position, older first: std::sort leaves equal keys in an
   // order that differs between standard libraries (libc++ / libstdc++ took different searches).

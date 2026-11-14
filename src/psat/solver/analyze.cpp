@@ -30,11 +30,26 @@ uint32_t Solver::recompute_glue(const Clause& c) {
 void Solver::bump_reason_clause(uint32_t ref) {
   Clause& c = clause(ref);
   if (!stable_) ++used_glue_[std::min<uint32_t>(c.glue, kGlueBuckets - 1)];
+  if (opts_.tierstats) ++tier_stats_.used_glue[stable_][std::min<uint32_t>(c.glue, 8)];
+  if (c.age && (opts_.tierstats || opts_.tier1revive)) {  // (the next reduction would reset the age anyway)
+    if (opts_.tierstats) ++tier_stats_.revived[age_bucket(c.age)];
+    revive_count_[c.age] += 1;
+    c.age = 0;
+  }
   if (!c.keep) {
     const uint32_t glue = recompute_glue(c);
     if (glue < c.glue) {
+      if (glue <= tier2_ && c.glue > tier2_) ++stats_.tier2_promoted;
+      if (glue <= tier1_ && c.glue > tier1_) ++stats_.tier1_promoted;
       c.glue = glue;
-      if (glue <= tier1_) c.keep = 1;
+      // (--tier1agepromoted: not kept, so that reduce tells it from a clause learned in tier1)
+      // A kept clause's glue is not recomputed again: 94% of booth29's tier1 is glue 2 and 4.5% of
+      // the uses are of glue 1 clauses; with the glue recomputed (--tier1=1) 64% are (Kissat 62%).
+      // --tier1keepglue=G keeps only glue <= G for good.
+      if (glue <= tier1_ && !opts_.tier1agepromoted &&
+          (!opts_.tier1keepglue || glue <= static_cast<uint32_t>(opts_.tier1keepglue))) {
+        c.keep = 1;
+      }
     }
   }
   c.used = c.glue <= tier2_ ? 2 : 1;
@@ -476,10 +491,19 @@ void Solver::learn_clause(uint32_t jump, uint32_t glue) {
   if (learned_.size() == 2) {
     ++stats_.learned_binary;
     add_binary(learned_[0], learned_[1], true);
+    if (opts_.binstats) {  // (statistics: the census count when it was learned)
+      const uint32_t epoch = (bin_census_.epoch & kBinaryEpochMask) << kBinaryEpochShift;
+      watches_[learned_[0]].back().ref |= epoch;
+      watches_[learned_[1]].back().ref |= epoch;
+    }
     assign_at(uip, kBinaryTag | learned_[1], jump);
     return;
   }
   const uint32_t ref = new_clause(learned_.data(), static_cast<uint32_t>(learned_.size()), true, glue);
+  if (glue <= tier1_) {
+    ++stats_.tier1_learned;
+    --stats_.tier1_other;  // (new_clause counted it)
+  }
   assign_at(uip, ref, jump);
   if (opts_.eagersubsume) {
     if (recent_learned_.size() >= static_cast<size_t>(opts_.eagersubsume)) {

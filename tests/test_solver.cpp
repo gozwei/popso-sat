@@ -120,6 +120,17 @@ std::vector<Options> option_variants() {
   a.queueorderforward = 0;
   v.push_back(a);
   a.queueorder = 0;
+  a.queuescores = 1;  // the same with the focused queue in stable-mode score order at every switch
+  v.push_back(a);
+  a.stablereorder = 1;      // the same with stable-mode scores from clause occurrences (clauses of
+  a.stablereordersize = 3;  // at most three literals)
+  v.push_back(a);
+  a.queuescores = 2;  // the queue order at the first switch to focused only, occurrence weights added
+  a.stablereorder = 2;
+  a.stablereordersize = 100;
+  v.push_back(a);
+  a.queuescores = 0;
+  a.stablereorder = 0;
   Options b;
   b.stable = 0;
   b.minimize = 0;
@@ -193,6 +204,9 @@ std::vector<Options> option_variants() {
   e.eliminatecomplete = 0;
   e.eliminatelongskip = 0;
   e.eliminateeffort = 100;
+  e.eliminatecircuit = 1;  // the same with the heap and complete rounds where some AND gate is forward
+  v.push_back(e);
+  e.eliminatecircuit = 0;
   e.vivifyint = 10;  // the same with frequent vivification, BVA, shrinking and sweeping
   e.probeuip = 1;  // (failed probes learn their first UIP)
   e.bva = 1;
@@ -220,6 +234,8 @@ std::vector<Options> option_variants() {
   e.vivifysort = 2;     // ordered by all their occurrences
   e.randec = 1;
   e.randecint = 10;
+  v.push_back(e);
+  e.vivifytier1 = 1000;  // the same with tier1 in a vivification pass of its own
   v.push_back(e);
   Options s;  // sweeping with small environments
   s.sweep = 1;
@@ -306,6 +322,9 @@ std::vector<Options> option_variants() {
   w.eliminateint = 10;
   v.push_back(w);
   w.walkmode = 3;  // the same with ProbSAT phases and a clause-weighting walk for models
+  v.push_back(w);
+  w.walkmodel = 2;      // and with the model walk backing off, near a model at half the scale
+  w.walkmodelnear = 50;
   v.push_back(w);
   return v;
 }
@@ -518,18 +537,27 @@ TEST(solver_structured_miters_with_invariants) {
 TEST(walk_model_search_keeps_the_search) {
   // --walkmode=3 sets the phases with the ProbSAT walk as --walkmode=0 does; its clause-weighting
   // walk only looks for a model. Without one, the search is the same: the same counters and the
-  // same proof (unsatisfiable formulas, frequent walks, and with walks adopted only at a record).
+  // same proof (unsatisfiable formulas, frequent walks, and with walks adopted only at a record),
+  // whatever budget the model walk gets (--walkmodel 0-2; near a model always, never, or by the
+  // default scale). Every walk call runs the model walk or skips it.
   std::mt19937_64 rng(57);
   std::vector<std::pair<int, ClauseList>> formulas = {adder_miter(8), adder_miter(12)};
   for (int it = 0; it < 4; ++it) formulas.emplace_back(60, random_formula(rng, 60, 300, 3, 3));
+  struct Config {
+    int mode, model, near;
+  };
+  const Config configs[] = {{0, 0, 100}, {3, 0, 100}, {3, 1, 100}, {3, 1, 0}, {3, 1, 100000}, {3, 2, 100}, {3, 2, 0}, {3, 2, 100000}};
   for (const auto& f : formulas) {
     for (int record = 0; record <= 1; ++record) {
       Stats ref;
       std::string ref_proof;
       int ref_result = 0;
-      for (int mode : {0, 3}) {
+      for (const Config& config : configs) {
+        const int mode = config.mode;
         Options o;
         o.walkmode = mode;
+        o.walkmodel = config.model;
+        o.walkmodelnear = config.near;
         o.walkrecord = record;
         o.rephaseint = 10;
         o.walkeffort = 1000;
@@ -555,6 +583,10 @@ TEST(walk_model_search_keeps_the_search) {
         CHECK_EQ(s.stats().propagations, ref.propagations);
         CHECK_EQ(s.stats().walks, ref.walks);
         CHECK(proof_text == ref_proof);
+        if (result == kUnsat) {  // (no ProbSAT walk ends with a model: every call has a model walk or skips it)
+          CHECK_EQ(s.stats().model_walks + s.stats().model_walks_skipped, s.stats().walks);
+          if (config.model == 0 || (config.model == 1 && config.near == 100000)) CHECK_EQ(s.stats().model_walks_skipped, 0u);
+        }
       }
     }
   }
@@ -716,6 +748,124 @@ TEST(reduce_tier1_aging) {
     CHECK_EQ(kept.result, res);
   }
   CHECK(aged > 0);
+}
+
+TEST(reduce_tier1_policies) {
+  // --tier1ageconf, --tier1limit, --tier1revive, --tier1agepromoted and --tier1keepglue (with
+  // --tier1age) delete tier1 clauses (with proofs checked and models verified); the same formulas
+  // with tier1 kept give the same answers.
+  struct Variant {
+    const char* name;
+    void (*set)(Options&);
+  };
+  const Variant variants[] = {
+      {"tier1ageconf", [](Options& o) { o.tier1ageconf = 1; }},
+      {"tier1limit", [](Options& o) {
+         o.tier1limit = 10;
+         o.tier1min = 20;
+         o.tier1limitage = 2;
+       }},
+      {"tier1revive", [](Options& o) {
+         o.tier1revive = 500;
+         o.tier1revivemin = 2;
+       }},
+      {"tier1agepromoted", [](Options& o) {
+         o.tier1agepromoted = 1;
+         o.tier1age = 1;
+       }},
+      {"tier1keepglue", [](Options& o) {
+         o.tier1keepglue = 1;
+         o.tier1age = 2;
+       }},
+      {"tier1keepglue_limit", [](Options& o) {
+         o.tier1keepglue = 1;
+         o.tier1limit = 10;
+         o.tier1min = 20;
+         o.tier1limitage = 2;
+       }},
+  };
+  for (const Variant& v : variants) {
+    std::mt19937_64 rng(13);
+    uint64_t aged = 0;
+    for (int it = 0; it < 16; ++it) {
+      const int n = 120 + static_cast<int>(rng() % 60);
+      const ClauseList cl = random_formula(rng, n, static_cast<int>(n * 4.26), 3, 3);
+      Options o;
+      o.reduceint = 10;
+      o.tier1 = 3 + it % 4;
+      o.tier2 = 8;
+      o.eliminate = it % 2;
+      v.set(o);
+      std::string proof_text;
+      ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+      Solver s(o);
+      s.set_proof(&proof);
+      s.reserve(n);
+      for (const auto& c : cl) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      const int res = s.solve();
+      proof.flush();
+      aged += s.stats().reduced_tier1;
+      REQUIRE(res == kSat || res == kUnsat);
+      if (res == kUnsat) {
+        psat_test::RupChecker checker(n);
+        for (const auto& c : cl) checker.add_original(c);
+        const auto r = checker.check_text_proof(proof_text);
+        CHECK(r.ok && r.has_empty);
+      } else {
+        for (const auto& c : cl) {
+          bool sat = false;
+          for (int l : c) sat = sat || s.val(l) == l;
+          CHECK(sat);
+        }
+      }
+      Outcome kept = run(n, cl, Options{}, false);
+      CHECK_EQ(kept.result, res);
+    }
+    if (aged == 0) std::printf("  %s: no tier1 clause deleted\n", v.name);
+    CHECK(aged > 0);
+  }
+}
+
+TEST(propstats_same_search) {
+  // --propstats=1 / 2 count in their own instantiations of the propagation loop (the default one
+  // skips runs of true blockers in tight loops): the same conflicts, decisions, propagations and
+  // ticks as without them, with and without elimination and chronological backtracking.
+  std::mt19937_64 rng(19);
+  uint64_t visits = 0;
+  for (int it = 0; it < 12; ++it) {
+    const int n = 150 + static_cast<int>(rng() % 100);
+    const ClauseList cl = random_formula(rng, n, static_cast<int>(n * 4.2), 3, 5);
+    Options base;
+    base.reduceint = 50;
+    base.eliminate = it % 2;
+    base.chrono = it % 3 == 0 ? 1 : 0;
+    Stats st[3];
+    int res[3];
+    for (int k = 0; k < 3; ++k) {
+      Options o = base;
+      o.propstats = k;
+      Solver s(o);
+      s.reserve(n);
+      for (const auto& c : cl) {
+        for (int l : c) s.add(l);
+        s.add(0);
+      }
+      res[k] = s.solve();
+      st[k] = s.stats();
+    }
+    for (int k = 1; k < 3; ++k) {
+      CHECK_EQ(res[k], res[0]);
+      CHECK_EQ(st[k].conflicts, st[0].conflicts);
+      CHECK_EQ(st[k].decisions, st[0].decisions);
+      CHECK_EQ(st[k].propagations, st[0].propagations);
+      CHECK_EQ(st[k].ticks, st[0].ticks);
+    }
+    visits += st[0].propagations;
+  }
+  CHECK(visits > 0);
 }
 
 TEST(solver_conflict_limit_unknown) {
@@ -3223,4 +3373,107 @@ TEST(queueorder_focused_phases) {
       if (r.result == kUnsat) CHECK(r.proof_ok);
     }
   }
+}
+
+TEST(vivify_tier1_pass) {
+  // --vivifytier1: tier1 learned clauses vivified in a pass of their own, every tier1 clause once
+  // per turn (proofs checked, models verified; small and large efforts, with implied clauses
+  // deleted and with glue recomputation in tier1); the same answers without it.
+  std::mt19937_64 rng(14);
+  uint64_t turns = 0, checked = 0;
+  for (int it = 0; it < 24; ++it) {
+    const int n = 100 + static_cast<int>(rng() % 60);
+    const ClauseList cl = random_formula(rng, n, static_cast<int>(n * 4.26), 3, 3);
+    Options o;
+    o.vivifyint = 10;
+    o.reduceint = 20;
+    o.tier1 = 2 + it % 4;
+    o.vivifytier1 = it % 3 == 0 ? 1 : it % 3 == 1 ? 100 : 100000;
+    o.vivifyimplied = it % 4 == 1;
+    o.tier1keepglue = it % 5 == 2 ? 1 : 0;
+    o.eliminate = it % 2;
+    std::string proof_text;
+    ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+    Solver s(o);
+    s.set_proof(&proof);
+    s.reserve(n);
+    for (const auto& c : cl) {
+      for (int l : c) s.add(l);
+      s.add(0);
+    }
+    const int res = s.solve();
+    proof.flush();
+    turns += s.stats().vivify_tier1_turns;
+    checked += s.stats().vivify_checked_learned;
+    REQUIRE(res == kSat || res == kUnsat);
+    if (res == kUnsat) {
+      psat_test::RupChecker checker(n);
+      for (const auto& c : cl) checker.add_original(c);
+      const auto r = checker.check_text_proof(proof_text);
+      CHECK(r.ok && r.has_empty);
+    } else {
+      for (const auto& c : cl) {
+        bool sat = false;
+        for (int l : c) sat = sat || s.val(l) == l;
+        CHECK(sat);
+      }
+    }
+    o.vivifytier1 = 0;
+    const Outcome without = run(n, cl, o, false);
+    CHECK_EQ(without.result, res);
+  }
+  CHECK(checked > 0);
+  CHECK(turns > 0);
+}
+
+TEST(binreduce_deletes_implied_learned_binaries) {
+  // --binreduce: learned binary clauses implied by the other binary clauses are deleted in
+  // vivification rounds (proofs checked, models checked; with --invariants each deleted clause is
+  // checked to be implied by propagation); the same answers without it. Random 3-SAT near the
+  // threshold without elimination learns binary clauses within a few hundred conflicts; tiny path
+  // limits leave checks undecided.
+  std::mt19937_64 rng(12);
+  uint64_t deleted = 0, checked = 0;
+  for (int it = 0; it < 24; ++it) {
+    const int n = 80 + static_cast<int>(rng() % 60);
+    const ClauseList cl = random_formula(rng, n, static_cast<int>(n * 4.26), 3, 3);
+    Options o;
+    o.eliminate = 0;
+    o.vivifyint = 10;
+    o.binreduce = 1;
+    o.binreducenodes = 2 + it % 6 * 20;
+    o.binreduceeffort = it % 3 ? 1000 : 1;
+    o.invariants = it % 2;  // (each deletion checked: -a still propagates b)
+    std::string proof_text;
+    ProofWriter proof([&](const char* d, size_t k) { proof_text.append(d, k); }, false);
+    Solver s(o);
+    s.set_proof(&proof);
+    s.reserve(n);
+    for (const auto& c : cl) {
+      for (int l : c) s.add(l);
+      s.add(0);
+    }
+    const int res = s.solve();
+    proof.flush();
+    deleted += s.stats().binreduce_deleted;
+    checked += s.stats().binreduce_checked;
+    REQUIRE(res == kSat || res == kUnsat);
+    if (res == kUnsat) {
+      psat_test::RupChecker checker(n);
+      for (const auto& c : cl) checker.add_original(c);
+      const auto r = checker.check_text_proof(proof_text);
+      CHECK(r.ok && r.has_empty);
+    } else {
+      for (const auto& c : cl) {
+        bool sat = false;
+        for (int l : c) sat = sat || s.val(l) == l;
+        CHECK(sat);
+      }
+    }
+    o.binreduce = 0;
+    const Outcome without = run(n, cl, o, false);
+    CHECK_EQ(without.result, res);
+  }
+  CHECK(checked > 0);
+  CHECK(deleted > 0);
 }

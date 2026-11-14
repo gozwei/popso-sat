@@ -41,10 +41,16 @@
 namespace psat {
 
 constexpr uint32_t kBinaryTag = 0x80000000u;
+// Bits of a binary watch's ref besides the tag and the redundant flag (bit 0), read only by the
+// code that sets them (binaries.cpp): --binstats marks a watch used in a propagation or conflict
+// since learned and since the last census, and keeps the census count when it was learned (bits
+// 4-30); --binreduce marks the watch of a learned binary clause it checked and kept.
+constexpr uint32_t kBinaryUsed = 2u, kBinaryRecent = 4u, kBinaryChecked = 8u;
+constexpr uint32_t kBinaryEpochShift = 4, kBinaryEpochMask = 0x07FFFFFFu;
 
 struct Watch {
   Lit blit;      // blocking literal (the other literal for binary clauses)
-  uint32_t ref;  // clause reference, or kBinaryTag | redundant-flag for binary clauses
+  uint32_t ref;  // clause reference, or kBinaryTag | redundant-flag (| the bits above) for binary clauses
 
   bool binary() const { return (ref & kBinaryTag) != 0; }
   bool redundant_binary() const { return (ref & 1u) != 0; }

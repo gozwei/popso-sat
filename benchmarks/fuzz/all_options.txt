@@ -16,6 +16,9 @@
 --queueorder=0..4
 --queueordergates=0..1000
 --queueorderforward=0..1000
+--queuescores=0..2
+--stablereorder=0..2
+--stablereordersize=2..200
 --renumber=0..3
 --renumberrandom=0..1000
 --modeinit=10..3000
@@ -38,6 +41,15 @@
 --tier1=1..100
 --tier2=1..1000
 --tier1age=0..31
+--tier1ageconf=0..200
+--tier1revive=0..1000
+--tier1revivemin=2..31
+--tier1limit=0..1000
+--tier1min=0..2000
+--tier1limitage=1..31
+--tier1agepromoted=0..1
+--tier1keepglue=0..3
+--tierstats=0..1
 --dynamictiers=0..1
 --tier1quantile=1..99
 --tier2quantile=1..99
@@ -58,6 +70,8 @@
 --walkeffort=1..2000
 --walkmode=0..3
 --walkrecord=0..1
+--walkmodel=0..2
+--walkmodelnear=0..400
 --lucky=0..1
 --decay=1..200
 --bumpreasons=0..1
@@ -88,6 +102,7 @@
 --eliminatetouched=0..1
 --eliminateheap=0..2
 --eliminatecomplete=0..2
+--eliminatecircuit=0..1000
 --eliminatelongskip=0..1
 --dedup=0..1
 --subsume=0..1
@@ -136,11 +151,17 @@
 --vivifyinst=0..1
 --vivifyimplied=0..1
 --vivifyasym=0..1
+--vivifytier1=0,1,10,50,200,1000,100000
 --vivifysubsume=0..1
 --vivifysort=0..2
 --probe=0..1
 --unhide=0..1
 --unhideeffort=1..5000
+--binreduce=0..1
+--binreduceeffort=1..5000
+--binreducenodes=2..1000
+--binstats=0..1
+--propstats=0..2
 
 # sweeping
 --sweep=0..1

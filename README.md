@@ -10,16 +10,17 @@ use of AI coding agents. The goal is a fully open-source solver that holds its o
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
 first milestone. It is at an early stage.
 
-On a sample of 168 instances of the SAT Competition 2026, version 0.4.1 solves 108 within 1000 s.
-Kissat 4.0.4 solves 82 and version 0.4.0 solves 101, on the same machine at the same time. All
-65 UNSAT answers were checked with their proofs. Most of the lead over Kissat comes from
-reasoning Kissat does not have:
+On a sample of 168 instances of the SAT Competition 2026, version 0.4.2 solves 110 within 1000 s,
+against 80 for Kissat 4.0.4 and 98 for version 0.4.0 on the same machine. All 65 UNSAT answers
+were checked with their proofs. Most of the lead over Kissat comes from reasoning Kissat does
+not have:
 - counting certificates;
 - Gauss-Jordan elimination;
 - linear equations mod p.
 
-On 32 instances from earlier SAT Competitions that were not used for tuning, 0.4.0 solved 21
-within 120 s, where Kissat solved 24 (see [BENCHMARKS.md](BENCHMARKS.md)).
+The defaults were tuned on that sample. On 78 instances of the 2024 and 2025 competitions from
+families never used for tuning, Kissat is ahead: 49 solved against 43 for 0.4.2 (see
+[BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -64,30 +65,29 @@ default every model is checked against the original formula before it is printed
 ## Performance
 
 A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.txt`). Setup:
-- 1000 s and 12 GB per instance, on an AMD EPYC 4465P running Linux;
-- the three solvers ran at the same time, seven instances each;
+- 1000 s and 12 GB per instance, four at a time, on an Intel i7-7700K running Linux;
 - every model was checked;
-- every UNSAT answer of popso-sat was checked with its proof by dpr-trim.
+- every UNSAT answer of popso-sat 0.4.2 was checked with its proof by dpr-trim.
 
-Solved / PAR-2 in seconds:
+78 instances of the 2024 and 2025 main tracks from 38 families that are in no tuning set
+(`sets/fresh.txt`): 1000 s and 12 GB, four at a time, on an Intel Xeon E5-1650 v2 running
+Linux; no proofs.
 
-| set | popso-sat 0.4.1 | popso-sat 0.4.0 | Kissat 4.0.4 |
+Solved / PAR-2 in seconds (the two sets ran on different machines):
+
+| set | popso-sat 0.4.2 | popso-sat 0.4.0 | Kissat 4.0.4 |
 |---|---|---|---|
-| sc2026 (168) | 108 / 783.2 | 101 / 896.1 | 82 / 1131.7 |
+| sc2026 (168) | 110 / 775.3 | 98 / 926.4 | 80 / 1152.3 |
+| fresh (78) | 43 / 958.4 | | 49 / 874.6 |
 
-**Against 0.4.0:** 0.4.1 solves 11 of these instances that 0.4.0 does not, and loses 4.
-- The 11:
-  - four linear-equations instances, solved by Gaussian elimination mod 3;
-  - two school timetabling instances, through BVA during search;
-  - an XOR ordering-principle instance;
-  - four satisfiable ones.
-- The 4: three satisfiable instances that 0.4.0 solved after 500 s, and gensys-ukn004.
+**sc2026:** 0.4.2 solves 36 instances that Kissat does not, most of them with counting,
+Gauss-Jordan or mod-p reasoning. Kissat solves 6 that 0.4.2 does not. Against 0.4.0, 0.4.2
+gains 14 and loses 2. At 5000 s (competition length, on an AMD EPYC 4465P), 0.4.2 solves 130,
+the 0.4.1 search 125 and Kissat 110.
 
-**Against Kissat 4.0.4:** 0.4.1 solves 37 instances that Kissat does not, most of them with
-counting, Gauss-Jordan or mod-p reasoning. Kissat solves 11 that 0.4.1 does not.
-
-**Earlier results:** on the Intel i7-7700K box, 0.4.0 solved 98 of the same instances, against
-80 for Kissat. The 0.4.1 defaults were chosen on this set, so it is not a held-out test.
+**fresh:** 0.4.2 solves more within 300 s (38 against 36), but Kissat solves 13 instances that
+0.4.2 does not, among them two multiplier verification instances in 12 and 20 s. 0.4.2 solves 7
+that Kissat does not.
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of
@@ -178,7 +178,7 @@ solvers on random and structured formulas and shrink failures with delta debuggi
   counting certificates.
 - Single-threaded; no incremental (IPASIR) interface or C API yet.
 - Memory on the largest formulas is close to Kissat's since 0.4.1. The largest peak on the 2026
-  sample is 2.7 GB, against Kissat's 2.4 GB.
+  sample is 2.5 GB, against Kissat's 2.4 GB.
 
 ## Repository layout
 

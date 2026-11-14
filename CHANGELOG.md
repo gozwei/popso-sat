@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.4.2 — 2026-11-14
+
+Two new defaults: a model walk that backs off while it is far from a model, and variable
+renumbering for memory locality. Propagation skips runs of watches with a true blocking literal,
+with an unchanged search. New options for learned-clause tiers, decision orders on circuits and
+BVA budgets, all off.
+
+On the 168 SAT Competition 2026 instances (Intel i7-7700K, Linux, 1000 s, every UNSAT answer
+checked with its proof):
+
+| | 0.4.2 | 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved (SAT / UNSAT) | 110 (45 / 65) | 98 (37 / 61) | 80 (35 / 45) |
+| PAR-2 (s) | 775 | 926 | 1152 |
+
+On 78 instances of the 2024 and 2025 main tracks from families never used for tuning (Intel Xeon
+E5-1650 v2, Linux, 1000 s), 0.4.2 solves 43 and Kissat 4.0.4 solves 49. The lead on sc2026 does
+not carry over to these families; see [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Model walk** (`--walkmodel=2`, on): the DDFW walk that looks for models (`--walkmode=3`)
+  backs off while far from a model. After k walks in a row whose best assignment leaves more
+  than about sqrt(clauses) clauses falsified, it skips the next 2^k - 1 calls.
+  - sc2026 (300 s, i7): 93 solved against 92; T92 is solved again.
+- **Renumbering** (`--renumber=1`, on): where the input numbering looks random, variables are
+  renumbered breadth-first over the clauses so that neighbours sit close in memory. The decision
+  order, proofs and models keep the input numbering.
+  - sc2026 (300 s): 93 against 92 on the i7, 104 against 103 on the EPYC.
+- **Propagation** skips runs of watches whose blocking literal is true in a tight loop, with
+  an unchanged search. `--propstats` prints watch and blocker counts.
+- **At competition length:** all of sc2026 at 5000 s on the AMD EPYC 4465P: 130 solved
+  (55 / 75), PAR-2 2650. The 0.4.1 search solves 125 (2848) and Kissat 4.0.4 110 (3893).
+- **New options, off by default:**
+  - learned-clause tiers: `--tier1limit`, `--tier1limitage`, `--tier1revive`,
+    `--tier1keepglue`, and `--tierstats` (statistics only);
+  - learned binary clauses: `--binstats` (statistics only) and `--binreduce` (transitive
+    reduction);
+  - decision orders for circuits: `--stablereorder`, `--queuescores`; circuit elimination:
+    `--eliminatecircuit`;
+  - `--vivifytier1`: tier-1 vivification in a pass of its own;
+  - `--bvaextend` and `--bvaextendticks` also apply to the plain BVA order: a trial round may
+    run past its budget while it is productive.
+
 ## v0.4.1 — 2026-11-08
 
 BVA during search, a solver for linear equations mod p, congruence closure over XOR and ITE gates,

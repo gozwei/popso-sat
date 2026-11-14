@@ -31,7 +31,7 @@ namespace psat {
 // The bound of the next round: 0, then 1, 2, 4, ... up to --eliminatebound, one step per round
 // (with --eliminatecomplete one step per round that tried all its candidates).
 uint32_t Solver::elimination_bound() const {
-  const uint64_t level = opts_.eliminatecomplete ? eliminate_level_ : eliminate_rounds_;
+  const uint64_t level = elim_complete_mode() ? eliminate_level_ : eliminate_rounds_;
   if (level == 0) return 0;
   return static_cast<uint32_t>(
       std::min<uint64_t>(opts_.eliminatebound, uint64_t{1} << std::min<uint64_t>(level - 1, 20)));
@@ -56,7 +56,7 @@ bool Solver::eliminating() const {
   // With --eliminatecomplete, also while the last round left candidates untried.
   return eliminate_rounds_ == 0 || elimination_bound() > eliminate_last_bound_ || fixed_ != eliminate_last_fixed_ ||
          irredundant_ + binaries_irredundant_ != eliminate_last_irredundant_ ||
-         (opts_.eliminatetouched && touched_count_ > 0) || (opts_.eliminatecomplete && eliminate_incomplete_);
+         (opts_.eliminatetouched && touched_count_ > 0) || (elim_complete_mode() && eliminate_incomplete_);
 }
 
 uint64_t Solver::irredundant_literals() const {
@@ -273,6 +273,14 @@ void Solver::eliminate() {
   if (!backtrack_to_root()) return;
   // Root level, fully propagated.
   if (fixed_ > last_simplify_fixed_) simplify_root();
+  // --eliminatecircuit: decided once, on the formula before the first round. On an AND circuit
+  // numbered inputs first nearly every variable is a gate output, and the sorted candidate order
+  // goes stale within a round (merged gates grow their neighbours' clause lists): minandmaxor128
+  // eliminates 3k variables per round in the default order, 101k in the first round with the heap
+  // (212k in all, 284 s against 813-934 s; Kissat 4.0.4 eliminates 189k in its first round).
+  if (eliminate_rounds_ == 0 && opts_.eliminatecircuit) {
+    elim_circuit_ = circuit_formula(opts_.eliminatecircuit, "eliminatecircuit");
+  }
   uint64_t budget = 0;
   const uint64_t search_ticks = stats_.ticks - eliminate_last_ticks_;
   uint64_t limit = static_cast<uint64_t>(static_cast<double>(search_ticks) * opts_.eliminateeffort / 1000.0);
@@ -398,8 +406,8 @@ void Solver::eliminate() {
   // literals (an estimate of the resolution work): on cabp formulas the variables of clauses with
   // ~700 literals have one or two clauses per polarity, came first, and each failed on the
   // resolvent size limit.
-  const bool use_heap = opts_.eliminateheap != 0 && !stopping;
-  const bool weighted = opts_.eliminateheap == 2;
+  const bool use_heap = elim_heap_mode() != 0 && !stopping;
+  const bool weighted = elim_heap_mode() == 2;
   if (use_heap) {
     elim_noccs_.assign(2 * size_t{num_vars_}, 0);
     if (weighted) elim_nlits_.assign(2 * size_t{num_vars_}, 0);
@@ -515,7 +523,7 @@ void Solver::eliminate() {
   // tried also ends its bound (ps_200_300_70: ~200k variables untried at bound 0 after the first
   // round, each later round's budget reached 4-8k of them and eliminated none, so the bound stayed
   // at 0: 59k eliminated in 14 rounds against 128k with a bound raised every round).
-  const bool unproductive = opts_.eliminatecomplete == 2 && 16 * (inactive_ - eliminated_before) < tried;
+  const bool unproductive = elim_complete_mode() == 2 && 16 * (inactive_ - eliminated_before) < tried;
   if ((completed || unproductive) && eliminate_level_ < 32) ++eliminate_level_;
   touched_count_ = 0;  // (recounted below, after the round's own changes)
   // BVA once, in the first round (as SBVA preprocessing): repeated rounds keep adding variables.

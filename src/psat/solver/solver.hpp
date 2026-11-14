@@ -123,7 +123,7 @@ struct Reluctant {
 enum Pass : uint8_t {
   kPassEliminate, kPassSubstitute, kPassCongruence, kPassSubsume, kPassBva,
   kPassVivify, kPassProbe, kPassSweep, kPassWalk, kPassReduce, kPassLucky, kPassUnhide, kPassSimulate, kPassCounting,
-  kPassGauss,
+  kPassGauss, kPassBinreduce,
   kPassCount
 };
 
@@ -156,6 +156,10 @@ struct Stats {
   uint64_t eager_subsumed = 0;
   uint64_t chrono_backtracks = 0, chrono_conflict_backtracks = 0, chrono_missed = 0, chrono_fallbacks = 0;
   uint64_t reduced_clauses = 0, reduced_tier1 = 0, simplified_root = 0, fixed = 0;
+  // Tier inflow (statistics): learned clauses of glue <= tier1 from conflict analysis, other new
+  // learned clauses of glue <= tier1 (vivification, unhiding), clauses whose glue fell to tier1 /
+  // tier2 when used in conflict analysis.
+  uint64_t tier1_learned = 0, tier1_other = 0, tier1_promoted = 0, tier2_promoted = 0;
   uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0;
   // Elimination breakdown: candidates tried and why they failed (occurrence limit, resolvent size,
   // clause bound, literal bound or growth cap, XOR merge), tries of a variable that failed in an
@@ -172,6 +176,7 @@ struct Stats {
            vivify_asym = 0;
   uint64_t vivify_checked_learned = 0, vivified_learned = 0;  // (of vivify_checked / vivified)
   uint64_t vivify_subsumed = 0;
+  uint64_t vivify_tier1_turns = 0;  // (--vivifytier1: turns of the tier1 pass completed)
   uint64_t randec_sequences = 0, random_decisions = 0;
   uint64_t unhides = 0, unhide_units = 0, unhide_transitive = 0, unhide_tautologies = 0, unhide_strengthened = 0,
            unhide_literals = 0, unhide_ticks = 0;
@@ -189,8 +194,10 @@ struct Stats {
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0, bva_trials = 0, bva_rounds = 0;
   uint64_t bva_search_vars = 0, bva_search_rounds = 0;  // --bvasearch
   uint64_t deduplicated = 0;  // duplicate binary clauses removed
+  uint64_t binreduce_rounds = 0, binreduce_checked = 0, binreduce_deleted = 0, binreduce_cut = 0, binreduce_ticks = 0;  // --binreduce
   uint64_t stop_faults = 0;   // --stopfault (testing): stops injected
   uint64_t walks = 0, walks_kept = 0, walk_flips = 0, walk_ticks = 0, walk_models = 0, walk_transfers = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
+  uint64_t model_walks = 0, model_walks_skipped = 0, model_walk_ticks = 0;  // --walkmode=3
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
   // Counting certificates (counting.cpp): structures found, PR clauses and units added, structures
@@ -301,7 +308,7 @@ class Solver {
   bool propagate();
   bool propagate_search();  // propagate() without Gauss-Jordan
   bool propagate_vivify(uint32_t ignore);
-  template <bool kVivify, bool kPrefetch>
+  template <bool kVivify, bool kPrefetch, bool kStats = false, int kProp = 0>
   bool propagate_impl(uint32_t ignore);  // (propagate.cpp only)
   bool analyze();  // false: the conflict is at the root (unsatisfiable)
   uint32_t conflict_level(Lit& forced, uint32_t& count);
@@ -342,6 +349,10 @@ class Solver {
   GateDirection gate_direction(uint64_t budget);
   bool gates_forward();
   void queue_default_order_unbumped();
+  // --queuescores (order.cpp): the focused-mode queue takes the stable-mode score order.
+  void queue_score_order();
+  // --stablereorder (order.cpp): stable-mode scores from weighted clause occurrences.
+  void stable_occurrence_scores();
 
   // --- schedules ------------------------------------------------------------------------------
   bool restarting() const;
@@ -429,6 +440,7 @@ class Solver {
   // -> clauses removed (estimated if dry); touched_only: matchings start only from literals of
   // touched variables (--bvasearch rounds during search)
   int64_t bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touched_only = false);
+  uint64_t bva_last_span_ = 0;   // ticks the last round spent (--bvaextend)
   uint32_t bva_last_added_ = 0;  // variables the last round added (would add, if dry)
   void bva_run(uint64_t& budget);  // a trial round first with --bvamin
   size_t bva_count(Lit l, uint64_t& budget);
@@ -451,7 +463,11 @@ class Solver {
   bool lucky();
   bool vivifying() const { return opts_.vivify && stats_.conflicts >= vivify_limit_; }
   void vivify();
-  void vivify_clauses(bool redundant, uint64_t ticks_limit);
+  // Candidates of a vivify_clauses pass: irredundant clauses, learned clauses of tier1 and tier2
+  // (one pass, the default), and with --vivifytier1 tier1 and the rest (tier2) separately.
+  enum class VivifyPass { kIrredundant, kLearned, kTier1, kTier2 };
+  void vivify_clauses(VivifyPass pass, uint64_t ticks_limit);
+  bool vivify_candidates(VivifyPass pass, uint64_t ticks_limit, std::vector<uint32_t>* tried);
   bool vivify_clause(uint32_t ref, const Lit* lits, uint32_t n);
   void vivify_analyze(Lit implied, bool track_redundant);
   bool vivify_subsumed(Lit implied, bool redundant);
@@ -460,6 +476,25 @@ class Solver {
   void probe_failed_literals(uint64_t ticks_limit);
   Lit probe_uip();
   void unhide(uint64_t ticks_limit);
+  // --binstats (binaries.cpp, statistics only): a census of the learned binary clauses with every
+  // progress line (duplicates, transitive in the binary implication graph, never / recently
+  // unused) and the watches the search visited by kind since the last one.
+  struct BinCensus {
+    uint64_t visit_red = 0, visit_irr = 0, visit_long = 0, implied_red = 0, implied_irr = 0;  // (propagate_impl<kStats>)
+    uint64_t last_visit_red = 0, last_visit_irr = 0, last_visit_long = 0, last_implied_red = 0, last_implied_irr = 0,
+             last_props = 0;
+    uint32_t epoch = 0;  // censuses so far
+    double seconds = 0;  // their time
+  };
+  BinCensus bin_census_;
+  void binary_census();
+  // --binreduce (binaries.cpp): transitive reduction of the learned binary clauses at the root.
+  void reduce_binaries(uint64_t ticks_limit);
+  bool binary_implied(Lit a, Lit b, uint64_t& ticks);
+  std::vector<uint32_t> binreduce_seen_;  // per literal: stamp of the search that reached it
+  std::vector<Lit> binreduce_queue_, binreduce_cands_;
+  uint32_t binreduce_stamp_ = 0;
+  Lit binreduce_next_ = 0;  // literal to continue with
   std::vector<uint32_t> unhide_start_, unhide_dsc_, unhide_fin_;
   std::vector<Lit> unhide_target_;
   size_t unhide_next_ = 0;  // long clause to continue with
@@ -683,6 +718,78 @@ class Solver {
   static constexpr uint32_t kGlueBuckets = 64;
   uint32_t tier1_ = 2, tier2_ = 6;
   uint64_t used_glue_[kGlueBuckets] = {};
+  // --tierstats (statistics only): tier1 clauses' ages (reductions in a row unused, as --tier1age
+  // counts them) are kept, and a use of an aged clause in conflict analysis is a revival. exposure
+  // counts (clause, reduction) pairs by the age after the reduction, revived the revivals by the age
+  // they ended, so revived / exposure is the chance that a clause of that age is used again before
+  // the next reduction. Buckets: age 0, 1, 2-3, 4-7, 8-15, 16-31.
+  static constexpr int kAgeBuckets = 6;
+  static int age_bucket(uint32_t age) { return age == 0 ? 0 : age == 1 ? 1 : age <= 3 ? 2 : age <= 7 ? 3 : age <= 15 ? 4 : 5; }
+  struct TierStats {
+    uint64_t exposure[kAgeBuckets] = {}, revived[kAgeBuckets] = {};
+    uint64_t last_exposure[kAgeBuckets] = {}, last_revived[kAgeBuckets] = {};
+    // Uses of learned clauses in conflict analysis by their glue before the recomputation (1-7,
+    // 8+), focused and stable mode, cumulative (as Kissat's "glue usage" statistics).
+    uint64_t used_glue[2][9] = {};
+    // Vivification by the kind of the checked clause (irredundant, tier1, tier2, tier3):
+    // checked, shortened (replaced by a subset), deleted (implied or subsumed), literals removed
+    // (counted without --tierstats too, for the final statistics).
+    uint64_t viv_checked[4] = {}, viv_shortened[4] = {}, viv_deleted[4] = {}, viv_literals[4] = {};
+    // Ticks spent on the clauses of each pass (VivifyPass order: irredundant, shared learned,
+    // --vivifytier1's tier1 and tier2).
+    uint64_t viv_ticks[4] = {};
+  };
+  TierStats tier_stats_;
+  void report_tiers();
+  // --propstats (statistics only, propagate_impl<kProp>, search propagation; the search is the
+  // same): what the watch lists cost, by interval between progress lines (propagate.cpp,
+  // report_propstats). visit[] / implied[] / conflict[] are by the visited clause's kind:
+  // irredundant, tier1, tier2, tier3; psm_* by the share of a visited clause's literals that the
+  // saved phases satisfy (quartiles), tier1 or not. --propstats=2 also feeds the cache lines
+  // propagation touches (watch slices and the clause bytes read, 64-byte lines) to set-associative
+  // LRU models of 32 KB, 256 KB, 2 MB and 8 MB (an x86 L1, L2, a quarter and all of an i7 L3).
+  struct CacheModel {
+    uint32_t sets = 0, ways = 0;
+    std::vector<uint64_t> tags;  // per set, most recent first (0: empty)
+    uint64_t access = 0, miss = 0;
+    void init(size_t bytes, uint32_t w) {
+      ways = w;
+      sets = static_cast<uint32_t>(bytes / 64 / w);
+      tags.assign(size_t{sets} * w, 0);
+    }
+    void touch(uint64_t line) {
+      ++access;
+      uint64_t* t = tags.data() + static_cast<size_t>(line % sets) * ways;
+      const uint64_t tag = line + 1;
+      uint32_t k = 0;
+      while (k < ways && t[k] != tag) ++k;
+      if (k == ways) {
+        ++miss;
+        k = ways - 1;
+      }
+      for (; k > 0; --k) t[k] = t[k - 1];
+      t[0] = tag;
+    }
+  };
+  struct PropStats {
+    uint64_t props = 0, lists = 0, list_watches = 0, bin = 0, longw = 0, blocked = 0, garbage = 0;
+    uint64_t visit[4] = {}, implied[4] = {}, conflict[4] = {};
+    uint64_t other_true = 0, repl_true = 0, moved = 0, lits_read = 0, lines = 0;
+    uint64_t nanos = 0, calls = 0;
+    uint64_t psm_visit[2][4] = {}, psm_implied[2][4] = {};  // [tier1][PSM quartile]
+  };
+  PropStats prop_stats_, prop_last_;
+  CacheModel prop_cache_[4];
+  uint64_t prop_last_miss_[4] = {};
+  double prop_last_seconds_ = 0;
+  uint64_t prop_last_ticks_ = 0;
+  void report_propstats();
+  uint32_t psm_quartile(const Clause& c) const;
+  // --tier1revive (reduce.cpp): per age 1-31 the decayed exposure and revivals of unused tier1
+  // clauses (as tier_stats_, by exact age), and the age limit they set (32: none).
+  double revive_exposure_[32] = {}, revive_count_[32] = {};
+  uint32_t revive_limit_ = 32;
+  void update_revive_limit();
   uint64_t last_simplify_fixed_ = 0, simplify_ticks_limit_ = 0;
   uint64_t fixed_ = 0;
   Stats progress_;  // statistics at the last progress line (-v 3, at reductions)
@@ -739,17 +846,25 @@ class Solver {
   uint64_t irredundant_literals() const;
   uint64_t vivify_limit_ = 0, vivify_rounds_ = 0, vivify_last_ticks_ = 0;
   uint64_t vivify_ticks_per_clause_ = 200;  // running estimate, to order only what a round can afford
+  uint64_t vivify_ticks_per_tier1_ = 200;   // (the same for the --vivifytier1 pass)
   uint32_t congruence_delay_ = 0, congruence_skip_ = 0;  // back-off after unproductive rounds
   uint64_t walk_last_ticks_ = 0;
   bool queue_ordered_ = false;  // --queueorder applied
   uint64_t order_stamp_ = 0;   // --queueorder=3 / 4: queue stamp after the lowest-first order
   bool order_revert_ = false;  // --queueorder=3 / 4: lowest first in the first focused phase only
   size_t walk_record_ = SIZE_MAX;  // fewest unsatisfied clauses a walk ended with (--walkrecord)
+  // --walkmodel: far model walks in a row and the calls left to skip; the last model walk's
+  // minimum, the lowest one, whether the last one set it, and the lowest ProbSAT walk minimum
+  uint32_t walk_model_far_ = 0;
+  uint64_t walk_model_skip_ = 0;
+  size_t walk_model_last_ = SIZE_MAX, walk_model_best_ = SIZE_MAX, walk_model_phase_best_ = SIZE_MAX;
+  bool walk_model_improved_ = true;
   uint64_t lucky_limit_ = 0;
   bool lucky_tried_ = false;
   std::vector<Lit> viv_lits_, viv_decided_;
   std::vector<Var> viv_marked_;
   std::vector<uint64_t> viv_cands_;
+  std::vector<uint32_t> viv_tried_;  // (--vivifytier1: the clauses a separate pass tried)
   std::vector<uint32_t> recent_learned_;  // newest last; cleared by collections (refs move)
   void eager_subsume();
   std::vector<uint32_t> viv_count_;
@@ -762,6 +877,14 @@ class Solver {
   uint32_t eliminate_level_ = 0;
   bool eliminate_incomplete_ = false;
   uint32_t elimination_bound() const;  // the bound of the next round
+  // --eliminatecircuit: the formula is an AND circuit numbered inputs first (decided before the
+  // first round); elimination then runs as with --eliminateheap=1 --eliminatecomplete=1.
+  bool elim_circuit_ = false;
+  int64_t elim_heap_mode() const { return opts_.eliminateheap ? opts_.eliminateheap : (elim_circuit_ ? 1 : 0); }
+  int64_t elim_complete_mode() const {
+    return opts_.eliminatecomplete ? opts_.eliminatecomplete : (elim_circuit_ ? 1 : 0);
+  }
+  bool circuit_formula(int64_t outputs_per_mille, const char* what);
 
   // Input.
   std::vector<int> adding_;

@@ -395,6 +395,11 @@ bool Solver::gauss_start() {
   so.counting = 0;
   so.linmod = 0;
   so.renumber = 0;  // (the copy is in this solver's numbering)
+  // The decision orders from the clauses (--stablereorder, --queuescores) stay with the main search:
+  // in the detached solver on shift1add (58k binary XORs, 636k variables) they produced a single
+  // round of 28.9k conflicts and 98 s past both its ticks budget and the time limit.
+  so.stablereorder = 0;
+  so.queuescores = 0;
   so.verbose = opts_.verbose >= 3 ? opts_.verbose : 0;
   so.reportmem = 0;  // (the main solver's report counts the copy)
   auto sub = std::make_unique<Solver>(so);

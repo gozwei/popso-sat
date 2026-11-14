@@ -279,7 +279,8 @@ uint32_t Solver::new_clause(const Lit* lits, uint32_t size, bool redundant, uint
   c.size = size;
   c.glue = std::min<uint32_t>(glue, (1u << 20) - 1);
   c.used = redundant ? (glue <= tier2_ ? 2 : 1) : 0;
-  c.keep = redundant && glue <= tier1_;
+  c.keep = redundant && glue <= tier1_ && (!opts_.tier1keepglue || glue <= static_cast<uint32_t>(opts_.tier1keepglue));
+  if (redundant && glue <= tier1_) ++stats_.tier1_other;
   c.reason = 0;
   c.garbage = 0;
   c.redundant = redundant;
@@ -696,7 +697,8 @@ void Solver::report_memory(const char* where) {
 namespace {
 const char* const kPassNames[kPassCount] = {"eliminate", "substitute", "congruence", "subsume", "bva",
                                             "vivify",    "probe",      "sweep",      "walk",    "reduce",
-                                            "lucky",     "unhide",     "simulate",   "counting", "gauss"};
+                                            "lucky",     "unhide",     "simulate",   "counting", "gauss",
+                                            "binreduce"};
 }  // namespace
 
 // --reportmem (periodic, in the search): one line of cumulative counters for time series over long
@@ -745,6 +747,83 @@ void Solver::report_progress() {
               ull(stats_.sweep_ticks), ull(stats_.vivify_ticks), ull(stats_.bva_vars), ull(stats_.bva_search_vars),
               ull(gauss_stats_.rounds), ull(gauss_sub_ ? gauss_share_ : 0), ema_fast_.value, ema_slow_.value,
               proof_ ? static_cast<double>(proof_->bytes()) / 1e6 : 0.0, passes.c_str());
+  std::fflush(stdout);
+  if (opts_.binstats) binary_census();
+  if (opts_.tierstats) report_tiers();
+  if (opts_.propstats) report_propstats();
+}
+
+// --tierstats (with --reportmem, at every progress line; reads only): tier1 learned clauses by glue
+// (1, 2, kept above the limit), size and age bucket (age = reductions in a row unused; "used" =
+// used in the last two reduce intervals), the cumulative tier inflow, and per age bucket the
+// revivals / exposure since the last line (the chance per reduce interval that an aged tier1
+// clause is used again).
+void Solver::report_tiers() {
+  uint64_t g[3] = {}, sz[4] = {}, age[kAgeBuckets] = {}, used = 0, lits = 0, n = 0;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || !c.redundant || !(c.keep || c.glue <= tier1_)) continue;
+    ++n;
+    lits += c.size;
+    ++g[c.glue <= 1 ? 0 : c.glue <= tier1_ ? 1 : 2];
+    ++sz[c.size <= 3 ? 0 : c.size <= 7 ? 1 : c.size <= 15 ? 2 : 3];
+    ++age[age_bucket(c.age)];
+    used += c.used != 0;
+  }
+  auto ull = [](uint64_t x) { return static_cast<unsigned long long>(x); };
+  std::string ages, rates;
+  char buf[96];
+  TierStats& t = tier_stats_;
+  for (int b = 0; b < kAgeBuckets; ++b) {
+    std::snprintf(buf, sizeof buf, "%s%llu", b ? "/" : "", ull(age[b]));
+    ages += buf;
+    const uint64_t e = t.exposure[b] - t.last_exposure[b], r = t.revived[b] - t.last_revived[b];
+    std::snprintf(buf, sizeof buf, "%s%.4f(%llu)", b ? "/" : "", e ? static_cast<double>(r) / static_cast<double>(e) : 0.0,
+                  ull(r));
+    rates += buf;
+    t.last_exposure[b] = t.exposure[b];
+    t.last_revived[b] = t.revived[b];
+  }
+  const double interval = static_cast<double>(opts_.reduceint) * std::sqrt(static_cast<double>(stats_.reductions + 1));
+  std::printf("c [%.2f s] tiers t1=%llu t1used=%llu t1glue=%llu/%llu/%llu t1size=%llu/%llu/%llu/%llu t1avg=%.1f "
+              "t1age=%s t1revive=%s in_learned=%llu in_other=%llu in_promoted=%llu t2promoted=%llu aged=%llu "
+              "interval=%.0f limits=%u/%u agelimit=%u\n",
+              seconds(), ull(n), ull(used), ull(g[0]), ull(g[1]), ull(g[2]), ull(sz[0]), ull(sz[1]), ull(sz[2]), ull(sz[3]),
+              n ? static_cast<double>(lits) / static_cast<double>(n) : 0.0, ages.c_str(), rates.c_str(),
+              ull(stats_.tier1_learned), ull(stats_.tier1_other), ull(stats_.tier1_promoted), ull(stats_.tier2_promoted),
+              ull(stats_.reduced_tier1), interval, tier1_, tier2_, revive_limit_);
+  // All learned (long) clauses by glue 1-7 and 8+, with how many are used now, and the cumulative
+  // uses in conflict analysis by glue in focused (F) and stable (S) mode (per cent).
+  uint64_t dg[9] = {}, du[9] = {};
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || !c.redundant) continue;
+    const uint32_t k = std::min<uint32_t>(c.glue, 8);
+    ++dg[k];
+    du[k] += c.used != 0;
+  }
+  std::string db, ug[2];
+  for (uint32_t k = 1; k <= 8; ++k) {
+    std::snprintf(buf, sizeof buf, "%s%llu(%llu)", k > 1 ? "/" : "", ull(dg[k]), ull(du[k]));
+    db += buf;
+  }
+  for (int m = 0; m < 2; ++m) {
+    uint64_t total = 0;
+    for (uint32_t k = 1; k <= 8; ++k) total += t.used_glue[m][k];
+    for (uint32_t k = 1; k <= 8; ++k) {
+      std::snprintf(buf, sizeof buf, "%s%.1f", k > 1 ? "/" : "",
+                    total ? 100.0 * static_cast<double>(t.used_glue[m][k]) / static_cast<double>(total) : 0.0);
+      ug[m] += buf;
+    }
+  }
+  std::string viv;
+  for (int k = 0; k < 4; ++k) {
+    std::snprintf(buf, sizeof buf, "%s%llu/%llu/%llu/%llu", k ? "," : "", ull(t.viv_checked[k]), ull(t.viv_shortened[k]),
+                  ull(t.viv_deleted[k]), ull(t.viv_literals[k]));
+    viv += buf;
+  }
+  std::printf("c [%.2f s] glues db=%s usedF=%s usedS=%s viv=%s\n", seconds(), db.c_str(), ug[0].c_str(), ug[1].c_str(),
+              viv.c_str());
   std::fflush(stdout);
 }
 
@@ -927,6 +1006,7 @@ void Solver::switch_mode() {
   mode_start_ticks_ = stats_.ticks;
   target_assigned_ = 0;
   if (stable_) {
+    if (opts_.stablereorder) stable_occurrence_scores();
     rebuild_heap();
     reluctant_.init(static_cast<uint64_t>(opts_.reluctantint), static_cast<uint64_t>(opts_.reluctantlim));
   } else {
@@ -934,6 +1014,7 @@ void Solver::switch_mode() {
     restart_limit_ = stats_.conflicts + focused_restart_interval();
     // --queueorder=3 / 4: the default order from the second focused phase on
     if (order_revert_ && mode_count_ == 2) queue_default_order_unbumped();
+    if (opts_.queuescores == 1 || (opts_.queuescores == 2 && mode_count_ == 2)) queue_score_order();
   }
   if (opts_.verbose >= 2) {
     std::printf("c [%.2f s] switched to %s mode after %llu conflicts\n", seconds(), stable_ ? "stable" : "focused",
@@ -1074,12 +1155,29 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.vivify_checked_learned),
                ull(stats_.vivified_literals), ull(stats_.vivify_instantiated), ull(stats_.vivify_implied_deleted),
                ull(stats_.vivify_asym), ull(stats_.vivify_subsumed), ull(stats_.vivify_ticks));
+  {
+    const TierStats& ts = tier_stats_;
+    std::fprintf(out, "c vivify tiers   checked / shortened / deleted / removed literals:  irredundant %llu/%llu/%llu/%llu  "
+                      "tier1 %llu/%llu/%llu/%llu  tier2 %llu/%llu/%llu/%llu  tier3 %llu/%llu/%llu/%llu  tier1 turns %llu  "
+                      "pass ticks irredundant %llu learned %llu tier1 %llu tier2 %llu\n",
+                 ull(ts.viv_checked[0]), ull(ts.viv_shortened[0]), ull(ts.viv_deleted[0]), ull(ts.viv_literals[0]),
+                 ull(ts.viv_checked[1]), ull(ts.viv_shortened[1]), ull(ts.viv_deleted[1]), ull(ts.viv_literals[1]),
+                 ull(ts.viv_checked[2]), ull(ts.viv_shortened[2]), ull(ts.viv_deleted[2]), ull(ts.viv_literals[2]),
+                 ull(ts.viv_checked[3]), ull(ts.viv_shortened[3]), ull(ts.viv_deleted[3]), ull(ts.viv_literals[3]),
+                 ull(stats_.vivify_tier1_turns), ull(ts.viv_ticks[0]), ull(ts.viv_ticks[1]), ull(ts.viv_ticks[2]),
+                 ull(ts.viv_ticks[3]));
+  }
   std::fprintf(out, "c probing        %14llu  failed literals %llu (below the probe %llu)\n", ull(stats_.probes),
                ull(stats_.failed_literals), ull(stats_.probe_uips));
   std::fprintf(out, "c unhiding       %14llu  units %llu  transitive %llu  hidden tautologies %llu  strengthened %llu  "
                     "removed literals %llu  ticks %llu\n",
                ull(stats_.unhides), ull(stats_.unhide_units), ull(stats_.unhide_transitive), ull(stats_.unhide_tautologies),
                ull(stats_.unhide_strengthened), ull(stats_.unhide_literals), ull(stats_.unhide_ticks));
+  if (opts_.binreduce) {
+    std::fprintf(out, "c binreduce      %14llu  checked %llu  deleted %llu  undecided %llu  ticks %llu\n",
+                 ull(stats_.binreduce_rounds), ull(stats_.binreduce_checked), ull(stats_.binreduce_deleted),
+                 ull(stats_.binreduce_cut), ull(stats_.binreduce_ticks));
+  }
   std::fprintf(out, "c sweeping       %14llu  variables %llu  units %llu  equivalences %llu  flips %llu  ticks %llu  "
                     "(kitten %llu in %llu solves)  limits %u vars / %u clauses / depth %u (growth %u)\n",
                ull(stats_.sweeps), ull(stats_.swept_vars), ull(stats_.sweep_units), ull(stats_.sweep_equivalences),
@@ -1132,9 +1230,10 @@ void Solver::print_statistics(std::FILE* out) const {
                  ull(g.propagations), ull(g.conflicts), ull(g.pivots), ull(g.row_checks), ull(g.reopened), ull(g.root_units));
   }
   std::fprintf(out, "c lucky          %14llu\n", ull(stats_.lucky));
-  std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu  not adopted %llu  models %llu  weight transfers %llu\n",
+  std::fprintf(out, "c walks          %14llu  flips %llu  ticks %llu  not adopted %llu  models %llu  weight transfers %llu  model walks %llu (ticks %llu, skipped %llu)\n",
                ull(stats_.walks), ull(stats_.walk_flips), ull(stats_.walk_ticks), ull(stats_.walks_kept),
-               ull(stats_.walk_models), ull(stats_.walk_transfers));
+               ull(stats_.walk_models), ull(stats_.walk_transfers), ull(stats_.model_walks), ull(stats_.model_walk_ticks),
+               ull(stats_.model_walks_skipped));
   std::fprintf(out, "c deduplicated   %14llu  binary clauses\n", ull(stats_.deduplicated));
   if (stats_.stop_faults) std::fprintf(out, "c stop faults    %14llu  (--stopfault)\n", ull(stats_.stop_faults));
   std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu, 3-hop tie-breaks %llu, "
@@ -1146,7 +1245,9 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.counting_found), counting_desc_.empty() ? "-" : counting_desc_.c_str(), ull(stats_.counting_pr),
                ull(stats_.counting_units), ull(stats_.counting_lemmas), ull(stats_.counting_failed),
                ull(stats_.counting_skipped), ull(stats_.counting_work));
-  std::fprintf(out, "c tiers          %14u  tier2 %u\n", tier1_, tier2_);
+  std::fprintf(out, "c tiers          %14u  tier2 %u  tier1 in: learned %llu other %llu promoted %llu  tier2 promoted %llu\n",
+               tier1_, tier2_, ull(stats_.tier1_learned), ull(stats_.tier1_other), ull(stats_.tier1_promoted),
+               ull(stats_.tier2_promoted));
   std::fprintf(out, "c shrunk         %14llu  literals\n", ull(stats_.shrunk_literals));
   std::fprintf(out, "c fixed          %14llu  of %u variables\n", ull(stats_.fixed), num_vars_);
   std::fprintf(out, "c memory         %14.1f MB  (peak resident %.1f MB)\n", static_cast<double>(memory_bytes()) / (1 << 20),
@@ -1160,7 +1261,7 @@ void Solver::print_statistics(std::FILE* out) const {
                  ull(proof_->shortened_live()));
     static const char* const kNames[kProofSources] = {
         "search", "eliminate", "substitute", "congruence", "subsume", "bva", "vivify", "probe", "sweep", "walk",
-        "reduce", "lucky", "unhide", "simulate", "counting", "gauss", "simplify", "eager"};
+        "reduce", "lucky", "unhide", "simulate", "counting", "gauss", "binreduce", "simplify", "eager"};
     std::string line;
     char buf[160];
     for (int k = 0; k < kProofSources; ++k) {
@@ -1184,9 +1285,9 @@ void Solver::print_statistics(std::FILE* out) const {
                  t - passes, share(t - passes), p[kPassSweep], share(p[kPassSweep]), p[kPassVivify], share(p[kPassVivify]),
                  p[kPassEliminate], share(p[kPassEliminate]), p[kPassWalk], share(p[kPassWalk]));
     std::fprintf(out, "c                probe %.2f  substitute %.2f  congruence %.2f  subsume %.2f  bva %.2f  reduce %.2f  "
-                      "lucky %.2f  unhide %.2f  simulate %.2f  counting %.2f  gauss %.2f s\n",
+                      "lucky %.2f  unhide %.2f  simulate %.2f  counting %.2f  gauss %.2f  binreduce %.2f s\n",
                  p[kPassProbe], p[kPassSubstitute], p[kPassCongruence], p[kPassSubsume], p[kPassBva], p[kPassReduce],
-                 p[kPassLucky], p[kPassUnhide], p[kPassSimulate], p[kPassCounting], p[kPassGauss]);
+                 p[kPassLucky], p[kPassUnhide], p[kPassSimulate], p[kPassCounting], p[kPassGauss], p[kPassBinreduce]);
   }
 }
 

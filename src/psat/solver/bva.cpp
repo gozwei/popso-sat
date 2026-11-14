@@ -395,8 +395,39 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
   // re-encodings and used the whole budget, while the at-most-one cliques of 18 behind them (17
   // occurrences per literal) give 120k clauses of reduction for 11.5M ticks.
   size_t qi = 0;
-  if (!opts_.bvasched) {
+  if (!opts_.bvasched && (opts_.bvaextend <= 1 || touched_only || !dry || !opts_.bvamin)) {
     run(qi, queue.size(), limit);
+  } else if (!opts_.bvasched) {
+    // --bvaextend=K in the plain order, trial rounds only: the budget goes out in eighths; past
+    // it, one more eighth while the trial is still below --bvamin and the last eighth removed at
+    // least one clause per --bvaextendticks ticks, up to K times the budget. The real round then
+    // gets the budget the trial used (bva_run), so a round that qualifies within the budget is
+    // the same as without the option (schooltt-5-7-11: 22.6% in the budget, 64% in 8x it, and
+    // the SAT search 3.4 -> 21.5 s with the larger re-encoding). korf-17 (2d strip packing): the
+    // trial finds 9.8% of the clauses in the 100M-tick floor (declined), 27% at about 400M (one
+    // clause per 11-19k ticks throughout); seeds 0-2 112 / 160 / 115 s -> 110 / 71 / 75 s (M4).
+    const uint64_t base = limit > round_start ? limit - round_start : 1;
+    const uint64_t eighth = std::max<uint64_t>(1, base / 8);
+    const uint64_t most = round_start + base * static_cast<uint64_t>(opts_.bvaextend);
+    const uint64_t clauses = irredundant_ + binaries_irredundant_;
+    uint64_t last_spent = 0;
+    int64_t last_gain = 0;
+    while (qi < queue.size() && added < max_new && !inconsistent_ && !stop_requested()) {
+      if (budget > limit) {
+        const bool qualifies =
+            reduced > 0 && static_cast<uint64_t>(reduced) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses;
+        if (qualifies || limit >= most || last_gain <= 0 ||
+            static_cast<uint64_t>(last_gain) * static_cast<uint64_t>(opts_.bvaextendticks) < last_spent) {
+          break;
+        }
+        limit = std::min(most, budget + eighth);
+      }
+      const uint64_t b0 = budget;
+      const int64_t r0 = reduced;
+      run(qi, queue.size(), std::min(limit, budget + eighth));
+      last_spent = budget - b0;
+      last_gain = reduced - r0;
+    }
   } else if (!queue.empty() && budget <= limit) {
     struct Class {
       size_t pos, end;
@@ -504,6 +535,7 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
     queue_search_ = queue_last_;
   }
   bva_last_added_ = added;
+  bva_last_span_ = budget > round_start ? budget - round_start : 0;
   return reduced;
 }
 
@@ -539,7 +571,7 @@ void Solver::bva_search(uint64_t& budget) {
 }
 
 void Solver::bva_run(uint64_t& budget) {
-  const uint64_t extra = std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4);
+  uint64_t extra = std::max<uint64_t>(static_cast<uint64_t>(opts_.bvaticks), arena_.size() / 4);
   if (opts_.bvamin > 0) {
     const uint64_t clauses = irredundant_ + binaries_irredundant_;
     const int64_t trial = bva_round(budget, budget + extra, true);
@@ -559,6 +591,8 @@ void Solver::bva_run(uint64_t& budget) {
     }
     if (!go) return;
     ++stats_.bva_rounds;
+    // (--bvaextend: the budget the trial used, when it went past its own)
+    if (opts_.bvaextend > 1 && !opts_.bvasched) extra = std::max(extra, bva_last_span_);
   }
   bva_round(budget, budget + extra, false);
 }

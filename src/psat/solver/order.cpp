@@ -20,6 +20,18 @@
 //      not bumped by then get the default order back (queue_default_order_unbumped()).
 //      asconhash keeps the gain of 1: the first phase sets it. A later switch to lowest first
 //      does not: after 300 conflicts in the default order, asconhash was no longer refuted.
+//
+// Orders from the clauses instead of the numbering (branch circ1, both off by default):
+//   --stablereorder  at every switch to stable mode the scores are recomputed from the clauses:
+//      each clause of at most --stablereordersize literals (irredundant and learned) adds
+//      1 / size to each of its variables. On a circuit that ranks the gate inputs of high fanout
+//      and the variables of many short learned clauses first.
+//   --queuescores    at every switch to focused mode the queue takes the order of the stable
+//      scores, so that focused mode starts from the same ranking.
+//   Together: asconhash H10 176.9 s (83k conflicts; default 1578 s, 15.3M) and satcoin-genesis
+//   195.8 s (26k conflicts; default unsolved at 5000 s), against Kissat 4.0.4's 180 / 319 s on the
+//   same machine. Kissat's focused mode stays deep on asconhash whatever the input order; its
+//   reordering of the decisions (--reorder) is what satcoin needs (without it: unsolved at 900 s).
 
 #include <algorithm>
 
@@ -133,6 +145,54 @@ bool Solver::gates_forward() {
   return forward;
 }
 
+// --stablereorder, at a switch to stable mode: each active variable gets the weight of its
+// occurrences, 1 / size for each clause of at most --stablereordersize literals (irredundant and
+// learned, binary clauses included). 1: the scores are replaced by the weights (the heaviest
+// variable gets one current bump), 2: the weights are added at that scale. One pass over the
+// arena and the watch lists per switch.
+void Solver::stable_occurrence_scores() {
+  std::vector<double> w(num_vars_, 0.0);
+  const uint32_t limit = static_cast<uint32_t>(opts_.stablereordersize);
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || c.size > limit) continue;
+    const double x = 1.0 / c.size;
+    for (uint32_t k = 0; k < c.size; ++k) w[var_of(c.lits()[k])] += x;
+  }
+  for (Lit l = 0; l < 2 * num_vars_; ++l) {
+    double b = 0;
+    for (const Watch& x : watches_[l]) b += x.binary();
+    w[var_of(l)] += 0.5 * b;
+  }
+  double hi = 0;
+  for (Var v = 0; v < num_vars_; ++v) hi = std::max(hi, w[v]);
+  if (hi <= 0) return;
+  const double scale = score_inc_ / hi;
+  for (Var v = 0; v < num_vars_; ++v) {
+    if (eliminated_[v]) continue;
+    score_[v] = (opts_.stablereorder == 1 ? 0.0 : score_[v]) + w[v] * scale;
+  }
+}
+
+// An AND circuit numbered inputs first: at least `outputs_per_mille` of the variables are AND gate
+// outputs and at least 90% of the gates have their output numbered after all their inputs (the
+// second condition leaves out exactly-one groups, which are AND gates both ways).
+bool Solver::circuit_formula(int64_t outputs_per_mille, const char* what) {
+  const double start = seconds();
+  const GateDirection d = gate_direction(20 * (arena_.size() + num_vars_) + 1000000);
+  const bool circuit = d.complete && d.gates &&
+                       d.outputs * 1000 >= static_cast<uint64_t>(outputs_per_mille) * num_vars_ &&
+                       d.forward * 10 >= d.gates * 9;
+  if (opts_.verbose) {
+    std::printf("c %s: %llu AND gates (%llu outputs, %.1f%% of %u variables), forward %llu, backward %llu, %.3f s: %s\n",
+                what, static_cast<unsigned long long>(d.gates), static_cast<unsigned long long>(d.outputs),
+                100.0 * static_cast<double>(d.outputs) / std::max(1u, num_vars_), num_vars_,
+                static_cast<unsigned long long>(d.forward), static_cast<unsigned long long>(d.backward), seconds() - start,
+                circuit ? "circuit" : "not a circuit");
+  }
+  return circuit;
+}
+
 // --queueorder=3 / 4, at the start of the second focused phase: the variables not bumped since
 // the lowest-first order was set get the default order back (the highest index decided first), in
 // front of the bumped ones, which keep their order.
@@ -151,6 +211,19 @@ void Solver::queue_default_order_unbumped() {
   }
   for (const Var v : unbumped) queue_enqueue_last(v);
   for (const Var v : bumped) queue_enqueue_last(v);
+  queue_search_ = queue_last_;
+}
+
+// --queuescores, at a switch to focused mode: the queue is rebuilt in the order of the stable-mode
+// scores, the highest decided first; equal scores (never bumped in stable mode) keep their
+// relative queue order.
+void Solver::queue_score_order() {
+  std::vector<Var> order;
+  order.reserve(num_vars_);
+  for (Var v = queue_first_; v != UINT32_MAX; v = links_[v].next) order.push_back(v);
+  std::stable_sort(order.begin(), order.end(), [this](Var a, Var b) { return score_[a] < score_[b]; });
+  for (const Var v : order) queue_dequeue(v);
+  for (const Var v : order) queue_enqueue_last(v);
   queue_search_ = queue_last_;
 }
 

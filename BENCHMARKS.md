@@ -8,6 +8,76 @@ UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs are
 gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
 are never mixed.
 
+## v0.4.2
+
+New in 0.4.2, on by default: a model walk that backs off far from a model (`--walkmodel=2`),
+variable renumbering for memory locality (`--renumber=1`), and faster propagation with an
+unchanged search. See the [CHANGELOG](CHANGELOG.md).
+
+### SAT Competition 2026 sample (Intel i7-7700K, Linux)
+
+The 168 instances of `sets/sc2026.txt`, with the setup of the v0.4.0 table below:
+- 1000 s and 12 GB per instance, four instances at a time, on the i7-7700K with no other
+  benchmark jobs running;
+- every model checked;
+- 0.4.2 wrote its proofs, and each of its 65 UNSAT answers was verified by dpr-trim.
+
+The 0.4.0 and Kissat columns are the runs of the v0.4.0 section, on the same machine. The 0.4.2
+defaults were chosen on this set (300 s runs), so it is not an independent test.
+
+| | popso-sat 0.4.2 | popso-sat 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 168 (SAT / UNSAT) | 110 (45 / 65) | 98 (37 / 61) | 80 (35 / 45) |
+| solved within 300 s | 94 | 78 | 56 |
+| PAR-2 (s) | 775.3 | 926.4 | 1152.3 |
+| shifted geometric mean (s) | 118.2 | 164.1 | 338.7 |
+| largest peak memory | 2.5 GB (T92) | 7.6 GB (cabp k290) | 2.4 GB (g2-T97) |
+
+**What this shows:**
+- 0.4.2 solves 14 instances that 0.4.0 does not, and loses 2 satisfiable ones that 0.4.0 solved
+  late (ntil-90d-39, 51-136961).
+  - The 14 are the 0.4.1 gains (four linear-equations instances, xor_op_n40_d3, three school
+    timetabling instances, jkkk-one-one-11-38, cabp k290, size_5_5_5) and snw_16_9 preOpt,
+    bp5_CSO and abw-K.
+- Against Kissat 4.0.4: 0.4.2 solves 36 instances that Kissat does not, and Kissat solves 6 that
+  0.4.2 does not: gensys-ukn004, knight_18, satcoin-genesis, 51-136961, asconhash H10 and
+  minandmaxor128.
+- Instances both solve, shifted geometric mean: SAT 51 s (0.4.2) against 92 s (Kissat) on 33;
+  UNSAT 64 against 84 s on 41.
+
+### Fresh families (Intel Xeon E5-1650 v2, Linux)
+
+`sets/fresh.txt`: 78 instances of the 2024 and 2025 main tracks (44 SAT, 34 UNSAT) from 38
+families. None of these families is in sc2026 or in any set used for tuning, so this is the
+held-out test. Setup:
+- 1000 s and 12 GB per instance, four instances at a time;
+- an Intel Xeon E5-1650 v2 (6 cores, 12 threads, Linux), a different machine from the tables
+  above; 0.4.2 and then Kissat 4.0.4 ran with no other benchmark jobs;
+- every model checked; no proofs.
+
+| | popso-sat 0.4.2 | Kissat 4.0.4 |
+|---|---|---|
+| solved of 78 (SAT / UNSAT) | 43 (29 / 14) | 49 (30 / 19) |
+| solved within 300 s | 38 | 36 |
+| PAR-2 (s) | 958.4 | 874.6 |
+| shifted geometric mean (s) | 217.4 | 241.7 |
+
+**What this shows:**
+- Kissat is ahead on these families. 0.4.2 solves more instances within 300 s, but Kissat
+  solves 13 more between 300 and 1000 s, against 5.
+- Kissat solves 13 instances that 0.4.2 does not:
+  - UNSAT (8): two multiplier verification instances (gm24sparrc 12 s, gm28sparrc 20 s), two
+    RISC instruction removal instances, REGRandom-K4 (6 s), fixedbandwidth-eq-37, a modular
+    circuit and goldcrest-xor-11;
+  - SAT (5): two sum-of-three-cubes instances, a random circuit, Folkman-185, an rbsat instance
+    and a lockchart instance.
+- 0.4.2 solves 7 that Kissat does not: cliquecoloring_n32 (counting certificate, 0.0 s),
+  Ptn-7824 (1 s), noL-11-12, HCP-529, a Van der Waerden instance, at-least-two vmpc_28 and a
+  hardware BMC instance.
+- Instances both solve, shifted geometric mean: SAT 39 s (0.4.2) against 75 s (Kissat) on 24;
+  UNSAT 110 against 108 s on 12.
+- Closing this gap is the next work item.
+
 ## v0.4.1
 
 New in 0.4.1, on by default:

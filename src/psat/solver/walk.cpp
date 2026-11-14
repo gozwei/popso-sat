@@ -44,6 +44,10 @@
 // sides (UNSAT trajectories, and SAT instances found 10-40x later as well as earlier), while the
 // ProbSAT walk moves the saved phases little; mode 3 keeps that search unless a model is found.
 //
+// --walkmodel (off by default) budgets mode 3's model walk by how close the walks come to a model:
+// far from one (more unsatisfied clauses than sqrt(clauses)), it backs off and gets the share of
+// the search ticks only (at the end of walk()).
+//
 // With --walkmode=1, 2 or 3 a walk that ends with no unsatisfied clause leaves its model on the
 // trail (decisions in input order with propagation, every walk clause checked again), and the
 // search reports SAT at its next step; the program checks the model against the input formula.
@@ -185,8 +189,8 @@ void Solver::walk() {
   };
 
   const uint64_t search = stats_.ticks - walk_last_ticks_;
-  const uint64_t limit = std::max<uint64_t>(static_cast<uint64_t>(static_cast<double>(search) * opts_.walkeffort / 1000.0),
-                                            2 * nlits);
+  const uint64_t share = static_cast<uint64_t>(static_cast<double>(search) * opts_.walkeffort / 1000.0);
+  uint64_t limit = std::max<uint64_t>(share, 2 * nlits);
   uint64_t effort = nlits / 4;
   size_t best = 0;
   std::vector<int8_t> best_value;
@@ -632,15 +636,61 @@ void Solver::walk() {
   // continues from its best assignment, with the same budget, for a model only (its assignment
   // is dropped otherwise, so the search is the one of --walkmode=0 unless a model is found).
   if (opts_.walkmode == 3 && best != 0) {
-    const double start = tracing ? seconds() : 0;
-    value = best_value;
-    effort = nlits / 4;
-    trace.clear();
-    ddfw(true);
-    stats_.walk_ticks += effort;
-    if (best == 0) ++stats_.walk_models;
-    if (opts_.verbose >= 2) std::printf("c [%.2f s] walk for a model: best %zu unsatisfied\n", seconds(), best);
-    if (tracing) print_trace(2, start);
+    // --walkmodel=1: the model walk is near a model when the ProbSAT walk's minimum or the last
+    // model walk's is at most sqrt(clauses) (x walkmodelnear %), else far. Near, it gets the
+    // budget above; far, it backs off: after the k-th far model walk in a row the next 2^k - 1
+    // calls skip it, and the others get the share of the search ticks only (no floor of 2 x
+    // literals; no walk when the share does not pay for the set-up). --walkmodel=2: near walks
+    // also get the share only, unless the last model walk ended below every earlier one or the
+    // ProbSAT walk did (or no model walk ran yet).
+    bool run = true, nearby = true;
+    if (opts_.walkmodel) {
+      const double scale = std::sqrt(static_cast<double>(nclauses)) * opts_.walkmodelnear / 100.0;
+      nearby = static_cast<double>(best) <= scale || static_cast<double>(walk_model_last_) <= scale;
+      const bool improved = walk_model_improved_ || best < walk_model_phase_best_;
+      walk_model_phase_best_ = std::min(walk_model_phase_best_, best);
+      if (nearby) {
+        walk_model_far_ = 0;
+        walk_model_skip_ = 0;
+        if (opts_.walkmodel == 2 && !improved) limit = share;
+      } else {
+        limit = share;
+        if (walk_model_skip_) {
+          --walk_model_skip_;
+          run = false;
+        }
+      }
+      if (limit <= nlits / 2) run = false;
+    }
+    if (!run) {
+      ++stats_.model_walks_skipped;
+      if (opts_.verbose >= 2) std::printf("c [%.2f s] walk for a model skipped (%s)\n", seconds(), nearby ? "near" : "far");
+    } else {
+      const double start = tracing ? seconds() : 0;
+      value = best_value;
+      effort = nlits / 4;
+      trace.clear();
+      ddfw(true);
+      ++stats_.model_walks;
+      stats_.model_walk_ticks += effort;
+      stats_.walk_ticks += effort;
+      if (best == 0) ++stats_.walk_models;
+      if (opts_.walkmodel) {
+        walk_model_last_ = best;
+        walk_model_improved_ = best < walk_model_best_;
+        walk_model_best_ = std::min(walk_model_best_, best);
+        if (!nearby) {
+          walk_model_far_ = std::min<uint32_t>(walk_model_far_ + 1, 32);
+          walk_model_skip_ = (uint64_t{1} << walk_model_far_) - 1;
+        }
+      }
+      if (opts_.verbose >= 2) {
+        std::printf("c [%.2f s] walk for a model: best %zu unsatisfied (%llu ticks of %llu, share %llu, literals %zu)\n",
+                    seconds(), best, static_cast<unsigned long long>(effort), static_cast<unsigned long long>(limit),
+                    static_cast<unsigned long long>(share), nlits);
+      }
+      if (tracing) print_trace(2, start);
+    }
   }
   if (best != 0 || !opts_.walkmode) return;
   // A model of the walk clauses: decided variable by variable (input order) with propagation, as

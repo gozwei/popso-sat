@@ -22,7 +22,10 @@ namespace psat {
   X(queueorder, 0, 0, 4, "initial focused-mode decision order: 0 = highest variable index first, 1 = lowest first, 2 = lowest first if AND gate outputs are numbered after their inputs (queueordergates, queueorderforward), 3 = as 2 in the first focused phase only, 4 = lowest first in the first focused phase only") \
   X(queueordergates, 50, 0, 1000, "--queueorder=2 / 3: least share of the variables that are AND gate outputs (per mille)") \
   X(queueorderforward, 900, 0, 1000, "--queueorder=2 / 3: least share of the AND gates whose output index is above their inputs' (per mille)") \
-  X(renumber, 0, 0, 3, "renumber the variables internally for memory locality, before preprocessing (1: breadth-first on the clause graph if the input numbering looks random; 2: breadth-first always; 3: random, for experiments); decision order, proofs and models keep the input numbering") \
+  X(stablereorder, 0, 0, 2, "at a switch to stable mode the scores come from clause occurrences weighted 1 / size (1: replaced, 2: added; the heaviest variable gets one current bump; 0: off)") \
+  X(stablereordersize, 100, 2, 100000, "--stablereorder: only clauses of at most this many literals count") \
+  X(queuescores, 0, 0, 2, "at a switch to focused mode the decision queue takes the stable-mode score order, highest score decided first (1: every switch, 2: the first switch only; 0: the queue keeps its order)") \
+  X(renumber, 1, 0, 3, "renumber the variables internally for memory locality, before preprocessing (1: breadth-first on the clause graph if the input numbering looks random; 2: breadth-first always; 3: random, for experiments); decision order, proofs and models keep the input numbering") \
   X(renumberrandom, 950, 0, 1000, "--renumber=1: the input numbering looks random if its clause span is this many per mille of a random numbering's") \
   X(modeinit, 1000, 10, INT32_MAX, "conflicts before the first mode switch")                      \
   X(modegrowth, 200, 100, 1000, "growth of the mode length in ticks per focused+stable pair (%)") \
@@ -42,6 +45,15 @@ namespace psat {
   X(tier1, 2, 1, 100, "glue limit of tier1 (kept) learned clauses")                               \
   X(tier2, 6, 1, 1000, "glue limit of tier2 (kept while used) learned clauses")                   \
   X(tier1age, 0, 0, 31, "a tier1 learned clause not used through this many reductions in a row is deleted (0: tier1 clauses are kept for good)") \
+  X(tier1ageconf, 0, 0, 1000000, "a tier1 learned clause not used for about this many thousand conflicts is deleted (aging as --tier1age, its limit in reductions from the current reduce interval; 0: off; --tier1age wins)") \
+  X(tier1revive, 0, 0, 1000, "tier1 aging with an adaptive age limit (reductions in a row unused): it falls by one while the unused tier1 clauses of the oldest age kept are used again in fewer than this many per mille of the following reduce intervals (decayed counts), else it rises by one (0: off; --tier1age / --tier1ageconf win)") \
+  X(tier1revivemin, 8, 2, 31, "--tier1revive: the age limit stays at least this many reductions") \
+  X(tier1limit, 0, 0, 100000, "tier1 budget in per cent of the irredundant long clauses (at least --tier1min): above it, tier1 clauses unused through --tier1limitage reductions in a row are deleted, the longest unused first, down to the budget (0: no budget)") \
+  X(tier1min, 10000, 0, INT32_MAX, "--tier1limit: the budget is at least this many clauses") \
+  X(tier1limitage, 8, 1, 31, "--tier1limit: only tier1 clauses unused through this many reductions in a row are deleted") \
+  X(tier1keepglue, 0, 0, 100, "the tier1 learned clauses kept for good (their glue no longer recomputed) are those of glue at most this; the other tier1 clauses keep having their glue recomputed and are the ones --tier1age / --tier1ageconf / --tier1revive / --tier1limit delete (0: all tier1 clauses are kept for good)") \
+  X(tier1agepromoted, 0, 0, 1, "--tier1age / --tier1ageconf / --tier1revive / --tier1limit delete only clauses promoted into tier1 (glue fell to tier1 when used in conflict analysis); clauses learned in tier1 are kept") \
+  X(tierstats, 0, 0, 1, "statistics: with --reportmem two lines on the learned clauses at every progress line (tier1 by glue and age, inflow, how often aged tier1 clauses are used again; all learned clauses and their uses by glue, vivification by tier; the search is the same)") \
   X(dynamictiers, 0, 0, 1, "tier limits from glue quantiles of used clauses (Kissat 4)")          \
   X(tier1quantile, 50, 1, 99, "dynamic tier1: share of used clauses with glue <= tier1 (%)")      \
   X(tier2quantile, 90, 1, 99, "dynamic tier2: share of used clauses with glue <= tier2 (%)")      \
@@ -60,6 +72,8 @@ namespace psat {
   X(walkeffort, 50, 1, 100000, "walk effort relative to search ticks (per mille)")               \
   X(walkmode, 3, 0, 3, "walk algorithm: 0 = ProbSAT, 1 = DDFW clause weighting (Ishtaiwi et al. 2005), 2 = DDFW with linear weight transfers and weighted-random flips (Chowdhury, Codel, Heule 2023), 3 = ProbSAT for the phases, then the walk of 2 for a model only; with 1-3 a walk that finds a model answers SAT") \
   X(walkrecord, 0, 0, 1, "a walk's assignment becomes the saved phases only if no earlier walk ended with fewer unsatisfied clauses") \
+  X(walkmodel, 2, 0, 2, "--walkmode=3: the model walk's budget: 0 = the phase walk's (walkeffort share, at least 2 x literals); 1 = that while near a model (a minimum of at most sqrt(clauses) x walkmodelnear % unsatisfied clauses), else back off (skip 2^k - 1 calls after k far walks) on the share only; 2 = 1, and near walks get the 2 x literals floor only after a new lowest minimum") \
+  X(walkmodelnear, 100, 0, 100000, "--walkmodel=1 / 2: near a model means at most sqrt(clauses) x this % unsatisfied clauses") \
   X(decay, 50, 1, 200, "EVSIDS score decay (per mille)")                                          \
   X(bumpreasons, 1, 0, 1, "also bump variables in reasons of learned clause literals")           \
   X(bumpreasonslimit, 100, 1, 100000, "skip reason bumping for learned clauses longer than this")   \
@@ -87,6 +101,7 @@ namespace psat {
   X(eliminateeffort, 100, 1, 100000, "elimination effort relative to search ticks (per mille)")   \
   X(eliminatecomplete, 0, 0, 2, "the elimination bound grows only after a round that tried all its candidates (2: or eliminated fewer than a sixteenth of those it tried; 0: every round)") \
   X(eliminatelongskip, 0, 0, 1, "a variable whose last try failed on --eliminateclslim is not tried again while it has a clause longer than that limit + 1") \
+  X(eliminatecircuit, 0, 0, 1000, "on an AND circuit numbered inputs first (at least this many per mille of the variables AND gate outputs, 90% of the gates forward) elimination runs as with --eliminateheap=1 --eliminatecomplete=1 (0: off)") \
   X(eliminateheap, 0, 0, 2, "elimination candidates from a heap on their current occurrence product (2: product of the literals in the clauses of each polarity; 0: sorted once per round)") \
   X(subsume, 1, 0, 1, "forward subsumption and strengthening in elimination rounds")              \
   X(subsumeeffort, 100, 1, 100000, "forward subsumption effort per round in percent of the default") \
@@ -104,7 +119,7 @@ namespace psat {
   X(bvaticks, 100000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
   X(bvasched, 0, 0, 1, "BVA budget: half in the plain order, the rest by literal class (occurrence magnitude) and its clauses removed per tick") \
   X(bvaexplore, 25, 1, 100, "--bvasched: percent of the rest of the budget first split evenly over the classes") \
-  X(bvaextend, 1, 1, 1000, "--bvasched: shares past the budget while the last one was productive (--bvaextendticks), up to this many times the budget") \
+  X(bvaextend, 1, 1, 1000, "BVA past its budget (first rounds; plain order in eighths of it, --bvasched in shares) while the last part was productive (--bvaextendticks), up to this many times the budget") \
   X(bvaextendticks, 10000, 1, INT32_MAX, "--bvaextend: a share is productive if it removed a clause per this many ticks") \
   X(bvadecide, 0, 0, 1, "variables added by BVA are decided last (0: first, as the newest in the decision queue)") \
   X(bvasearch, 1, 0, 1, "BVA also in later elimination rounds, after the eliminations, on literals of touched variables (only if the first round added variables); elimination keeps BVA variables unless that removes clauses") \
@@ -155,10 +170,16 @@ namespace psat {
   X(vivifysort, 1, 0, 2, "vivification decides literals by their occurrences in all clauses: 1 for irredundant clauses, 2 for all (0: among the candidates)") \
   X(vivifysubsume, 1, 0, 1, "vivification deletes clauses that the conflicting (or implying) clause subsumes instead of adding a copy of it") \
   X(vivifyasym, 0, 0, 1, "vivification deletes irredundant clauses implied by the other irredundant ones") \
+  X(vivifytier1, 0, 0, 100000, "tier1 learned clauses (glue <= tier1 or kept) get a vivification pass of their own each round with this effort in per mille of the search ticks (besides --vivifyeffort), every tier1 clause tried once before any is tried again; tier2 then has the learned share of --vivifyeffort to itself, in turns of its own (0: tier1 and tier2 share one pass whose turns restart only when every clause of both had one)") \
   X(probe, 1, 0, 1, "failed literal probing on binary implication graph roots (vivify rounds)")  \
   X(probeuip, 0, 0, 1, "a failed probe learns its first unique implication point (not the probe)")   \
   X(unhide, 0, 0, 1, "unhiding: binary implication graph stamps (failed literals, transitive, hidden tautologies and literals)") \
   X(unhideeffort, 20, 1, 100000, "unhiding effort in per mille of search ticks (vivify rounds)")       \
+  X(binstats, 0, 0, 1, "statistics: with --reportmem a census of the learned binary clauses at every progress line (duplicates, transitive, unused) and the watches propagation visited by kind (the search is the same, a little slower)") \
+  X(propstats, 0, 0, 2, "statistics: with --reportmem a line on search propagation at every progress line (time share, ticks, watches and clause visits per propagation, blocker hits, visit outcomes and implications by tier, saved-phase quartiles; 2: also cache models; the search is the same, slower)") \
+  X(binreduce, 0, 0, 1, "transitive reduction of the learned binary clauses in vivification rounds: one implied by the other binary clauses (a path in the binary implication graph) is deleted") \
+  X(binreduceeffort, 10, 1, 100000, "--binreduce effort in per mille of search ticks") \
+  X(binreducenodes, 100, 2, 1000000, "--binreduce: most literals a breadth-first search for a path visits") \
   X(sweep, 1, 0, 1, "sweeping: backbones and equivalences in variable environments (Kitten)")    \
   X(sweepeffort, 1000, 1, 100000, "sweeping effort in per mille of search ticks")                \
   X(sweepdepth, 2, 0, 8, "environment depth (clause steps from the swept variable)")            \
