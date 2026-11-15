@@ -92,7 +92,11 @@ namespace psat {
   X(eliminatelitbound, 1000000, 0, 1000000, "largest literal-count increase allowed per eliminated variable") \
   X(eliminategrowth, 100, 0, 1000000, "cap on the irredundant literals added by elimination, per mille of those before the first round (0: none)") \
   X(eliminategrowthmin, 10000000, 0, INT32_MAX, "the elimination growth cap applies from this many irredundant literals before the first round") \
+  X(eliminatefloor, 1000, 1, 1000000, "effort floor of the first elimination round (before search) in per mille of 1M + half the arena words")         \
   X(eliminateclslim, 100, 2, 100000, "largest resolvent size")                                   \
+  X(eliminategatelim1, 3, 0, 100000, "largest resolvent of an elimination by a definition of a kind in --eliminategatekinds1 in the first elimination round (multiplier circuits eliminated before search: gm24sparrc); 0: no extra limit") \
+  X(eliminategatekinds1, 4, 0, 15, "definitions --eliminategatelim1 applies to: 1 AND / equivalence, 2 XOR, 4 ITE (gm24sparrc), 8 semantic (all: asconhash H7 unsolved)") \
+  X(eliminateclslim1, 0, 0, 100000, "largest resolvent size in the first elimination round (before search: eliminations with long resolvents there can hide circuit structure, gm24sparrc); 0: --eliminateclslim") \
   X(eliminategates, 1, 0, 1, "AND-gate / equivalence definitions in elimination")                 \
   X(eliminatexorlim, 3, 0, 1000, "largest XOR merged by elimination (0 = no limit)")              \
   X(definitions, 1, 0, 1, "semantic definitions in elimination (unsat cores by Kitten)")        \
@@ -104,6 +108,7 @@ namespace psat {
   X(eliminatecircuit, 0, 0, 1000, "on an AND circuit numbered inputs first (at least this many per mille of the variables AND gate outputs, 90% of the gates forward) elimination runs as with --eliminateheap=1 --eliminatecomplete=1 (0: off)") \
   X(eliminateheap, 0, 0, 2, "elimination candidates from a heap on their current occurrence product (2: product of the literals in the clauses of each polarity; 0: sorted once per round)") \
   X(subsume, 1, 0, 1, "forward subsumption and strengthening in elimination rounds")              \
+  X(mergepairs, 0, 0, 1, "elimination rounds, before forward subsumption: irredundant clauses over the same variables whose signs differ in one place are replaced by their resolvent, down by size (truth-table encodings: random-circuits)") \
   X(subsumeeffort, 100, 1, 100000, "forward subsumption effort per round in percent of the default") \
   X(subsumerel, 0, 0, 100000, "later rounds' forward subsumption effort is at least this many per mille of the search ticks since the last round (0: the fixed default only)") \
   X(eagersubsume, 20, 0, 100, "learned clauses checked for subsumption by each new learned clause") \
@@ -119,8 +124,9 @@ namespace psat {
   X(bvaticks, 100000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
   X(bvasched, 0, 0, 1, "BVA budget: half in the plain order, the rest by literal class (occurrence magnitude) and its clauses removed per tick") \
   X(bvaexplore, 25, 1, 100, "--bvasched: percent of the rest of the budget first split evenly over the classes") \
-  X(bvaextend, 1, 1, 1000, "BVA past its budget (first rounds; plain order in eighths of it, --bvasched in shares) while the last part was productive (--bvaextendticks), up to this many times the budget") \
-  X(bvaextendticks, 10000, 1, INT32_MAX, "--bvaextend: a share is productive if it removed a clause per this many ticks") \
+  X(bvaextend, 8, 1, 1000, "BVA past its budget (first rounds; plain order in eighths of it, --bvasched in shares) while the last part was productive (--bvaextendticks), up to this many times the budget") \
+  X(bvaextendticks, 40000, 1, INT32_MAX, "--bvaextend: a share is productive if it removed a clause per this many ticks") \
+  X(bvaextendreal, 1, 0, 1, "--bvaextend in the plain order also for the real round after a trial: past the trial's budget in eighths while productive") \
   X(bvadecide, 0, 0, 1, "variables added by BVA are decided last (0: first, as the newest in the decision queue)") \
   X(bvasearch, 1, 0, 1, "BVA also in later elimination rounds, after the eliminations, on literals of touched variables (only if the first round added variables); elimination keeps BVA variables unless that removes clauses") \
   X(bvasearcheffort, 50, 1, 100000, "--bvasearch: BVA effort per round relative to search ticks since the last round (per mille)") \
@@ -139,6 +145,7 @@ namespace psat {
   X(countingfault, 0, 0, INT32_MAX, "debugging: the k-th counting PR step gets a wrong witness (its check must refuse it)") \
   X(congruenceclosure, 1, 0, 1, "AND gate congruence to a fixpoint per call (union-find, re-hashing)")   \
   X(congruencegates, 1, 0, 1, "XOR and ITE gates join the congruence closure (else matched pairwise after it)") \
+  X(congruencetern, 0, 0, 2, "before each congruence call: binary resolvents of ternary clause pairs (a b c) (a b -c), which subsume both (substitution into XOR encodings leaves such pairs); 2: the ternary clauses are kept (gates use them)") \
   X(dedup, 1, 0, 1, "remove duplicate binary clauses after substitution")                         \
   X(gauss, 1, 0, 1, "XORs from complete clause encodings: a detached Gauss-Jordan solver (no proof) looks for a model") \
   X(gaussmin, 100, 0, 1000, "Gauss-Jordan only if XOR encodings cover this many per mille of the clauses") \

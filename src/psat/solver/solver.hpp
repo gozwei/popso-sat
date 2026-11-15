@@ -160,7 +160,7 @@ struct Stats {
   // learned clauses of glue <= tier1 (vivification, unhiding), clauses whose glue fell to tier1 /
   // tier2 when used in conflict analysis.
   uint64_t tier1_learned = 0, tier1_other = 0, tier1_promoted = 0, tier2_promoted = 0;
-  uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0;
+  uint64_t eliminations = 0, eliminated = 0, resolvents = 0, subsumed = 0, strengthened = 0, substituted = 0, merged = 0;
   // Elimination breakdown: candidates tried and why they failed (occurrence limit, resolvent size,
   // clause bound, literal bound or growth cap, XOR merge), tries of a variable that failed in an
   // earlier round with its clauses unchanged since (same bound / raised bound), and the round's
@@ -194,6 +194,7 @@ struct Stats {
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0, bva_trials = 0, bva_rounds = 0;
   uint64_t bva_search_vars = 0, bva_search_rounds = 0;  // --bvasearch
   uint64_t deduplicated = 0;  // duplicate binary clauses removed
+  uint64_t tern_binaries = 0, tern_subsumed = 0;  // --congruencetern
   uint64_t binreduce_rounds = 0, binreduce_checked = 0, binreduce_deleted = 0, binreduce_cut = 0, binreduce_ticks = 0;  // --binreduce
   uint64_t stop_faults = 0;   // --stopfault (testing): stops injected
   uint64_t walks = 0, walks_kept = 0, walk_flips = 0, walk_ticks = 0, walk_models = 0, walk_transfers = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
@@ -419,10 +420,16 @@ class Solver {
   void disconnect_long_watches();
   void reconnect_long_watches();
   void subsume_round(uint64_t& budget);
+  void merge_pairs();                               // --mergepairs (subsume.cpp)
+  bool strengthen_irredundant(uint32_t ref, Lit remove);  // true: the clause became binary
   bool substitute();
   uint64_t dedup_binaries();
   void substitute_now();  // outside elimination rounds, at the root
   uint32_t congruence(uint64_t& budget);
+  uint32_t ternary_binaries(uint64_t& budget);  // --congruencetern
+  uint32_t elim_clslim() const {  // --eliminateclslim, or --eliminateclslim1 in the first round
+    return static_cast<uint32_t>(eliminate_rounds_ == 1 && opts_.eliminateclslim1 ? opts_.eliminateclslim1 : opts_.eliminateclslim);
+  }
   uint32_t congruent_xors(uint64_t& budget);
   uint32_t congruent_ites(uint64_t& budget);
   // Gate extraction for congruence: XOR constraints (complete clause sets of 3..5 variables: the
@@ -871,6 +878,7 @@ class Solver {
   uint64_t eliminate_limit_ = 0, eliminate_rounds_ = 0, eliminate_last_ticks_ = 0;
   uint64_t eliminate_last_fixed_ = UINT64_MAX, eliminate_last_irredundant_ = 0;
   uint32_t eliminate_delay_ = 0;     // unproductive rounds in a row (back-off exponent)
+  bool merge_productive_ = false;    // --mergepairs: the last call merged a pair (later rounds run it only then)
   uint32_t eliminate_last_bound_ = 0;
   // --eliminatecomplete: bound raises so far (each after a round that tried all its candidates)
   // and whether the last round left candidates untried.

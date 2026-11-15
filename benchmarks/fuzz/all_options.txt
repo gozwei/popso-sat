@@ -105,6 +105,7 @@
 --eliminatecircuit=0..1000
 --eliminatelongskip=0..1
 --dedup=0..1
+--mergepairs=0..1
 --subsume=0..1
 --subsumeeffort=1..5000
 --subsumerel=0..2000
@@ -127,11 +128,16 @@
 --bvasearcheffort=1..2000
 --bvaextend=1..20
 --bvaextendticks=10..100000
+--bvaextendreal=0..1
 
 # congruence closure, simulation
 --congruence=0..1
 --congruenceclosure=0..1
 --congruencegates=0..1
+--congruencetern=0..2
+--eliminateclslim1=0..5
+--eliminategatelim1=0..5
+--eliminategatekinds1=0..15
 --simeq=0..1
 --simeqticks=1..100000
 --simeqconst=0..1

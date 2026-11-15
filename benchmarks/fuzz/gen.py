@@ -449,6 +449,72 @@ def gen_parity(rng: random.Random, max_vars: int) -> Formula:
     return Formula(nv - 1, clauses, "parity", expected="SAT" if b1 == b2 else "UNSAT")
 
 
+def gen_ternpairs(rng: random.Random, max_vars: int) -> Formula:
+    """4-variable XORs (8 clauses each), binary equivalences between variables of the same XOR
+    (substitution turns those XORs into ternary clause pairs (a b c) (a b -c)), explicit ternary
+    pairs, AND gates over XOR outputs and random ternary clauses: exercises --congruencetern."""
+    n = rng.randint(8, max(8, min(max_vars, 60)))
+    clauses: list[list[int]] = []
+    for _ in range(rng.randint(2, n // 2)):
+        vs = rng.sample(range(1, n + 1), 4)
+        par = rng.randint(0, 1)
+        for mask in range(16):
+            if bin(mask).count("1") % 2 != par:
+                clauses.append([v if mask >> i & 1 else -v for i, v in enumerate(vs)])
+        if rng.random() < 0.6:
+            x, y = rng.sample(vs, 2)
+            sy = y if rng.random() < 0.5 else -y
+            clauses += [[-x, sy], [x, -sy]]
+    for _ in range(rng.randint(0, n // 3)):
+        a, b, c = rng.sample(range(1, n + 1), 3)
+        a, b = (a if rng.random() < 0.5 else -a), (b if rng.random() < 0.5 else -b)
+        clauses += [[a, b, c], [a, b, -c]]
+    for _ in range(rng.randint(0, n // 4)):
+        o, i, j = rng.sample(range(1, n + 1), 3)
+        clauses += [[-o, i], [-o, j], [o, -i, -j]]
+    clauses += _ksat_clauses(rng, n, rng.randint(0, 2 * n), 3)
+    rng.shuffle(clauses)
+    return Formula(n, clauses, "ternpairs")
+
+
+def gen_truthtable(rng: random.Random, max_vars: int) -> Formula:
+    """Random gates encoded by their forbidden assignments, as in the random-circuits family: a
+    gate with i inputs and o outputs is every (input, output) assignment but the valid ones, one
+    clause of i + o literals each (sometimes a relation: some valid rows allow two outputs, some
+    forbidden ones are left out), gates fed by inputs and earlier outputs, then output constraints
+    and random clauses. Exercises --mergepairs (pairs of clauses that differ in one sign)."""
+    n_in = rng.randint(3, 8)
+    nv = n_in
+    pool = list(range(1, n_in + 1))
+    clauses: list[list[int]] = []
+    for _ in range(rng.randint(1, 6)):
+        ni = rng.randint(1, min(4, len(pool)))
+        no = rng.randint(1, 3)
+        ins = rng.sample(pool, ni)
+        outs = list(range(nv + 1, nv + no + 1))
+        nv += no
+        relation = rng.random() < 0.3
+        for row in range(1 << ni):
+            good = {rng.randrange(1 << no)}
+            if relation and rng.random() < 0.3:
+                good.add(rng.randrange(1 << no))
+            for out in range(1 << no):
+                if out in good or (relation and rng.random() < 0.1):
+                    continue
+                cl = [-v if row >> i & 1 else v for i, v in enumerate(ins)]
+                cl += [-v if out >> i & 1 else v for i, v in enumerate(outs)]
+                clauses.append(cl)
+        pool += outs
+    for _ in range(rng.randint(0, 3)):
+        v = rng.choice(pool[n_in:] or pool)
+        clauses.append([v if rng.random() < 0.5 else -v])
+    clauses += _ksat_clauses(rng, nv, rng.randint(0, nv), 3)
+    for cl in clauses:
+        rng.shuffle(cl)
+    rng.shuffle(clauses)
+    return Formula(nv, clauses, "truthtable")
+
+
 # ----- XOR substitution
 
 
@@ -892,6 +958,8 @@ FAMILIES = {
     "counting": (gen_counting, 0.0),  # not in the default mix (its seeds stay as they were)
     "xorsub": (gen_xorsub, 0.0),  # not in the default mix
     "linmod": (gen_linmod, 0.0),  # not in the default mix
+    "ternpairs": (gen_ternpairs, 0.0),  # not in the default mix
+    "truthtable": (gen_truthtable, 0.0),  # not in the default mix
 }
 
 

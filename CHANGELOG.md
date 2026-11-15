@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.4.3 — 2026-11-15
+
+Elimination before search keeps multiplier circuits intact, and bounded variable addition (BVA)
+may run past its budget while it is productive. Both are on by default. New options for
+truth-table encodings and ternary clause pairs, all off.
+
+On the 78 instances of the held-out fresh set (2024 and 2025 main tracks, families never used for
+tuning; Intel i7-7700K, Linux, 1000 s), all three solvers ran on the same machine:
+
+| | 0.4.3 | 0.4.2 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved (SAT / UNSAT) | 47 (29 / 18) | 44 (29 / 15) | 52 (32 / 20) |
+| solved within 300 s | 44 | 41 | 37 |
+| PAR-2 (s) | 859 | 935 | 818 |
+
+0.4.3 gains three instances and loses none. Kissat is still ahead at 1000 s on these families.
+On the 168 SAT Competition 2026 instances, 0.4.3 solves 109 (0.4.2 110, Kissat 4.0.4 80): the only
+difference to 0.4.2 is QuasiGroup-4-12_c18, which flips with the search order. All 65 UNSAT
+proofs were verified. See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **First-round gate limit** (`--eliminategatelim1=3`, `--eliminategatekinds1=4`, on): in the
+  elimination round before search, eliminations by an ITE definition may produce resolvents of
+  at most 3 literals. Eliminating multiplexers with long resolvents hid the structure of
+  multiplier circuits.
+  - gm24sparrc and gm28sparrc (multiplier verification, UNSAT) are refuted in 1 and 3 s. 0.4.2
+    does not solve them in 1000 s; Kissat takes 9 and 15 s.
+  - Applied to all definition kinds, the limit loses asconhash H7 and others on sc2026. Hence
+    the default mask of ITE definitions only.
+- **BVA extension** (`--bvaextend=8`, `--bvaextendticks=40000`, `--bvaextendreal=1`, on): a BVA
+  round may run up to 8 times its budget while each further eighth removes a clause per 40,000
+  ticks. This applies to trial rounds and to the real round after a trial.
+  - korf-17: 112-160 s on three seeds before, 36-45 s now (Apple M4 Pro).
+  - aes_equiv_encry_3_rounds: 601 to 340 s. post-cbmc-aes-ee-r2: 175 to 96 s (i7, sc2026 run).
+  - **Proof checking cost:** the proofs are smaller but check slower. dpr-trim checks the
+    post-cbmc-aes-ee-r2 proof (221 MB, 272k PR lemmas in the core) in 2,043 s, against 194 s for
+    0.4.2's proof (401 MB). `--bvaextend=1 --bvaextendreal=0` restores the 0.4.2 behaviour.
+- **New options, off by default:**
+  - `--mergepairs`: in elimination rounds, irredundant clauses over the same variables that
+    differ in one sign are replaced by their resolvent (truth-table encodings);
+  - `--congruencetern`: binary resolvents of ternary clause pairs (a b c) (a b -c) before each
+    congruence call;
+  - `--eliminateclslim1`: a resolvent size limit for the first elimination round;
+  - `--eliminatefloor`: the first elimination round's effort floor.
+
 ## v0.4.2 — 2026-11-14
 
 Two new defaults: a model walk that backs off while it is far from a model, and variable

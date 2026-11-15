@@ -326,6 +326,15 @@ std::vector<Options> option_variants() {
   w.walkmodel = 2;      // and with the model walk backing off, near a model at half the scale
   w.walkmodelnear = 50;
   v.push_back(w);
+  Options p;  // the v0.4.2 defaults: no first-round gate limit, BVA within its budget
+  p.eliminategatelim1 = 0;
+  p.bvaextend = 1;
+  p.bvaextendticks = 10000;
+  p.bvaextendreal = 0;
+  v.push_back(p);
+  Options mp;  // --mergepairs
+  mp.mergepairs = 1;
+  v.push_back(mp);
   return v;
 }
 

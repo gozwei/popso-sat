@@ -395,7 +395,9 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
   // re-encodings and used the whole budget, while the at-most-one cliques of 18 behind them (17
   // occurrences per literal) give 120k clauses of reduction for 11.5M ticks.
   size_t qi = 0;
-  if (!opts_.bvasched && (opts_.bvaextend <= 1 || touched_only || !dry || !opts_.bvamin)) {
+  const bool extend_round =
+      opts_.bvaextend > 1 && !touched_only && (dry ? opts_.bvamin > 0 : opts_.bvaextendreal != 0);
+  if (!opts_.bvasched && !extend_round) {
     run(qi, queue.size(), limit);
   } else if (!opts_.bvasched) {
     // --bvaextend=K in the plain order, trial rounds only: the budget goes out in eighths; past
@@ -406,6 +408,10 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
     // the SAT search 3.4 -> 21.5 s with the larger re-encoding). korf-17 (2d strip packing): the
     // trial finds 9.8% of the clauses in the 100M-tick floor (declined), 27% at about 400M (one
     // clause per 11-19k ticks throughout); seeds 0-2 112 / 160 / 115 s -> 110 / 71 / 75 s (M4).
+    // --bvaextendreal: the real round extends the same way (without the --bvamin stop), from the
+    // budget the trial used. REGRandom-K4-L1-Seed30 (825k ternary clauses over 4,608 variables):
+    // the trial qualifies at 26 new variables (20.5%); 367 variables (953k clauses removed, one
+    // per ~1,000 ticks) leave a formula refuted in 0.4 s of search, where 26 leave it unsolved.
     const uint64_t base = limit > round_start ? limit - round_start : 1;
     const uint64_t eighth = std::max<uint64_t>(1, base / 8);
     const uint64_t most = round_start + base * static_cast<uint64_t>(opts_.bvaextend);
@@ -414,8 +420,8 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
     int64_t last_gain = 0;
     while (qi < queue.size() && added < max_new && !inconsistent_ && !stop_requested()) {
       if (budget > limit) {
-        const bool qualifies =
-            reduced > 0 && static_cast<uint64_t>(reduced) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses;
+        const bool qualifies = dry && reduced > 0 &&
+                               static_cast<uint64_t>(reduced) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses;
         if (qualifies || limit >= most || last_gain <= 0 ||
             static_cast<uint64_t>(last_gain) * static_cast<uint64_t>(opts_.bvaextendticks) < last_spent) {
           break;

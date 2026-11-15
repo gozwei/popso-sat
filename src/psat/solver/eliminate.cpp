@@ -285,7 +285,8 @@ void Solver::eliminate() {
   const uint64_t search_ticks = stats_.ticks - eliminate_last_ticks_;
   uint64_t limit = static_cast<uint64_t>(static_cast<double>(search_ticks) * opts_.eliminateeffort / 1000.0);
   // The first round (preprocessing) gets an effort floor proportional to the formula size.
-  limit = std::max<uint64_t>(limit, eliminate_rounds_ == 0 ? 1'000'000 + arena_.size() / 2 : 100'000);
+  const uint64_t floor0 = static_cast<uint64_t>(static_cast<double>(1'000'000 + arena_.size() / 2) * opts_.eliminatefloor / 1000.0);
+  limit = std::max<uint64_t>(limit, eliminate_rounds_ == 0 ? floor0 : 100'000);
   const uint32_t bound = elimination_bound();
   // A raised bound retries every variable; otherwise only those whose clauses changed.
   const bool all_candidates = eliminate_rounds_ == 0 || bound > eliminate_last_bound_;
@@ -332,9 +333,13 @@ void Solver::eliminate() {
       int iterations = 0;
       for (int iter = 0; iter < 16 && !inconsistent_ && !stop_requested(); ++iter) {
         ++iterations;
+        const uint32_t tern = opts_.congruencetern ? ternary_binaries(budget) : 0;
         const uint32_t n = congruence(budget);
-        if (opts_.verbose >= 3) std::printf("c   congruence iteration %d: %u congruent\n", iter, n);
-        if (!n) break;
+        if (opts_.verbose >= 3) std::printf("c   congruence iteration %d: %u congruent, %u ternary binaries\n", iter, n, tern);
+        if (!n) {
+          if (tern && !inconsistent_) substitute();
+          break;
+        }
         found = true;
         substitute();
         scan("congruence+substitute");
@@ -778,7 +783,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
         delete_irredundant(ref);
         continue;
       }
-      has_long = has_long || c.size > static_cast<uint32_t>(opts_.eliminateclslim) + 1;
+      has_long = has_long || c.size > elim_clslim() + 1;
       side[s].push_back(OccClause{ref, kNoLit});
     }
     for (const Watch& w : watches_[p]) {
@@ -857,6 +862,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
   gate[0].assign(np, 0);
   gate[1].assign(nn, 0);
   bool gated = false;
+  uint32_t gate_kind = 0;  // 1 AND / equivalence, 2 XOR, 4 ITE, 8 semantic definition
   if (opts_.eliminategates) {
     for (int s = 0; s < 2 && !gated; ++s) {
       const int o = 1 - s;
@@ -902,10 +908,12 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
     // up to k + m - 2 variables (2^(k+m-3) clauses). Even at an unchanged clause count, CDCL
     // does much worse on the longer XORs (parity formulas need many times the conflicts), so
     // such merges are limited by --eliminatexorlim.
+    if (gated) gate_kind = 1;
     if (!gated) {
       const uint32_t k = find_xor_gate(v, side, gate, nullptr, budget);
       if (k) {
         gated = true;
+        gate_kind = 2;
         const uint32_t m = opts_.eliminatexorlim ? find_xor_gate(v, side, nullptr, gate, budget) : 0;
         if (m && k + m - 2 > static_cast<uint32_t>(opts_.eliminatexorlim)) {
           ++stats_.xor_merges_skipped;
@@ -916,7 +924,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
       }
     }
     // ITE definition v = ITE(c, t, e): (-v -c t), (-v c e), (v -c -t), (v c -e) (either polarity).
-    if (!gated) gated = find_ite_gate(v, side, gate, budget);
+    if (!gated && find_ite_gate(v, side, gate, budget)) gated = true, gate_kind = 4;
     if (gated) ++stats_.gates;
   }
   charge(stats_.elim_w_gates);
@@ -924,6 +932,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
   // resolvents are not tautologies and must be kept; non-gate x non-gate ones are implied.
   bool semantic = false;
   if (!gated && opts_.definitions) semantic = gated = find_definition(v, side, gate, budget);
+  if (semantic) gate_kind = 8;
   charge(stats_.elim_w_defs);
   auto skip_pair = [&](size_t i, size_t j) {
     if (!gated) return false;
@@ -932,6 +941,10 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
 
   // Count the resolvents first (abort above the bound or on a too long resolvent).
   const uint64_t limit = np + nn + bound;
+  const size_t clslim = gated && eliminate_rounds_ == 1 && opts_.eliminategatelim1 &&
+                                (static_cast<uint32_t>(opts_.eliminategatekinds1) & gate_kind)
+                            ? std::min<size_t>(elim_clslim(), static_cast<size_t>(opts_.eliminategatelim1))
+                            : elim_clslim();
   uint64_t count = 0, res_lits = 0;
   std::vector<Lit>& res = elim_res_;
   for (size_t i = 0; i < np; ++i) {
@@ -940,7 +953,7 @@ bool Solver::try_eliminate(Var v, uint32_t bound, uint64_t& budget) {
       const OccClause& b = side[1][j];
       if (skip_pair(i, j)) continue;
       if (!resolve(a, b, res)) continue;
-      if (res.size() > static_cast<size_t>(opts_.eliminateclslim)) {
+      if (res.size() > clslim) {
         ++stats_.elim_fail_size;
         if (has_long && v < elim_size_failed_.size()) elim_size_failed_[v] = 1;
         charge(stats_.elim_w_count);

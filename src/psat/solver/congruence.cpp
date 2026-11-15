@@ -184,6 +184,11 @@ uint32_t Solver::congruence(uint64_t& budget) {
       gates.push_back(Gate{0, begin, 3, t.o, kIte, 0});
     }
   }
+  if (opts_.verbose >= 3) {
+    size_t kinds[3] = {0, 0, 0};
+    for (const Gate& g : gates) ++kinds[g.kind];
+    std::printf("c   congruence gates: and %zu, xor %zu (per output), ite %zu\n", kinds[kAnd], kinds[kXor], kinds[kIte]);
+  }
   if (gates.size() < 2) {
     std::vector<Gate>().swap(gates);
     std::vector<Lit>().swap(inputs);
@@ -892,6 +897,75 @@ uint32_t Solver::congruent_ites(uint64_t& budget) {
   }
   stats_.congruent_ites += found;
   return found;
+}
+
+// Ternary clause pairs (a b c) (a b -c): their resolvent (a b) subsumes both, and every other
+// ternary clause (a b x). Substituting equivalent variables into XOR encodings leaves many such
+// pairs (x ^ y ^ a ^ b with x = y becomes a = b, as ternary clauses over x, a and b); the
+// binaries then complete AND gates and equivalences for the closure. Each ternary clause gives
+// three entries (pair of the other two literals, pivot), sorted so that the clauses of a pair are
+// adjacent. Runs inside an elimination round (long watches detached); returns the binaries added.
+uint32_t Solver::ternary_binaries(uint64_t& budget) {
+  struct Entry {
+    uint64_t key;  // pair (a < b), then the pivot variable
+    Lit pivot;
+    uint32_t ref;
+  };
+  std::vector<Entry> entries;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || c.redundant || c.size != 3) continue;
+    const Lit* l = c.lits();
+    if (vals_[l[0]] || vals_[l[1]] || vals_[l[2]]) continue;
+    for (int k = 0; k < 3; ++k) {
+      Lit a = l[(k + 1) % 3], b = l[(k + 2) % 3];
+      if (a > b) std::swap(a, b);
+      entries.push_back(Entry{(uint64_t{a} << 32 | b), l[k], ref});
+    }
+  }
+  budget += entries.size();
+  if (entries.size() < 6 || stop_requested()) return 0;
+  std::sort(entries.begin(), entries.end(), [](const Entry& x, const Entry& y) {
+    return x.key != y.key ? x.key < y.key : x.pivot < y.pivot;
+  });
+  budget += entries.size() * 4;
+  uint32_t added = 0;
+  for (size_t i = 0; i < entries.size();) {
+    size_t j = i + 1;
+    while (j < entries.size() && entries[j].key == entries[i].key) ++j;
+    bool resolvent = false;
+    for (size_t k = i; k + 1 < j && !resolvent; ++k) {
+      // Sorted by pivot literal: a variable's two literals are adjacent (2v, 2v + 1).
+      resolvent = entries[k + 1].pivot == (entries[k].pivot ^ 1u) && (entries[k].pivot & 1u) == 0;
+    }
+    if (resolvent) {
+      const Lit a = static_cast<Lit>(entries[i].key >> 32), b = static_cast<Lit>(entries[i].key & 0xffffffffu);
+      bool present = false;
+      for (const Watch& w : watches_[a]) {
+        if (w.binary() && w.blit == b && !w.redundant_binary()) {
+          present = true;
+          break;
+        }
+      }
+      budget += watches_[a].size() / 4 + 1;
+      if (!present) {
+        const Lit bin[2] = {a, b};
+        if (proof_) proof_->add(bin, 2);
+        add_binary(a, b, false);
+        touch_var(var_of(a));
+        touch_var(var_of(b));
+        ++added;
+      }
+      for (size_t k = i; k < j && opts_.congruencetern == 1; ++k) {
+        if (clause(entries[k].ref).garbage) continue;
+        delete_irredundant(entries[k].ref);
+        ++stats_.tern_subsumed;
+      }
+    }
+    i = j;
+  }
+  stats_.tern_binaries += added;
+  return added;
 }
 
 }  // namespace psat

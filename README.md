@@ -10,7 +10,7 @@ use of AI coding agents. The goal is a fully open-source solver that holds its o
 best open-source SAT solvers on real benchmarks, with an entry in the SAT Competition as the
 first milestone. It is at an early stage.
 
-On a sample of 168 instances of the SAT Competition 2026, version 0.4.2 solves 110 within 1000 s,
+On a sample of 168 instances of the SAT Competition 2026, version 0.4.3 solves 109 within 1000 s,
 against 80 for Kissat 4.0.4 and 98 for version 0.4.0 on the same machine. All 65 UNSAT answers
 were checked with their proofs. Most of the lead over Kissat comes from reasoning Kissat does
 not have:
@@ -19,8 +19,8 @@ not have:
 - linear equations mod p.
 
 The defaults were tuned on that sample. On 78 instances of the 2024 and 2025 competitions from
-families never used for tuning, Kissat is ahead: 49 solved against 43 for 0.4.2 (see
-[BENCHMARKS.md](BENCHMARKS.md)).
+families never used for tuning, Kissat is ahead: 52 solved against 47 for 0.4.3 and 44 for 0.4.2
+(see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -67,27 +67,27 @@ default every model is checked against the original formula before it is printed
 A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.txt`). Setup:
 - 1000 s and 12 GB per instance, four at a time, on an Intel i7-7700K running Linux;
 - every model was checked;
-- every UNSAT answer of popso-sat 0.4.2 was checked with its proof by dpr-trim.
+- every UNSAT answer of popso-sat 0.4.3 was checked with its proof by dpr-trim.
 
 78 instances of the 2024 and 2025 main tracks from 38 families that are in no tuning set
-(`sets/fresh.txt`): 1000 s and 12 GB, four at a time, on an Intel Xeon E5-1650 v2 running
-Linux; no proofs.
+(`sets/fresh.txt`), with the same setup and machine; no proofs.
 
-Solved / PAR-2 in seconds (the two sets ran on different machines):
+Solved / PAR-2 in seconds:
 
-| set | popso-sat 0.4.2 | popso-sat 0.4.0 | Kissat 4.0.4 |
-|---|---|---|---|
-| sc2026 (168) | 110 / 775.3 | 98 / 926.4 | 80 / 1152.3 |
-| fresh (78) | 43 / 958.4 | | 49 / 874.6 |
+| set | popso-sat 0.4.3 | popso-sat 0.4.2 | popso-sat 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| sc2026 (168) | 109 / 784.1 | 110 / 775.3 | 98 / 926.4 | 80 / 1152.3 |
+| fresh (78) | 47 / 858.7 | 44 / 935.0 | | 52 / 818.2 |
 
-**sc2026:** 0.4.2 solves 36 instances that Kissat does not, most of them with counting,
-Gauss-Jordan or mod-p reasoning. Kissat solves 6 that 0.4.2 does not. Against 0.4.0, 0.4.2
-gains 14 and loses 2. At 5000 s (competition length, on an AMD EPYC 4465P), 0.4.2 solves 130,
-the 0.4.1 search 125 and Kissat 110.
+**sc2026:** 0.4.3 solves 35 instances that Kissat does not, most of them with counting,
+Gauss-Jordan or mod-p reasoning. Kissat solves 6 that 0.4.3 does not. 0.4.3 and 0.4.2 differ
+in one instance (QuasiGroup-4-12_c18, which flips with the search order). At 5000 s (competition
+length, on an AMD EPYC 4465P), 0.4.2 solves 130, the 0.4.1 search 125 and Kissat 110.
 
-**fresh:** 0.4.2 solves more within 300 s (38 against 36), but Kissat solves 13 instances that
-0.4.2 does not, among them two multiplier verification instances in 12 and 20 s. 0.4.2 solves 7
-that Kissat does not.
+**fresh:** 0.4.3 solves 3 more than 0.4.2 and loses none; two of them are multiplier
+verification instances, now refuted in 1 and 3 s. It solves more within 300 s than Kissat (44
+against 37), but Kissat solves 11 instances that 0.4.3 does not, and 0.4.3 solves 6 that Kissat
+does not.
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of

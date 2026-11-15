@@ -1131,9 +1131,9 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.eager_subsumed));
   std::fprintf(out,
                "c eliminations   %14llu  eliminated %llu  substituted %llu  resolvents %llu  subsumed %llu  "
-               "strengthened %llu\n",
+               "strengthened %llu  merged pairs %llu\n",
                ull(stats_.eliminations), ull(stats_.eliminated), ull(stats_.substituted), ull(stats_.resolvents),
-               ull(stats_.subsumed), ull(stats_.strengthened));
+               ull(stats_.subsumed), ull(stats_.strengthened), ull(stats_.merged));
   std::fprintf(out,
                "c elim tries     %14llu  resolutions %llu  retried unchanged %llu (same bound) %llu (raised)  failed: "
                "occurrences %llu  size %llu (skipped %llu)  bound %llu  literals %llu  xor %llu\n",
@@ -1201,9 +1201,10 @@ void Solver::print_statistics(std::FILE* out) const {
                     "failed %llu  ticks %llu\n",
                ull(stats_.simulations), ull(stats_.sim_gates), ull(stats_.sim_ites), ull(stats_.sim_candidates), ull(stats_.sim_checked),
                ull(stats_.sim_equivalences), ull(stats_.sim_units), ull(stats_.sim_failed), ull(stats_.sim_ticks));
-  std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu; xor merges skipped %llu)  congruent outputs %llu (xor %llu, ite %llu)\n",
+  std::fprintf(out, "c gates          %14llu  (definitions in elimination: xor %llu, ite %llu, semantic %llu; xor merges skipped %llu)  congruent outputs %llu (xor %llu, ite %llu)  ternary binaries %llu (subsumed %llu)\n",
                ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions),
-               ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites));
+               ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites),
+               ull(stats_.tern_binaries), ull(stats_.tern_subsumed));
   if (xorsub_stats_.runs) {
     const XorSubStats& x = xorsub_stats_;
     std::fprintf(out, "c xorsub         %14llu  tuples (%llu of 3 variables), %llu expanded clauses -> %llu reduced, %llu definition clauses, %.4f s\n",
