@@ -253,7 +253,9 @@ class WatchLists {
   // Pool capacity for at least n entries (by realloc, or a fresh copy in stress mode).
   void ensure_pool(size_t n) {
     if (n <= cap_ && !stress_) return;
-    size_t want = cap_ + cap_ / 4 + 1024;
+    // (Stress mode copies even when the pool has room, at the same capacity then: growing it on
+    // every copy compounded to 1.7G entries in the unit test, which Linux refuses to allocate.)
+    size_t want = n <= cap_ ? cap_ : cap_ + cap_ / 4 + 1024;
     if (want < n) want = n;
     if (want > kMaxEntries) want = kMaxEntries;
     if (want < n) throw std::bad_alloc();  // (begin indices are 32-bit)

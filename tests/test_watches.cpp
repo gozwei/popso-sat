@@ -71,6 +71,9 @@ void run(bool stress, uint64_t seed) {
     if (step % 97 == 0) CHECK(same(lists, model));
   }
   CHECK(same(lists, model));
+  // The pool stays near what is in use (at most 20,000 pushes here): stress mode once grew it on
+  // every copy, to 1.7G entries, which macOS allocates lazily and Linux refuses.
+  CHECK(lists.pool_bytes() < (size_t{16} << 20));
   size_t live = 0;
   for (const auto& m : model) live += m.size();
   CHECK_EQ(lists.live(), live);
