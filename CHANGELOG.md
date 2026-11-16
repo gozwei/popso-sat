@@ -26,7 +26,7 @@ verified without the limit. See [BENCHMARKS.md](BENCHMARKS.md).
   The resolvents join the next size down, so a full truth table collapses step by step.
   - circuit_32in32out_with_64gates (fresh, SAT): 64 gates, each written as its 16,256 forbidden
     assignments. 921,795 merges in the first round leave 38,563 irredundant clauses. Solved in
-    61 s on the box (0.4.3: unsolved at 1000 s; Kissat 98 s).
+    61 s on the i7 (0.4.3: unsolved at 1000 s; Kissat 98 s).
   - sc2026: QuasiGroup-4-12_c18 is solved again (435 s). Within 300 s, as-p31-l12-o9-56 and
     sum_of_3_cubes_50_bits_91 are new; bench_1278 goes from 18 to 131 s.
 - **New options, off by default:**

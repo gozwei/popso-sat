@@ -302,7 +302,7 @@ BENCHMARKS tables keep the full sets at 1000 s.
 1. **Dev subsets** `sets/sc2026_dev.txt` (109 of 168) and `sets/fresh_dev.txt` (57 of 78):
    instances solved by some 1000 s run (ours v0.4.2 / v0.4.3, Kissat 4.0.4), minus those all of
    them solved within 5 s (`screen.py subset`). A screen on them takes about 0.8 h instead of
-   1.9 h (sc2026) and 0.5 h instead of 0.9 h (fresh) on the box. Picked by results, so a
+   1.9 h (sc2026) and 0.5 h instead of 0.9 h (fresh) on the i7 at four jobs. Picked by results, so a
    screen there carries some selection bias; sc2026 stays the held-out set for the gates.
 2. **Affected subsets** (`screen.py affected`): both sides run to `--conflicts=N` (default
    20,000); an instance whose conflicts, decisions, propagations, ticks and answer agree is
