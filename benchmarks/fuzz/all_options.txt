@@ -97,6 +97,8 @@
 --eliminateocclim=1..2000
 --eliminateeffort=1..5000
 --eliminategrowth=0..1000
+--eliminateextend=0..100
+--eliminateextendmax=1..200
 --eliminategrowthmin=0..5000
 --eliminatelitbound=0..200
 --eliminatetouched=0..1
@@ -110,6 +112,7 @@
 --subsumeeffort=1..5000
 --subsumerel=0..2000
 --substitute=0..1
+--substituterounds=1..8
 
 # bounded variable addition
 --bva=0..1
@@ -129,6 +132,10 @@
 --bvaextend=1..20
 --bvaextendticks=10..100000
 --bvaextendreal=0..1
+--bvalitcap=0..100
+--bvarealtarget=0..1
+--bvaretries=0..64
+--bvarequeue=0..1
 
 # congruence closure, simulation
 --congruence=0..1
@@ -187,6 +194,7 @@
 --sweepouter=0..1
 --sweepfollow=0..1
 --sweepdirty=0..1
+--sweeporder=0..2
 
 # input and proof format
 --binaryproof=0..1

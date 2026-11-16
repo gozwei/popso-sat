@@ -118,6 +118,21 @@ void Solver::sweep(uint64_t min_budget) {
   const uint64_t window = static_cast<uint64_t>(opts_.sweepgrowcheck);
   uint64_t ticks = occ.size() / 4;
   if (sweep_queued_.size() < num_vars_) sweep_queued_.resize(num_vars_, 0);
+  // --sweeporder: the cursor walks this permutation of the variables instead of the indices.
+  std::vector<Var> order;
+  if (opts_.sweeporder == 1) {
+    order.resize(num_vars_);
+    for (Var u = 0; u < num_vars_; ++u) order[u] = num_vars_ - 1 - u;
+  } else if (opts_.sweeporder == 2) {
+    order.resize(num_vars_);
+    for (Var u = 0; u < num_vars_; ++u) order[u] = u;
+    auto occs = [&](Var u) {
+      const Lit p = make_lit(u, false), n = make_lit(u, true);
+      return (start[p + 1] - start[p]) + (start[n + 1] - start[n]);
+    };
+    std::stable_sort(order.begin(), order.end(), [&](Var a, Var b) { return occs(a) > occs(b); });
+    ticks += num_vars_;
+  }
   size_t followed = 0;  // --sweepfollow: variables taken from sweep_follow_ (FIFO)
   for (uint32_t scanned = 0; scanned < num_vars_ && ticks < budget && !inconsistent_; ++scanned) {
     Var v;
@@ -127,6 +142,7 @@ void Solver::sweep(uint64_t min_budget) {
       ++stats_.sweep_followed;
     } else {
       v = sweep_cursor_++ % num_vars_;
+      if (!order.empty()) v = order[v];
       if (!window && sweep_cursor_ % num_vars_ == 0) check_growth();  // a full cycle over the variables ends
     }
     if (eliminated_[v] || vals_[make_lit(v, false)] != 0) continue;

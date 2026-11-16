@@ -279,6 +279,17 @@ bool Solver::substitute() {
   return true;
 }
 
+// --substituterounds: substitution again while the last pass substituted variables (rewritten
+// clauses that became binary can close new implication cycles).
+void Solver::substitute_rounds() {
+  for (int round = 0; round < opts_.substituterounds && !inconsistent_; ++round) {
+    const uint32_t before = inactive_;
+    substitute();
+    if (inactive_ == before) break;
+    if (opts_.verbose >= 3) std::printf("c   substitution pass %d: %u substituted\n", round + 1, inactive_ - before);
+  }
+}
+
 // Removes duplicate binary clauses, keeping one copy per literal pair (irredundant if one is).
 // Each list is filtered on its own with the same rule, so both sides keep the same copy; the
 // counters and the proof are updated from the side of the smaller literal. The order of the
@@ -354,7 +365,7 @@ uint64_t Solver::dedup_binaries() {
 void Solver::substitute_now() {
   const uint32_t inactive_before = inactive_;
   disconnect_long_watches();
-  substitute();
+  substitute_rounds();
   if (inactive_ != inactive_before) drop_inactive_decisions();
   if (opts_.verbose >= 2) std::printf("c [%.2f s] substitution after sweeping: %u substituted (equivalences so far %llu, sweeps %llu)\n", seconds(), inactive_ - inactive_before, static_cast<unsigned long long>(stats_.sweep_equivalences), static_cast<unsigned long long>(stats_.sweeps));
   collect_garbage();

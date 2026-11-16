@@ -19,6 +19,7 @@
 // slower), so a round is made only when the trial's reduction reaches the threshold.
 
 #include <algorithm>
+#include <cstdio>
 #include <unordered_set>
 
 #include "psat/io/proof.hpp"
@@ -51,6 +52,8 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
   const PassTimer pass_timer(*this, kPassBva);
   int64_t reduced = 0;
   const uint64_t round_start = budget;
+  const uint64_t lit_cap =
+      opts_.bvalitcap ? std::max<uint64_t>(1, (limit > budget ? limit - budget : 1) / 1000 * static_cast<uint64_t>(opts_.bvalitcap)) : 0;
   // Trial rounds: the clauses later replacements may not use (long by reference, binary by
   // their ordered literal pair).
   std::unordered_set<uint32_t> consumed_long;
@@ -188,7 +191,9 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
   // Matchings for queue[qi..end), while the budget is at most `stop` (checked between literals:
   // a matching itself only stops at the round's limit).
   auto run = [&](size_t& qi, size_t end, uint64_t stop) {
-  for (; qi < end && budget <= stop && budget <= limit && added < max_new && !inconsistent_ && !stop_requested();
+  // --bvarequeue: the queue may grow during this call (only when it covers the queue's end).
+  const bool grow = opts_.bvarequeue && end == queue.size();
+  for (; qi < (grow ? queue.size() : end) && budget <= stop && budget <= limit && added < max_new && !inconsistent_ && !stop_requested();
        ++qi) {
     const Lit l = queue[qi].second;
     if (l != last_l) retries = 0;
@@ -196,6 +201,9 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
     if (vals_[l] != 0 || eliminated_[var_of(l)]) continue;
     occurrences(l, m_cls);
     if (m_cls.size() < 3) continue;
+    // --bvalitcap: one literal's matching stops at this share of the round's budget (the last
+    // complete step is used), so a few expensive frequent literals cannot take the whole budget.
+    const uint64_t lit_stop = lit_cap ? std::min(limit, budget + lit_cap) : limit;
     m_lit.assign(1, l);
     matched.assign(m_cls.size(), {});
     for (size_t i = 0; i < m_cls.size(); ++i) matched[i].push_back(m_cls[i]);
@@ -203,13 +211,13 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
     // so far is used (the inner loops are charged: on large formulas one literal's matching
     // can otherwise take seconds).
     for (;;) {
-      if (budget > limit || stop_requested()) break;
+      if (budget > lit_stop || stop_requested()) break;
       pairs.clear();
       bool out_of_budget = false;
       for (uint32_t ci = 0; ci < m_cls.size(); ++ci) {
         // Checked per clause too: on formulas with few variables and many clauses one step
         // scans thousands of clauses with thousands of partner occurrences each.
-        if (budget > limit || stop_requested()) {
+        if (budget > lit_stop || stop_requested()) {
           out_of_budget = true;
           break;
         }
@@ -322,7 +330,7 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
         }
       }
       budget += m_lit.size() * m_cls.size();
-      if (retries++ < 8) --qi;
+      if (retries++ < static_cast<uint32_t>(opts_.bvaretries)) --qi;
       continue;
     }
 
@@ -378,7 +386,11 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
     stats_.bva_removed += m_lit.size() * m_cls.size();
     stats_.bva_added += m_lit.size() + m_cls.size();
     reduced += reduction(m_lit.size(), m_cls.size());
-    if (retries++ < 8) --qi;  // try l again
+    if (grow) {
+      queue.emplace_back(m_cls.size(), x);
+      queue.emplace_back(m_lit.size(), negate(x));
+    }
+    if (retries++ < static_cast<uint32_t>(opts_.bvaretries)) --qi;  // try l again
   }
   };
 
@@ -422,8 +434,9 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
       if (budget > limit) {
         const bool qualifies = dry && reduced > 0 &&
                                static_cast<uint64_t>(reduced) * 1000 >= static_cast<uint64_t>(opts_.bvamin) * clauses;
-        if (qualifies || limit >= most || last_gain <= 0 ||
-            static_cast<uint64_t>(last_gain) * static_cast<uint64_t>(opts_.bvaextendticks) < last_spent) {
+        const bool below_target = !dry && bva_target_ > 0 && reduced < bva_target_;
+        if (qualifies || limit >= most ||
+            (!below_target && (last_gain <= 0 || static_cast<uint64_t>(last_gain) * static_cast<uint64_t>(opts_.bvaextendticks) < last_spent))) {
           break;
         }
         limit = std::min(most, budget + eighth);
@@ -433,6 +446,10 @@ int64_t Solver::bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touch
       run(qi, queue.size(), std::min(limit, budget + eighth));
       last_spent = budget - b0;
       last_gain = reduced - r0;
+      if (opts_.verbose >= 3)
+        std::printf("c   bva %s eighth: %llu ticks, %lld clauses (total %lld, queue %zu of %zu)\n", dry ? "trial" : "real",
+                    static_cast<unsigned long long>(last_spent), static_cast<long long>(last_gain),
+                    static_cast<long long>(reduced), qi, queue.size());
     }
   } else if (!queue.empty() && budget <= limit) {
     struct Class {
@@ -599,8 +616,10 @@ void Solver::bva_run(uint64_t& budget) {
     ++stats_.bva_rounds;
     // (--bvaextend: the budget the trial used, when it went past its own)
     if (opts_.bvaextend > 1 && !opts_.bvasched) extra = std::max(extra, bva_last_span_);
+    if (opts_.bvarealtarget) bva_target_ = trial;
   }
   bva_round(budget, budget + extra, false);
+  bva_target_ = 0;
 }
 
 }  // namespace psat

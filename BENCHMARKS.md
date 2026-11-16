@@ -8,6 +8,63 @@ UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs are
 gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
 are never mixed.
 
+## v0.4.4
+
+New in 0.4.4, on by default: clause pair merging in elimination rounds (`--mergepairs=1`). See
+the [CHANGELOG](CHANGELOG.md).
+
+Both tables ran on the Intel i7-7700K (4 cores, Linux): 1000 s and 12 GB per instance, four
+instances at a time, with no other benchmark jobs; every model checked. The 0.4.3 and Kissat
+columns are the runs of the v0.4.3 section (Kissat sc2026: the v0.4.2 section).
+
+### SAT Competition 2026 sample (Intel i7-7700K, Linux)
+
+0.4.4 wrote its proofs for all 65 UNSAT answers. dpr-trim verified 63 within its 3000 s limit.
+The other two are aes_equiv_encry_3_rounds and post-cbmc-aes-ee-r2, the same two as in 0.4.3,
+whose proofs were verified without the limit (v0.4.3 section). The defaults were chosen on this
+set (300 s runs), so it is not an independent test.
+
+| | popso-sat 0.4.4 | popso-sat 0.4.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 168 (SAT / UNSAT) | 110 (45 / 65) | 109 (44 / 65) | 80 (35 / 45) |
+| solved within 300 s | 94 | 93 | 56 |
+| PAR-2 (s) | 772.5 | 784.1 | 1152.3 |
+| shifted geometric mean (s) | 117.6 | 119.6 | 338.7 |
+| largest peak memory | 2.5 GB (T92) | 2.5 GB (T92) | 2.4 GB (g2-T97) |
+
+**What this shows:**
+- 0.4.4 solves every instance 0.4.3 solves, plus QuasiGroup-4-12_c18 (SAT, 435 s).
+- Within 300 s it gains as-p31-l12-o9-56 (9 s) and sum_of_3_cubes_50_bits_91 (14 s), and
+  bench_1278 moves from 18 to 131 s.
+- Against Kissat 4.0.4: 0.4.4 solves 36 instances that Kissat does not, and Kissat solves 6
+  that 0.4.4 does not.
+- Instances both solve, shifted geometric mean: SAT 49 s (0.4.4) against 92 s (Kissat) on 33;
+  UNSAT 61 against 84 s on 41.
+
+### Fresh families (Intel i7-7700K, Linux)
+
+`sets/fresh.txt` (78 instances, 38 families in no tuning set). No proofs.
+
+| | popso-sat 0.4.4 | popso-sat 0.4.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 78 (SAT / UNSAT) | 48 (30 / 18) | 47 (29 / 18) | 52 (32 / 20) |
+| solved within 300 s | 45 | 44 | 37 |
+| PAR-2 (s) | 833.5 | 858.7 | 818.2 |
+| shifted geometric mean (s) | 163.9 | 170.6 | 223.4 |
+
+**What this shows:**
+- 0.4.4 gains circuit_32in32out_with_64gates (SAT, 61 s; Kissat 98 s) and loses nothing. The
+  instance writes 64 gates as truth tables of forbidden assignments; merging leaves 4% of the
+  irredundant clauses.
+- Kissat solves 10 instances that 0.4.4 does not:
+  - UNSAT (4): oisc-subrv-sll-nested-8 (272 s), mod4block (585 s), fixedbandwidth-eq-37
+    (430 s) and fixedbandwidth-eq-31 (989 s);
+  - SAT (6): two sum-of-three-cubes instances (24 and 191 s), Folkman-185, an rbsat instance,
+    reconf10 queens and a lockchart instance (335-943 s).
+- 0.4.4 solves 6 that Kissat does not (the same as 0.4.3).
+- Instances both solve, shifted geometric mean: SAT 34 s (0.4.4) against 75 s (Kissat) on 26;
+  UNSAT 72 against 71 s on 16.
+
 ## v0.4.3
 
 New in 0.4.3, on by default: a resolvent limit for ITE-definition eliminations in the first

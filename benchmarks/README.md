@@ -292,6 +292,34 @@ competition times).  `download` fetches a set's files in order until a size budg
 with `xz -t` and decompresses them next to the `.xz` with the system `xz` (for now; popso-sat's
 xz reader is in progress).  So far only 36 of them (85 MB xz) have been downloaded for testing.
 
+## Faster screens: `tools/screen.py`
+
+A 300 s screen spends most of its time on instances nobody solves (81% of sc2026's CPU time at
+1000 s, 86% of fresh's), and an option that is off by default leaves the search of most
+instances unchanged. Screens therefore run in up to three steps; release gates and the
+BENCHMARKS tables keep the full sets at 1000 s.
+
+1. **Dev subsets** `sets/sc2026_dev.txt` (109 of 168) and `sets/fresh_dev.txt` (57 of 78):
+   instances solved by some 1000 s run (ours v0.4.2 / v0.4.3, Kissat 4.0.4), minus those all of
+   them solved within 5 s (`screen.py subset`). A screen on them takes about 0.8 h instead of
+   1.9 h (sc2026) and 0.5 h instead of 0.9 h (fresh) on the box. Picked by results, so a
+   screen there carries some selection bias; sc2026 stays the held-out set for the gates.
+2. **Affected subsets** (`screen.py affected`): both sides run to `--conflicts=N` (default
+   20,000); an instance whose conflicts, decisions, propagations, ticks and answer agree is
+   unaffected, so its result is the baseline's. Counts, not timings: run it on the M4 while the
+   box runs screens. Fingerprints are cached per binary, arguments and limit. --mergepairs
+   on fresh_dev: 12 of 57 affected (6 minutes, 2 processes), and they include every instance
+   whose result changed in the full screen; the one other change there (goldcrest-and-9, 178
+   against 264 s) was box noise: the same search to the last conflict. Raise `--conflicts` for
+   changes to passes that run late in the search.
+3. **Merge** (`screen.py merge`): the candidate's results on the subset plus the baseline's on
+   the rest give a full-set result file for `compare.py` and the usual tables. The baseline is
+   a run of the same binary and limits on the same machine; a 1000 s run without proofs
+   serves as a 300 s baseline (times up to 300 s are the same).
+
+Options that change the default search everywhere (restarts, phases) affect every instance:
+use step 1 only.
+
 ## Reference statuses: `reference.py`
 
 ```sh

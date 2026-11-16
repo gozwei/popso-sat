@@ -332,8 +332,8 @@ std::vector<Options> option_variants() {
   p.bvaextendticks = 10000;
   p.bvaextendreal = 0;
   v.push_back(p);
-  Options mp;  // --mergepairs
-  mp.mergepairs = 1;
+  Options mp;  // the v0.4.3 defaults: no --mergepairs
+  mp.mergepairs = 0;
   v.push_back(mp);
   return v;
 }

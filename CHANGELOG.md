@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.4.4 — 2026-11-16
+
+Elimination rounds merge clause pairs that differ in one sign, on by default. This finds the
+compact form of truth-table encodings. New options for longer elimination before search,
+repeated substitution, sweep order and BVA matching, all off.
+
+Box (Intel i7-7700K, Linux, 1000 s, four instances at a time):
+
+| | 0.4.4 | 0.4.3 | Kissat 4.0.4 |
+|---|---|---|---|
+| sc2026, solved of 168 (SAT / UNSAT) | 110 (45 / 65) | 109 (44 / 65) | 80 (35 / 45) |
+| sc2026, PAR-2 (s) | 772.5 | 784.1 | 1152.3 |
+| fresh, solved of 78 (SAT / UNSAT) | 48 (30 / 18) | 47 (29 / 18) | 52 (32 / 20) |
+| fresh, solved within 300 s | 45 | 44 | 37 |
+| fresh, PAR-2 (s) | 833.5 | 858.7 | 818.2 |
+
+0.4.4 loses no instance to 0.4.3 on either set. All 65 UNSAT proofs on sc2026 were written; 63
+verified within dpr-trim's 3000 s limit; the other two are the AES proofs of 0.4.3, which were
+verified without the limit. See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Clause pair merging** (`--mergepairs=1`, on): at the start of each elimination round,
+  irredundant clauses over the same variables whose signs differ in exactly one place are
+  replaced by their resolvent. Clauses are grouped by size, largest first, and by variable set.
+  The resolvents join the next size down, so a full truth table collapses step by step.
+  - circuit_32in32out_with_64gates (fresh, SAT): 64 gates, each written as its 16,256 forbidden
+    assignments. 921,795 merges in the first round leave 38,563 irredundant clauses. Solved in
+    61 s on the box (0.4.3: unsolved at 1000 s; Kissat 98 s).
+  - sc2026: QuasiGroup-4-12_c18 is solved again (435 s). Within 300 s, as-p31-l12-o9-56 and
+    sum_of_3_cubes_50_bits_91 are new; bench_1278 goes from 18 to 131 s.
+- **New options, off by default:**
+  - `--eliminateextend`, `--eliminateextendmax`: the first elimination round runs past its
+    budget, one budget-sized chunk at a time, while the last chunk eliminated enough
+    (goldcrest-xor-11: 4.7k to 258k variables eliminated before search);
+  - `--substituterounds`: substitution passes in a row while each finds equivalences;
+  - `--sweeporder`: the order of the swept variables;
+  - `--bvalitcap`, `--bvarealtarget`, `--bvaretries`, `--bvarequeue`: BVA matching budget and
+    order (mod4block_3vars_7gates: the BVA trial removes 39k clauses instead of declining).
+- **Development:** `benchmarks/tools/screen.py` runs a candidate option first on the instances
+  it changes (`affected`: compare short runs with and without it) and on two dev subsets of
+  sc2026 and fresh, before the full sets.
+
 ## v0.4.3 — 2026-11-15
 
 Elimination before search keeps multiplier circuits intact, and bounded variable addition (BVA)

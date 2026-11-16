@@ -317,7 +317,7 @@ void Solver::eliminate() {
   }
   disconnect_long_watches();
   const uint32_t inactive_before = inactive_;
-  if (opts_.substitute) substitute();
+  if (opts_.substitute) substitute_rounds();
   scan("substitute");
   // Congruence closure: equal AND gates give equivalences, substitution merges them and renames
   // gate inputs, which can make more gates equal.
@@ -488,9 +488,23 @@ void Solver::eliminate() {
     for (const auto& c : cands) heap.push(c.second, c.first);
   }
   size_t tried = 0;
+  // --eliminateextend (first round only): the round runs on, one budget-sized chunk at a time,
+  // while the last chunk eliminated at least that share of the variables it tried.
+  const bool extend = opts_.eliminateextend && eliminate_rounds_ == 1;
+  uint64_t round_limit = limit;
+  uint64_t chunk_tries = 0, chunk_elims = 0;
+  uint32_t chunks = 0;
   for (;; ++tried) {
     if (use_heap ? heap.empty() : tried >= cands.size()) break;
-    if (inconsistent_ || budget - elim_start > limit || stop_requested()) break;
+    if (inconsistent_ || stop_requested()) break;
+    if (budget - elim_start > round_limit) {
+      if (!extend || chunks >= static_cast<uint32_t>(opts_.eliminateextendmax) ||
+          chunk_elims * 100 < chunk_tries * static_cast<uint64_t>(opts_.eliminateextend))
+        break;
+      ++chunks;
+      round_limit = budget - elim_start + limit;
+      chunk_tries = chunk_elims = 0;
+    }
     // Over the memory limit (eliminations with a bound add clauses), the round ends here and the
     // search stops at its next limit check.
     if (memory_limit_ && (tried & 255) == 0 && memory_exceeded(false)) break;
@@ -507,6 +521,8 @@ void Solver::eliminate() {
       elim_failed_bound_[v] = v_bound + 1;
       stats_.elim_w_failed += budget - before;
     }
+    ++chunk_tries;
+    chunk_elims += eliminated_[v] != 0;
     if (use_heap) {
       for (const Var u : elim_changed_) {
         elim_changed_mark_[u] = 0;
@@ -619,6 +635,9 @@ void Solver::eliminate() {
                   d(stats_.elim_w_defs, round_stats.elim_w_defs), d(stats_.elim_w_count, round_stats.elim_w_count),
                   d(stats_.elim_w_add, round_stats.elim_w_add), d(stats_.elim_w_failed, round_stats.elim_w_failed),
                   d(stats_.elim_resolutions, round_stats.elim_resolutions));
+      if (extend)
+        std::printf("c   extended by %u chunks (last chunk: %llu eliminated of %llu tried)\n", chunks,
+                    static_cast<unsigned long long>(chunk_elims), static_cast<unsigned long long>(chunk_tries));
     }
     std::fflush(stdout);
   }

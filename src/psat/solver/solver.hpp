@@ -423,6 +423,7 @@ class Solver {
   void merge_pairs();                               // --mergepairs (subsume.cpp)
   bool strengthen_irredundant(uint32_t ref, Lit remove);  // true: the clause became binary
   bool substitute();
+  void substitute_rounds();
   uint64_t dedup_binaries();
   void substitute_now();  // outside elimination rounds, at the root
   uint32_t congruence(uint64_t& budget);
@@ -448,6 +449,7 @@ class Solver {
   // touched variables (--bvasearch rounds during search)
   int64_t bva_round(uint64_t& budget, uint64_t limit, bool dry, bool touched_only = false);
   uint64_t bva_last_span_ = 0;   // ticks the last round spent (--bvaextend)
+  int64_t bva_target_ = 0;       // --bvarealtarget: the qualifying trial's reduction (real round only)
   uint32_t bva_last_added_ = 0;  // variables the last round added (would add, if dry)
   void bva_run(uint64_t& budget);  // a trial round first with --bvamin
   size_t bva_count(Lit l, uint64_t& budget);
