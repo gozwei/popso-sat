@@ -272,6 +272,7 @@ void Solver::eliminate() {
   ++stats_.eliminations;
   if (!backtrack_to_root()) return;
   // Root level, fully propagated.
+  if (opts_.binpairunits && !binary_pair_units()) return;
   if (fixed_ > last_simplify_fixed_) simplify_root();
   // --eliminatecircuit: decided once, on the formula before the first round. On an AND circuit
   // numbered inputs first nearly every variable is a gate output, and the sorted candidate order

@@ -24,15 +24,17 @@ void Solver::mark_reasons(bool on) {
 }
 
 void Solver::update_tier_limits() {
+  // --dynamictiers=1: one histogram (focused-mode uses); 2: the current mode's own histogram.
+  uint64_t* const used = opts_.dynamictiers == 2 ? mode_used_glue_[stable_] : used_glue_;
   uint64_t total = 0;
-  for (uint64_t c : used_glue_) total += c;
+  for (uint32_t g = 0; g < kGlueBuckets; ++g) total += used[g];
   if (total < 1000) return;  // too few samples: keep the current limits
   const uint64_t q1 = total * static_cast<uint64_t>(opts_.tier1quantile) / 100;
   const uint64_t q2 = total * static_cast<uint64_t>(opts_.tier2quantile) / 100;
   uint64_t cum = 0;
   uint32_t t1 = 0, t2 = 0;
   for (uint32_t g = 0; g < kGlueBuckets; ++g) {
-    cum += used_glue_[g];
+    cum += used[g];
     if (!t1 && cum >= q1) t1 = g;
     if (!t2 && cum >= q2) t2 = g;
   }
@@ -40,7 +42,8 @@ void Solver::update_tier_limits() {
   if (!t2) t2 = kGlueBuckets - 1;
   tier1_ = std::max<uint32_t>(t1, 1);
   tier2_ = std::max(tier1_ + 1, t2);
-  for (uint64_t& c : used_glue_) c /= 2;  // older samples fade
+  mode_tier1_[stable_] = tier1_, mode_tier2_[stable_] = tier2_;
+  for (uint32_t g = 0; g < kGlueBuckets; ++g) used[g] /= 2;  // older samples fade
 }
 
 // --tier1revive=p: an age limit L (2-31; 32: none) that follows the age at which the chance of a

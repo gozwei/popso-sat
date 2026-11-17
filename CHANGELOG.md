@@ -1,12 +1,47 @@
 # Changelog
 
+## v0.4.5 — 2026-11-16
+
+Bounded variable addition (BVA) runs when its trial round removes at least 18% of the clauses,
+down from 20% (`--bvamin=180`). New options for tier policy and debugging, all off.
+
+On the Intel i7-7700K (Linux, 1000 s, four instances at a time):
+
+| | 0.4.5 | 0.4.4 | Kissat 4.0.4 |
+|---|---|---|---|
+| sc2026, solved of 168 (SAT / UNSAT) | 110 (45 / 65) | 110 (45 / 65) | 80 (35 / 45) |
+| sc2026, PAR-2 (s) | 773.8 | 772.5 | 1152.3 |
+| fresh, solved of 78 (SAT / UNSAT) | 51 (31 / 20) | 48 (30 / 18) | 52 (32 / 20) |
+| fresh, solved within 300 s | 45 | 45 | 37 |
+| fresh, PAR-2 (s) | 785.2 | 833.5 | 818.2 |
+
+0.4.5 loses no instance to 0.4.4 on either set, and its fresh PAR-2 is now below Kissat's. All
+65 UNSAT proofs on sc2026 were written; 63 verified within dpr-trim's 3000 s limit; the other
+two are the AES proofs of 0.4.3 and 0.4.4. See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **BVA threshold** (`--bvamin=180`, was 200): before BVA rewrites the formula, a trial round
+  measures how many clauses it would remove. At 200 per mille, reconf10_22_queen20 was declined
+  at 199.96. With 180, three fresh instances are solved that 0.4.4 does not solve:
+  reconf10_22_queen20 (SAT, 709 s), and rook-51 and rook-52 (UNSAT, 751 and 749 s), which Kissat
+  4.0.4 does not solve within 1000 s. On sc2026, BVA now also runs on snw_16_9_preOpt (SAT),
+  which slows it from 196 to 315 s.
+- **New options, off by default:**
+  - `--dynamictiers=2`: tier limits per search mode, each from the glue of the clauses used in
+    that mode;
+  - `--tier1keep=0`: tier1 membership follows the current glue and limit instead of keeping
+    tier1 clauses for good. With `--dynamictiers=2 --tier1age=31`, conflicts were about 15%
+    cheaper, but runs needed more of them (sc2026 dev subset, 300 s: 81 against 86).
+  - `--dumpsimplified=N` (debugging): writes the irredundant formula at the first root-level
+    decision after N - 1 conflicts as DIMACS and stops, so other solvers can be run on our
+    simplified formula.
+
 ## v0.4.4 — 2026-11-16
 
 Elimination rounds merge clause pairs that differ in one sign, on by default. This finds the
 compact form of truth-table encodings. New options for longer elimination before search,
 repeated substitution, sweep order and BVA matching, all off.
 
-Box (Intel i7-7700K, Linux, 1000 s, four instances at a time):
+On the Intel i7-7700K (Linux, 1000 s, four instances at a time):
 
 | | 0.4.4 | 0.4.3 | Kissat 4.0.4 |
 |---|---|---|---|

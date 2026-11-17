@@ -109,6 +109,7 @@ uint32_t Solver::congruence(uint64_t& budget) {
     uint32_t begin, size;  // inputs in gate_inputs
     Lit lhs;
     uint8_t kind = kAnd, flip = 0;
+    uint8_t rewritten = 0;  // --congruencerewrite: a degenerate XOR / ITE rewritten (proofs split on all inputs)
   };
   std::vector<Gate> gates;
   std::vector<Lit> inputs;
@@ -261,16 +262,48 @@ uint32_t Solver::congruence(uint64_t& budget) {
     // the two gates' clauses), written by prove_by_cases.
     std::vector<Lit> case_clause;
     std::vector<Var> cases;
+    // --congruencerewrite: variables a rewritten gate lost (x + x cancelled in an XOR), case
+    // variables of its merges' proofs (only with a proof).
+    const bool rewrite = opts_.congruencerewrite != 0;
+    constexpr uint32_t kNoGate = UINT32_MAX;
+    std::vector<std::pair<uint32_t, Var>> lost;  // (gate, variable), sorted on use
+    bool lost_sorted = true;
     // Classes already complementary (a gate equal to the negation of an equal gate): the two
     // binary clauses are still RUP and make the formula unsatisfiable, which the substitution
     // after this call finds (x equivalent to -x); the classes are not joined.
-    auto merge = [&](Lit a, Lit b, const Gate* split = nullptr) {
+    auto merge = [&](Lit a, Lit b, const Gate* split = nullptr, uint32_t gi = UINT32_MAX, uint32_t hi = UINT32_MAX) {
       Lit ra = find(a), rb = find(b);
       if (ra == rb || var_of(a) == var_of(b)) return false;  // (a gate equal to its own negation: left to search)
       const bool contradiction = ra == negate(rb);
       const Lit e1[2] = {negate(a), b};
       const Lit e2[2] = {a, negate(b)};
-      if (proof_ && split) {
+      if (proof_ && gi != kNoGate) {
+        // A rewritten gate: a case split on every input variable of both gates (and those the
+        // rewrite removed); under a full assignment each gate's clauses (through the binary
+        // clauses of earlier merges) give its output, so every leaf is RUP.
+        cases.clear();
+        if (!lost_sorted) {
+          std::sort(lost.begin(), lost.end());
+          lost_sorted = true;
+        }
+        for (const uint32_t x : {gi, hi}) {
+          if (x == kNoGate) continue;
+          const Gate& X = gates[x];
+          for (uint32_t k = 0; k < X.size; ++k) cases.push_back(var_of(inputs[X.begin + k]));
+          for (auto it = std::lower_bound(lost.begin(), lost.end(), std::make_pair(x, Var{0}));
+               it != lost.end() && it->first == x; ++it) {
+            cases.push_back(it->second);
+          }
+        }
+        std::sort(cases.begin(), cases.end());
+        cases.erase(std::unique(cases.begin(), cases.end()), cases.end());
+        cases.erase(std::remove_if(cases.begin(), cases.end(), [&](Var v) { return v == var_of(a) || v == var_of(b); }),
+                    cases.end());
+        case_clause.assign(e1, e1 + 2);
+        prove_by_cases(case_clause, cases, 0);
+        case_clause.assign(e2, e2 + 2);
+        prove_by_cases(case_clause, cases, 0);
+      } else if (proof_ && split) {
         const Lit* in = inputs.data() + split->begin;
         cases.clear();
         if (split->kind == kXor) {
@@ -362,7 +395,13 @@ uint32_t Solver::congruence(uint64_t& budget) {
         }
         if (drop || n == 1) {
           G.size = 0;
-          if (!drop && merge(G.lhs, in[0])) ++found;
+          if (!drop && n == 1) {
+            // (G.size is 0 now: the split takes the input from G's slot, kept as n == 1)
+            G.size = 1;
+            const bool merged = G.rewritten ? merge(G.lhs ^ G.flip, in[0], &G, g) : merge(G.lhs ^ G.flip, in[0]);
+            G.size = 0;
+            if (merged) ++found;
+          }
           continue;
         }
       } else if (G.kind == kXor) {
@@ -378,9 +417,35 @@ uint32_t Solver::congruence(uint64_t& budget) {
         } else {
           std::sort(in, in + G.size);
         }
-        n = G.size;
-        for (uint32_t k = 0; k < n; ++k) {
-          if ((k && in[k - 1] == in[k]) || var_of(in[k]) == out) drop = true;
+        if (!rewrite) {
+          n = G.size;
+          for (uint32_t k = 0; k < n; ++k) {
+            if ((k && in[k - 1] == in[k]) || var_of(in[k]) == out) drop = true;
+          }
+        } else {
+          // x + x = 0: both copies go (the gate keeps the variable as a case variable).
+          for (uint32_t k = 0; k < G.size; ++k) {
+            if (var_of(in[k]) == out) drop = true;
+            if (n && in[n - 1] == in[k]) {
+              --n;
+              G.rewritten = 1;
+              ++stats_.congruence_rewrites;
+              if (proof_) {
+                lost.emplace_back(g, var_of(in[k]));
+                lost_sorted = false;
+              }
+              continue;
+            }
+            in[n++] = in[k];
+          }
+          if (!drop && n == 0) drop = true;  // a constant output: left to search
+          if (!drop && n == 1) {
+            G.size = 1;
+            const bool merged = merge(G.lhs ^ G.flip, in[0], &G, g);
+            G.size = 0;
+            if (merged) ++found;
+            continue;
+          }
         }
         if (drop) {
           G.size = 0;
@@ -401,6 +466,38 @@ uint32_t Solver::congruence(uint64_t& budget) {
         in[1] = t;
         in[2] = e;
         n = 3;
+        if (rewrite && var_of(c) != out && var_of(t) != out && var_of(e) != out &&
+            (c == t || var_of(c) == var_of(e) || t == negate(e))) {
+          // (c and t positive) ITE(c, t, -t) = -(c + t): an XOR; ITE(c, c, e) = c | e =
+          // -AND(-c, -e); ITE(c, t, c) = AND(c, t); ITE(c, t, -c) = -c | t = -AND(c, -t).
+          // The gate is normalized again as its new kind.
+          if (t == negate(e)) {
+            in[0] = std::min(c, t);
+            in[1] = std::max(c, t);
+            G.kind = kXor;
+            G.flip ^= 1u;
+          } else if (c == t) {
+            in[0] = negate(c);
+            in[1] = negate(e);
+            G.kind = kAnd;
+            G.flip ^= 1u;
+          } else if (c == e) {
+            in[0] = c;
+            in[1] = t;
+            G.kind = kAnd;
+          } else {  // c == -e
+            in[0] = c;
+            in[1] = negate(t);
+            G.kind = kAnd;
+            G.flip ^= 1u;
+          }
+          G.size = 2;
+          G.hash = 0;
+          G.rewritten = 1;
+          ++stats_.congruence_rewrites;
+          queue.push_back(g);
+          continue;
+        }
         if (var_of(c) == out || var_of(t) == out || var_of(e) == out || var_of(c) == var_of(t) ||
             var_of(c) == var_of(e) || t == negate(e)) {
           G.size = 0;
@@ -435,7 +532,9 @@ uint32_t Solver::congruence(uint64_t& budget) {
       }
       if (partner != kEmpty) {
         const Gate& H = gates[partner];
-        if (merge(G.lhs ^ G.flip, H.lhs ^ H.flip, G.kind == kAnd ? nullptr : &G)) {
+        const bool full = G.rewritten || H.rewritten;
+        if (full ? merge(G.lhs ^ G.flip, H.lhs ^ H.flip, &G, g, partner)
+                 : merge(G.lhs ^ G.flip, H.lhs ^ H.flip, G.kind == kAnd ? nullptr : &G)) {
           ++found;
           if (G.kind == kXor) ++stats_.congruent_xors;
           if (G.kind == kIte) ++stats_.congruent_ites;

@@ -41,6 +41,7 @@ Solver::Solver(const Options& opts) : opts_(opts) {
   eliminate_limit_ = static_cast<uint64_t>(opts_.eliminateinit);
   tier1_ = static_cast<uint32_t>(opts_.tier1);
   tier2_ = std::max(tier1_, static_cast<uint32_t>(opts_.tier2));
+  for (int m = 0; m < 2; ++m) mode_tier1_[m] = tier1_, mode_tier2_[m] = tier2_;
   vivify_limit_ = static_cast<uint64_t>(opts_.vivifyint);
   randec_limit_ = static_cast<uint64_t>(opts_.randecint);
   randec_rng_ = static_cast<uint64_t>(opts_.seed) * 0xD1B54A32D192ED03ull + 0x8CB92BA72F3D8DD7ull;
@@ -279,7 +280,7 @@ uint32_t Solver::new_clause(const Lit* lits, uint32_t size, bool redundant, uint
   c.size = size;
   c.glue = std::min<uint32_t>(glue, (1u << 20) - 1);
   c.used = redundant ? (glue <= tier2_ ? 2 : 1) : 0;
-  c.keep = redundant && glue <= tier1_ && (!opts_.tier1keepglue || glue <= static_cast<uint32_t>(opts_.tier1keepglue));
+  c.keep = redundant && glue <= tier1_ && opts_.tier1keep && (!opts_.tier1keepglue || glue <= static_cast<uint32_t>(opts_.tier1keepglue));
   if (redundant && glue <= tier1_) ++stats_.tier1_other;
   c.reason = 0;
   c.garbage = 0;
@@ -446,10 +447,50 @@ int Solver::search() {
       simplify_root();
     } else if (gauss_due()) {
       if (gauss_round()) return kSat;  // a model from the detached Gauss-Jordan solver
+    } else if (opts_.dumpsimplified && level() == 0 && stats_.conflicts + 1 >= static_cast<uint64_t>(opts_.dumpsimplified)) {
+      dump_simplified();
+      unknown_reason_ = "dumped the simplified formula";
+      return kUnknown;
     } else {
       decide();
     }
   }
+}
+
+// --dumpsimplified (debugging): the irredundant formula at the root before the first decision,
+// for running other solvers on what our simplification left (variables keep internal numbers).
+void Solver::dump_simplified() {
+  const char* path = std::getenv("PSAT_DUMP");
+  FILE* f = std::fopen(path && *path ? path : "simplified.cnf", "w");
+  if (!f) return;
+  auto dimacs = [](Lit l) { return is_negative(l) ? -static_cast<long>(var_of(l) + 1) : static_cast<long>(var_of(l) + 1); };
+  std::vector<std::vector<Lit>> out;
+  for (size_t i = 0; i < trail_.size(); ++i) out.push_back({trail_[i]});
+  for (Lit l = 0; l < 2 * num_vars_; ++l) {
+    if (vals_[l] != 0) continue;
+    for (const Watch& w : watches_[l]) {
+      if (w.binary() && !w.redundant_binary() && l < w.blit && vals_[w.blit] == 0) out.push_back({l, w.blit});
+    }
+  }
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage || c.redundant) continue;
+    std::vector<Lit> lits;
+    bool sat = false;
+    for (uint32_t k = 0; k < c.size; ++k) {
+      const Lit l = c.lits()[k];
+      if (vals_[l] > 0) sat = true;
+      if (vals_[l] == 0) lits.push_back(l);
+    }
+    if (!sat) out.push_back(std::move(lits));
+  }
+  std::fprintf(f, "p cnf %u %zu\n", num_vars_, out.size());
+  for (const auto& cl : out) {
+    for (const Lit l : cl) std::fprintf(f, "%ld ", dimacs(l));
+    std::fprintf(f, "0\n");
+  }
+  std::fclose(f);
+  if (opts_.verbose) std::printf("c dumped %zu clauses over %u variables\n", out.size(), num_vars_);
 }
 
 // Debugging aid (PSAT_DEBUG set in the environment): watch invariants at a fully propagated root.
@@ -987,6 +1028,7 @@ void Solver::switch_mode() {
   update_target_and_best(static_cast<uint32_t>(trail_.size()));
   backtrack(0);
   stable_ = !stable_;
+  if (opts_.dynamictiers == 2) tier1_ = mode_tier1_[stable_], tier2_ = mode_tier2_[stable_];
   if (randec_left_ && stable_ && !opts_.randecstable) end_random_sequence();
   // Focused and stable phases of a pair get the same ticks; each pair is longer by modegrowth
   // (geometric), or the length is the base times the square of the pair number (quadratic, closer
@@ -1205,6 +1247,7 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.gates), ull(stats_.xor_gates), ull(stats_.ite_gates), ull(stats_.definitions),
                ull(stats_.xor_merges_skipped), ull(stats_.congruent), ull(stats_.congruent_xors), ull(stats_.congruent_ites),
                ull(stats_.tern_binaries), ull(stats_.tern_subsumed));
+  if (opts_.congruencerewrite) std::fprintf(out, "c gate rewrites  %14llu  (congruence: degenerate XOR / ITE gates)\n", ull(stats_.congruence_rewrites));
   if (xorsub_stats_.runs) {
     const XorSubStats& x = xorsub_stats_;
     std::fprintf(out, "c xorsub         %14llu  tuples (%llu of 3 variables), %llu expanded clauses -> %llu reduced, %llu definition clauses, %.4f s\n",
@@ -1236,6 +1279,10 @@ void Solver::print_statistics(std::FILE* out) const {
                ull(stats_.walk_models), ull(stats_.walk_transfers), ull(stats_.model_walks), ull(stats_.model_walk_ticks),
                ull(stats_.model_walks_skipped));
   std::fprintf(out, "c deduplicated   %14llu  binary clauses\n", ull(stats_.deduplicated));
+  if (opts_.binpairunits) {
+    std::fprintf(out, "c binary pairs   %14llu  units in %llu rounds, ternary-pair resolvents added %llu\n", ull(stats_.binpair_units),
+                 ull(stats_.binpair_rounds), ull(stats_.binpair_binaries));
+  }
   if (stats_.stop_faults) std::fprintf(out, "c stop faults    %14llu  (--stopfault)\n", ull(stats_.stop_faults));
   std::fprintf(out, "c bva            %14llu  variables, clauses removed %llu added %llu, 3-hop tie-breaks %llu, "
                "trials %llu (rounds made %llu), in search %llu variables in %llu rounds\n",

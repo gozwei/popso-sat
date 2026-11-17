@@ -29,7 +29,7 @@ uint32_t Solver::recompute_glue(const Clause& c) {
 
 void Solver::bump_reason_clause(uint32_t ref) {
   Clause& c = clause(ref);
-  if (!stable_) ++used_glue_[std::min<uint32_t>(c.glue, kGlueBuckets - 1)];
+  if (!stable_ && opts_.dynamictiers == 1) ++used_glue_[std::min<uint32_t>(c.glue, kGlueBuckets - 1)];
   if (opts_.tierstats) ++tier_stats_.used_glue[stable_][std::min<uint32_t>(c.glue, 8)];
   if (c.age && (opts_.tierstats || opts_.tier1revive)) {  // (the next reduction would reset the age anyway)
     if (opts_.tierstats) ++tier_stats_.revived[age_bucket(c.age)];
@@ -46,12 +46,13 @@ void Solver::bump_reason_clause(uint32_t ref) {
       // A kept clause's glue is not recomputed again: 94% of booth29's tier1 is glue 2 and 4.5% of
       // the uses are of glue 1 clauses; with the glue recomputed (--tier1=1) 64% are (Kissat 62%).
       // --tier1keepglue=G keeps only glue <= G for good.
-      if (glue <= tier1_ && !opts_.tier1agepromoted &&
+      if (glue <= tier1_ && opts_.tier1keep && !opts_.tier1agepromoted &&
           (!opts_.tier1keepglue || glue <= static_cast<uint32_t>(opts_.tier1keepglue))) {
         c.keep = 1;
       }
     }
   }
+  if (opts_.dynamictiers == 2) ++mode_used_glue_[stable_][std::min<uint32_t>(c.glue, kGlueBuckets - 1)];
   c.used = c.glue <= tier2_ ? 2 : 1;
 }
 

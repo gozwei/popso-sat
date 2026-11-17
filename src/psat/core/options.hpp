@@ -54,7 +54,8 @@ namespace psat {
   X(tier1keepglue, 0, 0, 100, "the tier1 learned clauses kept for good (their glue no longer recomputed) are those of glue at most this; the other tier1 clauses keep having their glue recomputed and are the ones --tier1age / --tier1ageconf / --tier1revive / --tier1limit delete (0: all tier1 clauses are kept for good)") \
   X(tier1agepromoted, 0, 0, 1, "--tier1age / --tier1ageconf / --tier1revive / --tier1limit delete only clauses promoted into tier1 (glue fell to tier1 when used in conflict analysis); clauses learned in tier1 are kept") \
   X(tierstats, 0, 0, 1, "statistics: with --reportmem two lines on the learned clauses at every progress line (tier1 by glue and age, inflow, how often aged tier1 clauses are used again; all learned clauses and their uses by glue, vivification by tier; the search is the same)") \
-  X(dynamictiers, 0, 0, 1, "tier limits from glue quantiles of used clauses (Kissat 4)")          \
+  X(dynamictiers, 0, 0, 2, "tier limits from glue quantiles of used clauses (1: focused-mode uses, glue before recomputation, one pair of limits; 2: per mode, each mode's limits from its own uses, glue after recomputation)") \
+  X(tier1keep, 1, 0, 1, "learned clauses reaching tier1 are kept for good (their glue no longer recomputed); 0: tier1 membership follows the current glue and tier1 limit (age them with --tier1age)") \
   X(tier1quantile, 50, 1, 99, "dynamic tier1: share of used clauses with glue <= tier1 (%)")      \
   X(tier2quantile, 90, 1, 99, "dynamic tier2: share of used clauses with glue <= tier2 (%)")      \
   X(minimize, 1, 0, 1, "recursive learned clause minimization")                                   \
@@ -123,7 +124,7 @@ namespace psat {
   X(bvaevery, 0, 0, 1, "BVA in every elimination round (not only the first)")                           \
   X(bvaprotect, 0, 0, 1, "variables added by BVA are not elimination candidates")                      \
   X(bvavarsrel, 0, 0, 100000, "BVA only if its trial adds at most this many per mille of the variables (0: no limit)") \
-  X(bvamin, 200, 0, 1000, "BVA only if a trial round removes this many per mille of the clauses (0: always)") \
+  X(bvamin, 180, 0, 1000, "BVA only if a trial round removes this many per mille of the clauses (0: always; 200 declined reconf10_22_queen20 at 199.96)") \
   X(bvaticks, 100000000, 1000, INT32_MAX, "BVA budget floor (ticks; at least a quarter of the arena)") \
   X(bvasched, 0, 0, 1, "BVA budget: half in the plain order, the rest by literal class (occurrence magnitude) and its clauses removed per tick") \
   X(bvaexplore, 25, 1, 100, "--bvasched: percent of the rest of the budget first split evenly over the classes") \
@@ -151,9 +152,11 @@ namespace psat {
   X(countingprobe, 0, 0, 1, "counting: also at-most-one constraints over auxiliary variables (exclusions by read-only probing)") \
   X(countingfault, 0, 0, INT32_MAX, "debugging: the k-th counting PR step gets a wrong witness (its check must refuse it)") \
   X(congruenceclosure, 1, 0, 1, "AND gate congruence to a fixpoint per call (union-find, re-hashing)")   \
+  X(congruencerewrite, 0, 0, 1, "congruence closure rewrites degenerate gates instead of dropping them: x + x + R = R in XORs, ITE(c, t, -t) as an XOR, ITE(c, c, e) / ITE(c, t, c) / ITE(c, t, -c) as AND gates") \
   X(congruencegates, 1, 0, 1, "XOR and ITE gates join the congruence closure (else matched pairwise after it)") \
   X(congruencetern, 0, 0, 2, "before each congruence call: binary resolvents of ternary clause pairs (a b c) (a b -c), which subsume both (substitution into XOR encodings leaves such pairs); 2: the ternary clauses are kept (gates use them)") \
   X(dedup, 1, 0, 1, "remove duplicate binary clauses after substitution")                         \
+  X(binpairunits, 0, 0, 2, "elimination rounds start with the units of binary clause pairs (a b) (a -b) (2: binary clauses include the resolvents of ternary pairs (a b c) (a b -c))") \
   X(gauss, 1, 0, 1, "XORs from complete clause encodings: a detached Gauss-Jordan solver (no proof) looks for a model") \
   X(gaussmin, 100, 0, 1000, "Gauss-Jordan only if XOR encodings cover this many per mille of the clauses") \
   X(gaussxors, 16, 1, INT32_MAX, "Gauss-Jordan only with at least this many XORs")                      \
@@ -190,6 +193,7 @@ namespace psat {
   X(unhide, 0, 0, 1, "unhiding: binary implication graph stamps (failed literals, transitive, hidden tautologies and literals)") \
   X(unhideeffort, 20, 1, 100000, "unhiding effort in per mille of search ticks (vivify rounds)")       \
   X(binstats, 0, 0, 1, "statistics: with --reportmem a census of the learned binary clauses at every progress line (duplicates, transitive, unused) and the watches propagation visited by kind (the search is the same, a little slower)") \
+  X(dumpsimplified, 0, 0, INT32_MAX, "debugging: at the first root-level decision after N - 1 conflicts (1: before the first decision), write the irredundant formula (root units, binary and long clauses, internal numbering) as DIMACS to the file named by PSAT_DUMP (default simplified.cnf) and stop") \
   X(propstats, 0, 0, 2, "statistics: with --reportmem a line on search propagation at every progress line (time share, ticks, watches and clause visits per propagation, blocker hits, visit outcomes and implications by tier, saved-phase quartiles; 2: also cache models; the search is the same, slower)") \
   X(binreduce, 0, 0, 1, "transitive reduction of the learned binary clauses in vivification rounds: one implied by the other binary clauses (a path in the binary implication graph) is deleted") \
   X(binreduceeffort, 10, 1, 100000, "--binreduce effort in per mille of search ticks") \

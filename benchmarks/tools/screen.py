@@ -102,13 +102,23 @@ def cmd_affected(a):
     cache_path = Path(a.cache) if a.cache else paths.results_dir() / "affected_cache.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
     entries = sets.read_set(a.set)
+    # A missing file would fingerprint as "incomplete" (the solver cannot open it) and pass for
+    # an affected instance; stop instead, as run.py does, or keep it marked "missing".
+    missing = {e.key for e in entries if not e.path.exists()}
+    if missing and not a.skip_missing:
+        print(f"{len(missing)} instance file(s) missing, e.g. {sorted(missing)[:4]} (fetch them, or "
+              f"--skip-missing to list them as affected without running them)", file=sys.stderr)
+        return 2
     jobs = {}
     for e in entries:
+        if e.key in missing:
+            continue
         for side in (a.base_args, a.args):
             k = f"{sha}|{side}|{a.conflicts}|{e.key}"
             if k not in cache:
                 jobs[k] = (side, e.path)
-    print(f"{len(entries)} instances, {len(jobs)} runs to do ({2 * len(entries) - len(jobs)} cached)", flush=True)
+    print(f"{len(entries)} instances, {len(jobs)} runs to do ({2 * (len(entries) - len(missing)) - len(jobs)} cached, "
+          f"{len(missing)} missing)", flush=True)
     with cf.ThreadPoolExecutor(a.jobs) as ex:
         futs = {ex.submit(fingerprint, a.solver, side, a.conflicts, p, a.timeout): k for k, (side, p) in jobs.items()}
         for i, f in enumerate(cf.as_completed(futs), 1):
@@ -119,6 +129,9 @@ def cmd_affected(a):
     cache_path.write_text(json.dumps(cache))
     keep = []
     for e in entries:
+        if e.key in missing:
+            keep.append((e.key, e.expected, "missing"))
+            continue
         fa = cache[f"{sha}|{a.base_args}|{a.conflicts}|{e.key}"]
         fb = cache[f"{sha}|{a.args}|{a.conflicts}|{e.key}"]
         if not isinstance(fa, dict) or not isinstance(fb, dict) or fa != fb:
@@ -165,14 +178,16 @@ def main():
     f.add_argument("--timeout", type=float, default=300.0)
     f.add_argument("-j", "--jobs", type=int, default=1)
     f.add_argument("--cache")
+    f.add_argument("--skip-missing", action="store_true",
+                   help="list instances whose file is missing as affected (\"missing\") instead of stopping")
     f.add_argument("--out", required=True)
     m = sub.add_parser("merge")
     m.add_argument("--base", required=True)
     m.add_argument("--cand", required=True)
     m.add_argument("--out", required=True)
     a = p.parse_args()
-    {"subset": cmd_subset, "affected": cmd_affected, "merge": cmd_merge}[a.cmd](a)
+    return {"subset": cmd_subset, "affected": cmd_affected, "merge": cmd_merge}[a.cmd](a)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

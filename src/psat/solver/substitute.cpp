@@ -12,6 +12,7 @@
 // are still present, so all rewritten clauses are added before any old clause is deleted.
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 
 #include "psat/io/proof.hpp"
@@ -276,6 +277,197 @@ bool Solver::substitute() {
   }
   // Rewritten binaries often coincide with existing ones (the two copies of a merged gate).
   if (opts_.dedup && !bins.empty()) dedup_binaries();
+  return true;
+}
+
+// --binpairunits: binary clauses (a b) and (a -b) imply the unit a (RUP: -a propagates b and -b).
+// Root level, fully propagated; a linear pass over the binary watches, then the units are assigned
+// and propagated. With --binpairunits=2 the binary clauses include the resolvents (a b) of ternary
+// pairs (a b c) (a b -c) and the clauses with exactly two unassigned literals; a pass that finds
+// units adds the resolvents as binary clauses. Elimination makes such pairs, and so do adder circuits with constant
+// inputs once units are propagated: sum_of_three_cubes_906 has 85k binary pairs after root
+// propagation, which fix 87k more variables, then 993 more with the ternary pairs, which fix 82k
+// more and turn as many XOR gates into equivalences. Returns false if the formula became
+// inconsistent.
+bool Solver::binary_pair_units() {
+  // With the ternary pairs: again while a pass finds units (their propagation shortens clauses
+  // into new ternary pairs; at most 4 passes).
+  for (int pass = 0; pass < (opts_.binpairunits >= 2 ? 4 : 1); ++pass) {
+    const uint64_t before = stats_.binpair_units;
+    if (!binary_pair_units_pass()) return false;
+    if (stats_.binpair_units == before) break;
+  }
+  return true;
+}
+
+bool Solver::binary_pair_units_pass() {
+  const size_t nlits = 2 * size_t{num_vars_};
+  // Resolvents of ternary pairs, as lists per literal (CSR): (x y) is under x and under y.
+  std::vector<uint32_t> tstart;
+  std::vector<Lit> tother;
+  // Ternary-pair resolvents, and clauses with exactly two unassigned literals (the others false).
+  std::vector<std::pair<Lit, Lit>> resolvents, shortened;
+  if (opts_.binpairunits >= 2) {
+    const auto mix = [](uint64_t x) {
+      x ^= x >> 33;
+      x *= 0xff51afd7ed558ccdULL;
+      x ^= x >> 33;
+      x *= 0xc4ceb9fe1a85ec53ULL;
+      x ^= x >> 33;
+      return x;
+    };
+    struct Tern {
+      uint64_t key;
+      std::array<Lit, 3> lits;  // by variable
+    };
+    std::vector<Tern> terns;
+    // Clauses with exactly 3 unassigned literals (the others false at the root; a resolvent of
+    // two of them is RUP the same way). Those with 2 are binary clauses for the pairs.
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage || c.redundant || c.size > 8) continue;
+      std::array<Lit, 3> t{};
+      uint32_t n = 0;
+      bool sat = false;
+      for (uint32_t k = 0; k < c.size && !sat; ++k) {
+        const Lit l = c.lits()[k];
+        if (vals_[l] > 0) sat = true;
+        if (vals_[l] != 0) continue;
+        if (n < 3) t[n] = l;
+        ++n;
+      }
+      if (sat || n < 2 || n > 3) continue;
+      if (n == 2) {
+        if (c.size > 2) shortened.emplace_back(t[0], t[1]);
+        continue;
+      }
+      std::sort(t.begin(), t.end(), [](Lit a, Lit b) { return var_of(a) < var_of(b); });
+      terns.push_back(Tern{mix(var_of(t[0]) + 1) + mix(uint64_t{var_of(t[1])} << 21 | 1) + mix(uint64_t{var_of(t[2])} << 42 | 2), t});
+    }
+    std::sort(terns.begin(), terns.end(), [](const Tern& a, const Tern& b) {
+      if (a.key != b.key) return a.key < b.key;
+      return a.lits < b.lits;
+    });
+    for (size_t a = 0; a < terns.size();) {
+      size_t b = a + 1;
+      while (b < terns.size() && terns[b].key == terns[a].key) ++b;
+      for (size_t i = a; i < b; ++i) {
+        for (size_t j = i + 1; j < b; ++j) {
+          const auto& x = terns[i].lits;
+          const auto& y = terns[j].lits;
+          int diff = -1, ndiff = 0;
+          bool same_vars = true;
+          for (int k = 0; k < 3; ++k) {
+            if (var_of(x[k]) != var_of(y[k])) same_vars = false;
+            if (x[k] != y[k]) {
+              diff = k;
+              ++ndiff;
+            }
+          }
+          if (!same_vars || ndiff != 1) continue;
+          const Lit p = x[diff == 0 ? 1 : 0], q = x[diff == 2 ? 1 : 2];
+          resolvents.emplace_back(p, q);
+        }
+      }
+      a = b;
+    }
+    tstart.assign(nlits + 1, 0);
+    for (const auto* list : {&resolvents, &shortened}) {
+      for (const auto& [p, q] : *list) {
+        ++tstart[p + 1];
+        ++tstart[q + 1];
+      }
+    }
+    for (size_t l = 0; l < nlits; ++l) tstart[l + 1] += tstart[l];
+    tother.resize(tstart[nlits]);
+    std::vector<uint32_t> fill(tstart.begin(), tstart.end() - 1);
+    for (const auto* list : {&resolvents, &shortened}) {
+      for (const auto& [p, q] : *list) {
+        tother[fill[p]++] = q;
+        tother[fill[q]++] = p;
+      }
+    }
+  }
+  // seen[x]: 1 a binary clause (a x), 2 only a ternary-pair resolvent (a x).
+  std::vector<uint8_t> seen(nlits, 0);
+  struct Found {
+    Lit unit, b;           // (unit b) and (unit -b)
+    uint8_t sb, snb;       // their sources (1 binary clause, 2 resolvent)
+  };
+  std::vector<Found> units;
+  for (Lit a = 0; a < nlits; ++a) {
+    if (vals_[a] != 0 || eliminated_[var_of(a)]) continue;
+    const ConstWatchList ws = std::as_const(watches_)[a];
+    bool found = false;
+    for (const Watch& w : ws) {
+      if (!w.binary()) continue;
+      if (seen[negate(w.blit)]) {
+        units.push_back(Found{a, w.blit, 1, seen[negate(w.blit)]});
+        found = true;
+        break;
+      }
+      seen[w.blit] = 1;
+    }
+    if (!found && !tstart.empty()) {
+      for (uint32_t i = tstart[a]; i < tstart[a + 1]; ++i) {
+        const Lit x = tother[i];
+        if (seen[negate(x)]) {
+          units.push_back(Found{a, x, 2, seen[negate(x)]});
+          break;
+        }
+        if (!seen[x]) seen[x] = 2;
+      }
+    }
+    for (const Watch& w : ws) {
+      if (w.binary()) seen[w.blit] = 0;
+    }
+    if (!tstart.empty()) {
+      for (uint32_t i = tstart[a]; i < tstart[a + 1]; ++i) seen[tother[i]] = 0;
+    }
+  }
+  ++stats_.binpair_rounds;
+  // A productive pass adds the ternary-pair resolvents as binary clauses (RUP; they subsume their
+  // pair): unit propagation then runs through them, where a chain of pairs (a carry chain with
+  // constant inputs) would otherwise give one more unit per pass.
+  if (!units.empty() && !resolvents.empty()) {
+    for (const auto& [p, q] : resolvents) {
+      if (vals_[p] || vals_[q]) continue;
+      if (proof_) {
+        const Lit b[2] = {p, q};
+        proof_->add(b, 2);
+      }
+      add_binary(p, q, false);
+      ++stats_.binpair_binaries;
+    }
+  }
+  for (const Found& f : units) {
+    const Lit u = f.unit;
+    if (vals_[u] > 0) continue;
+    ++stats_.binpair_units;
+    if (proof_) {
+      // A binary of a shortened clause (RUP) first; resolvents are in the proof already. Neither
+      // is deleted (the resolvents are clauses of the formula now; the others stay implied).
+      const Lit b1[2] = {u, f.b}, b2[2] = {u, negate(f.b)};
+      if (f.sb == 2) proof_->add(b1, 2);
+      if (f.snb == 2) proof_->add(b2, 2);
+      proof_->add_unit(u);
+    }
+    if (vals_[u] < 0) {  // both a and -a: the empty clause by unit propagation
+      inconsistent_ = true;
+      if (proof_) proof_->add_empty();
+      return false;
+    }
+    assign_unit_in_proof(u);
+  }
+  if (opts_.verbose >= 2 && !units.empty()) {
+    std::printf("c [%.2f s] binary pairs: %zu units (ternary-pair resolvents %zu, shortened clauses %zu)\n", seconds(),
+                units.size(), resolvents.size(), shortened.size());
+  }
+  if (propagated_ < trail_.size() && !propagate()) {
+    inconsistent_ = true;
+    if (proof_) proof_->add_empty();
+    return false;
+  }
   return true;
 }
 

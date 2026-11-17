@@ -194,10 +194,11 @@ struct Stats {
   uint64_t bva_vars = 0, bva_removed = 0, bva_added = 0, bva_hop_ties = 0, bva_trials = 0, bva_rounds = 0;
   uint64_t bva_search_vars = 0, bva_search_rounds = 0;  // --bvasearch
   uint64_t deduplicated = 0;  // duplicate binary clauses removed
+  uint64_t binpair_units = 0, binpair_rounds = 0, binpair_binaries = 0;  // --binpairunits
   uint64_t tern_binaries = 0, tern_subsumed = 0;  // --congruencetern
   uint64_t binreduce_rounds = 0, binreduce_checked = 0, binreduce_deleted = 0, binreduce_cut = 0, binreduce_ticks = 0;  // --binreduce
   uint64_t stop_faults = 0;   // --stopfault (testing): stops injected
-  uint64_t walks = 0, walks_kept = 0, walk_flips = 0, walk_ticks = 0, walk_models = 0, walk_transfers = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, lucky = 0;
+  uint64_t walks = 0, walks_kept = 0, walk_flips = 0, walk_ticks = 0, walk_models = 0, walk_transfers = 0, congruent = 0, congruent_xors = 0, congruent_ites = 0, congruence_rewrites = 0, lucky = 0;
   uint64_t model_walks = 0, model_walks_skipped = 0, model_walk_ticks = 0;  // --walkmode=3
   uint64_t stable_conflicts = 0, focused_conflicts = 0;
   uint64_t original_clauses = 0;
@@ -406,6 +407,7 @@ class Solver {
   }
   bool memory_exceeded(bool accounting) const;
   void debug_check(const char* where);
+  void dump_simplified();
 
   // --- clause database maintenance ------------------------------------------------------------
   void mark_reasons(bool on);
@@ -425,6 +427,8 @@ class Solver {
   bool substitute();
   void substitute_rounds();
   uint64_t dedup_binaries();
+  bool binary_pair_units();  // --binpairunits (substitute.cpp); false: inconsistent
+  bool binary_pair_units_pass();
   void substitute_now();  // outside elimination rounds, at the root
   uint32_t congruence(uint64_t& budget);
   uint32_t ternary_binaries(uint64_t& budget);  // --congruencetern
@@ -727,6 +731,9 @@ class Solver {
   static constexpr uint32_t kGlueBuckets = 64;
   uint32_t tier1_ = 2, tier2_ = 6;
   uint64_t used_glue_[kGlueBuckets] = {};
+  // --dynamictiers=2: per mode (index stable_), the glue histogram of used clauses and its limits.
+  uint64_t mode_used_glue_[2][kGlueBuckets] = {};
+  uint32_t mode_tier1_[2] = {2, 2}, mode_tier2_[2] = {6, 6};
   // --tierstats (statistics only): tier1 clauses' ages (reductions in a row unused, as --tier1age
   // counts them) are kept, and a use of an aged clause in conflict analysis is a revival. exposure
   // counts (clause, reduction) pairs by the age after the reduction, revived the revivals by the age
