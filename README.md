@@ -20,7 +20,9 @@ not have:
 
 The defaults were tuned on that sample. On 78 instances of the 2024 and 2025 competitions from
 families never used for tuning, Kissat solves one more: 52 against 51 for 0.4.5 and 48 for 0.4.4.
-0.4.5 has the lower PAR-2 there (785 against 818 s) and solves more within 300 s (45 against 37)
+0.4.5 has the lower PAR-2 there (785 against 818 s) and solves more within 300 s (45 against 37).
+On a second such set of 49 instances of the 2017-2023 competitions, built after those defaults
+were fixed, 0.4.6 (the same search as 0.4.5) solves 27 against 24 for Kissat
 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
@@ -74,12 +76,17 @@ A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.t
 78 instances of the 2024 and 2025 main tracks from 38 families that are in no tuning set
 (`sets/fresh.txt`), with the same setup and machine; no proofs.
 
+49 instances of the 2017-2023 main tracks from 21 more families in no other set
+(`sets/fresh2.txt`), with the same setup and machine; every UNSAT answer of 0.4.6 checked with
+its proof. 0.4.6 changes no default, so its search is that of 0.4.5.
+
 Solved / PAR-2 in seconds:
 
-| set | popso-sat 0.4.5 | popso-sat 0.4.4 | popso-sat 0.4.0 | Kissat 4.0.4 |
+| set | popso-sat 0.4.5 and 0.4.6 | popso-sat 0.4.4 | popso-sat 0.4.0 | Kissat 4.0.4 |
 |---|---|---|---|---|
 | sc2026 (168) | 110 / 773.8 | 110 / 772.5 | 98 / 926.4 | 80 / 1152.3 |
 | fresh (78) | 51 / 785.2 | 48 / 833.5 | | 52 / 818.2 |
+| fresh2 (49) | 27 / 1011.8 | | | 24 / 1132.1 |
 
 **sc2026:** 0.4.5 solves 36 instances that Kissat does not, most of them with counting,
 Gauss-Jordan or mod-p reasoning. Kissat solves 6 that 0.4.5 does not. 0.4.5 and 0.4.4 solve
@@ -89,6 +96,9 @@ length, on an AMD EPYC 4465P), 0.4.2 solves 130, the 0.4.1 search 125 and Kissat
 **fresh:** 0.4.5 solves three more than 0.4.4 (reconf10_22_queen20, rook-51 and rook-52; Kissat
 solves neither rook instance) and loses none. Kissat solves 9 instances that 0.4.5 does not,
 and 0.4.5 solves 8 that Kissat does not.
+
+**fresh2:** 0.4.6 solves 5 instances that Kissat does not; Kissat solves 2 that 0.4.6 does not
+(one of them only with its default seed).
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of

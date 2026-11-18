@@ -1,0 +1,54 @@
+# held-out set: 49 instances of the SAT Competition main track 2017/2018/2019/2020/2021/2022/2023 (benchmarks/gbd.py heldout), 25 sat / 24 unsat, 21 families
+# no runtime filter: a deterministic hash-ordered sample, not chosen by any solver's results;
+# excluded: instances of every other set, families of tune,unsat26,unsat_dev,medium,small,gate,sc2026,fresh,validation,dev_candidates, minisat1m=yes, cnf > 400 MB, xz > 100 MB; at most 3 per family
+# files: <main>/benchmarks/cache/gbd/files (benchmarks/gbd.py download --set fresh2)
+# total xz 63 MB
+gbd/files/d51594ca1acfffde2632017335900b50-LABS_n066_goal005-sc2013.cnf.xz                    sat      # family=auto-correlation year=2019 xz=1.46MB cnf=5.3MB
+gbd/files/3b1e4e9338647be814a875ab0118d877-LABS_n089_goal008-sc2013.cnf.xz                    sat      # family=auto-correlation year=2019 xz=5.85MB cnf=24.4MB
+gbd/files/db267ea0279158fb3ef0558b73506089-Steiner-135-32-bce.cnf.xz                          sat      # family=cover year=2020 xz=0.01MB cnf=0.1MB
+gbd/files/b5247278fe70f2a5ec06822a78bce5f0-Steiner-243-45-bce.cnf.xz                          sat      # family=cover year=2020 xz=0.04MB cnf=0.4MB
+gbd/files/f50508c7983eea7cce9556409c972877-Steiner-405-70-bce.cnf.xz                          sat      # family=cover year=2020 xz=0.09MB cnf=1.1MB
+gbd/files/2e69d7e8008270d9115cbda2d172f016-manthey_DimacsSorter_37_3-sr2015.cnf.xz            sat      # family=dimacs-sorter year=2019 xz=0.08MB cnf=0.3MB
+gbd/files/ab3dfe46aee7bfeb8301de497f36a05a-Kakuro-easy-052-ext.xml.hg_4.cnf.xz                sat      # family=hypertree-decomposition year=2020 xz=5.03MB cnf=115.7MB
+gbd/files/b72179b73f013a009f4bb68c4bf31c8b-Kakuro-easy-104-ext.xml.hg_6.cnf.xz                sat      # family=hypertree-decomposition year=2021 xz=16.08MB cnf=356.6MB
+gbd/files/2ff25c7783f8ceb3ebab31eebb98592e-Karatsuba6972593x13466917.cnf.xz                   sat      # family=karatsuba-multiplication year=2018 xz=0.12MB cnf=0.6MB
+gbd/files/a5364102dcc3cf5ba701c0bb8de675f2-Karatsuba7654321x1234567.cnf.xz                    sat      # family=karatsuba-multiplication year=2018 xz=0.11MB cnf=0.5MB
+gbd/files/9be2676273d338e7844e47a3e8c3de53-MM-23-2-2-2-3-4.cnf.xz                             sat      # family=matrix-multiplication year=2019 xz=0.52MB cnf=2.3MB
+gbd/files/f621afd8f3420745688354e17f5d98e7-MM-23-4-4-4-4-1.cnf.xz                             sat      # family=matrix-multiplication year=2019 xz=0.53MB cnf=2.3MB
+gbd/files/139c1262e5901a684005ffad897aa7eb-maximum_constrained_partition_18_bits_n200.cnf.xz  sat      # family=maximum-constraint-partition year=2021 xz=0.29MB cnf=3.0MB
+gbd/files/5584cc467c09d0cab489238275c2b92e-sp5-21-15-one-stri-tree-noid.cnf.xz                sat      # family=minimal-superpermutation year=2021 xz=0.04MB cnf=0.2MB
+gbd/files/eb09e5484eaf494d6c1abe60c5b38b7e-sp5-26-19-bin-nons-tree-noid.cnf.xz                sat      # family=minimal-superpermutation year=2021 xz=0.08MB cnf=0.4MB
+gbd/files/89656622f153983b0415cef2aadaadee-sp5-26-19-una-nons-tree-noid.cnf.xz                sat      # family=minimal-superpermutation year=2021 xz=0.09MB cnf=0.5MB
+gbd/files/e85b6cb3e2751d5c80559433ba1adf06-vlsat2_24450_2770239.dimacs.cnf.xz                 sat      # family=petrinet-concurrency year=2020 xz=1.42MB cnf=40.0MB
+gbd/files/df8884c93686aa1f0fe4ba12b5a98bde-vlsat2_30744_3925645.dimacs.cnf.xz                 sat      # family=petrinet-concurrency year=2020 xz=2.98MB cnf=57.4MB
+gbd/files/7af73f846548141cc97b8a149a20bfbf-vlsat2_57038_10572502.dimacs.cnf.xz                sat      # family=petrinet-concurrency year=2020 xz=7.25MB cnf=158.2MB
+gbd/files/d5453d6d31f33a310ce34ee4bcfcbe50-prime_a24_b24.cnf.xz                               sat      # family=prime-testing year=2021 xz=0.08MB cnf=0.8MB
+gbd/files/977dad9d1bfc9de725a4bbf65b407c77-MVD_ADS_S11_6_7.cnf.xz                             sat      # family=relational-dependencies year=2021 xz=0.19MB cnf=13.0MB
+gbd/files/25a654a029421baed232de5e6e19c72e-qpr-bmp280-driver-14.cnf.xz                        sat      # family=software-bmc year=2017 xz=0.25MB cnf=1.8MB
+gbd/files/e17d3f94f2c0e11ce6143bc4bf298bd7-qpr-bmp280-driver-5.cnf.xz                         sat      # family=software-bmc year=2017 xz=0.26MB cnf=1.8MB
+gbd/files/90d6cb8b040b5ad926248e8a75c0fb07-ssp-0.046166496845693274.cnf.xz                    sat      # family=ssp-0 year=2020 xz=0.75MB cnf=8.5MB
+gbd/files/d39f5c2474124910a607eb378b9f0bc3-ssp-0.497665446947731.cnf.xz                       sat      # family=ssp-0 year=2020 xz=0.42MB cnf=4.5MB
+gbd/files/ceb4b1db49b77dbd68fa63ce029490c1-LABS_n071_goal001-sc2013.cnf.xz                    unsat    # family=auto-correlation year=2019 xz=1.85MB cnf=6.7MB
+gbd/files/064fe286277f695f42b556ef991036ff-sin_depth_miter_2.cnf.xz                           unsat    # family=circuit-equialence-checking year=2022 xz=1.88MB cnf=10.7MB
+gbd/files/4a85e090bda23cef9bf2aed55d489ab6-sin_depth_miter_5.cnf.xz                           unsat    # family=circuit-equialence-checking year=2022 xz=0.2MB cnf=1.1MB
+gbd/files/e011c703e4a2ff46069ec2af2997b580-sin_depth_miter_6.cnf.xz                           unsat    # family=circuit-equialence-checking year=2022 xz=0.18MB cnf=1.0MB
+gbd/files/3b487c256597a90228bcf4a14d07715b-dp12u11.used-as.sat04-358-sc2004.cnf.xz            unsat    # family=dining-philosophers year=2019 xz=0.17MB cnf=0.4MB
+gbd/files/744199dff0b9d2fc6f3f5b73d0f924c1-simon-mixed-s02bis-05.cnf.xz                       unsat    # family=dining-philosophers year=2020 xz=0.16MB cnf=0.4MB
+gbd/files/1e8af331b822f6b7bc1754be9d64499f-Kakuro-easy-065-ext.xml.hg_3.cnf.xz                unsat    # family=hypertree-decomposition year=2020 xz=13.29MB cnf=330.4MB
+gbd/files/18416a9ac0909dce5fa96345f784c87e-intervals122.cnf.xz                                unsat    # family=interval-matching year=2023 xz=0.1MB cnf=0.7MB
+gbd/files/f090d0d6eaff3b92c817f5db6fa47544-intervals718.cnf.xz                                unsat    # family=interval-matching year=2023 xz=0.09MB cnf=0.8MB
+gbd/files/8c7477dc33a412514998a2fd6b32dbf5-intervals855.cnf.xz                                unsat    # family=interval-matching year=2023 xz=0.11MB cnf=0.8MB
+gbd/files/a64f3c1afd7e0f6165efbe9fc2fc8003-pmg-12-UNSAT.sat05-3940.reshuffled-07.cnf.xz       unsat    # family=long-learned-clauses year=2023 xz=0.0MB cnf=0.0MB
+gbd/files/c39ff9218232adb739cd31f4c70fb316-mm-2x3-8-8-sb.1.sat05-475.reshuffled-07.cnf.xz     unsat    # family=matrix-multiplication year=2020 xz=0.64MB cnf=2.2MB
+gbd/files/912b89dd471295d3c72c66d0192dff72-randomG-B-Mix-n18-d05.cnf.xz                       unsat    # family=perfect-matching year=2021 xz=0.0MB cnf=0.0MB
+gbd/files/50d081a4b18eecdd0bc120f634d57a26-randomG-n18-d05.cnf.xz                             unsat    # family=perfect-matching year=2021 xz=0.0MB cnf=0.0MB
+gbd/files/e8c79a0ee6be39b6b2211c9a527c192a-randomG-n20-d05.cnf.xz                             unsat    # family=perfect-matching year=2021 xz=0.0MB cnf=0.0MB
+gbd/files/52a9f12c6fb938ec95923268f07d48d0-prime_200560490131.cnf.xz                          unsat    # family=prime-testing year=2018 xz=0.05MB cnf=0.5MB
+gbd/files/a1ec978756e656638b7e34cef5ecaf6d-quad_res_r26_m27.cnf.xz                            unsat    # family=prime-testing year=2021 xz=0.04MB cnf=0.4MB
+gbd/files/a88dcbc4b23784eaeb4afdde82d4da67-MUS-v310-4-sc2013.cnf.xz                           unsat    # family=random-mus year=2019 xz=0.01MB cnf=0.0MB
+gbd/files/33e82a3b6df2b2b63291775c0133a32f-MVD_ADS_S1_5_5.cnf.xz                              unsat    # family=relational-dependencies year=2021 xz=0.13MB cnf=20.6MB
+gbd/files/8932cf87c4dfe7aeab8b3ca55eebee64-MVD_ADS_S5_6_6.cnf.xz                              unsat    # family=relational-dependencies year=2021 xz=0.18MB cnf=16.9MB
+gbd/files/8ac6fa76df5e0af8cf30e5c3f3a809f8-mp1-rubikcube012.cnf.xz                            unsat    # family=rubikcube year=2017 xz=0.08MB cnf=1.2MB
+gbd/files/e53c05f57f118607b6c529bcccc6085e-mp1-rubikcube601.cnf.xz                            unsat    # family=rubikcube year=2017 xz=0.06MB cnf=1.1MB
+gbd/files/df29ae150b17d9862388643b912c2c1f-mp1-rubikcube901.cnf.xz                            unsat    # family=rubikcube year=2017 xz=0.06MB cnf=0.9MB
+gbd/files/fdb394fb3ccdb308bdf511b8996f4f69-x2_128.shuffled-as.sat03-1598-sc2002.cnf.xz        unsat    # family=xor-chain year=2019 xz=0.01MB cnf=0.0MB

@@ -161,11 +161,14 @@ void Solver::walk() {
     std::vector<uint32_t> fill(occ_start.begin(), occ_start.end() - 1);
     for (uint32_t c = 0; c < nclauses; ++c) for_lits(c, [&](Lit l) { occ[fill[l]++] = c; });
   }
-  // Assignment from the saved phases (root values for fixed variables).
+  // Assignment from the saved phases, or with --walkfrom=1 from the phases the next decisions
+  // would take (root values for fixed variables).
   std::vector<int8_t> value(nlits2, 0);  // per literal: 1 true, 0 false
+  const bool from_target = opts_.walkfrom && (opts_.target == 2 || (opts_.target == 1 && stable_));
   for (Var v = 0; v < num_vars_; ++v) {
     const int8_t root = vals_[make_lit(v, false)];
-    const bool pos = root ? root > 0 : saved_[v] > 0;
+    const int8_t phase = from_target && target_[v] ? target_[v] : saved_[v];
+    const bool pos = root ? root > 0 : phase > 0;
     value[make_lit(v, false)] = pos;
     value[make_lit(v, true)] = !pos;
   }

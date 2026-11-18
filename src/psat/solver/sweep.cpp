@@ -123,14 +123,26 @@ void Solver::sweep(uint64_t min_budget) {
   if (opts_.sweeporder == 1) {
     order.resize(num_vars_);
     for (Var u = 0; u < num_vars_; ++u) order[u] = num_vars_ - 1 - u;
-  } else if (opts_.sweeporder == 2) {
+  } else if (opts_.sweeporder >= 2) {
     order.resize(num_vars_);
     for (Var u = 0; u < num_vars_; ++u) order[u] = u;
     auto occs = [&](Var u) {
       const Lit p = make_lit(u, false), n = make_lit(u, true);
       return (start[p + 1] - start[p]) + (start[n + 1] - start[n]);
     };
-    std::stable_sort(order.begin(), order.end(), [&](Var a, Var b) { return occs(a) > occs(b); });
+    if (opts_.sweeporder == 2) {
+      std::stable_sort(order.begin(), order.end(), [&](Var a, Var b) { return occs(a) > occs(b); });
+    } else {
+      // 3: fewest occurrences first; variables with a polarity in more long clauses than an
+      // environment may hold go last (their environments would be cut off).
+      const uint32_t lim = sweep_lim_clauses_;
+      auto rank = [&](Var u) -> uint64_t {
+        const Lit p = make_lit(u, false), n = make_lit(u, true);
+        const uint32_t a = start[p + 1] - start[p], b = start[n + 1] - start[n];
+        return (a > lim || b > lim ? uint64_t{1} << 32 : 0) + a + b;
+      };
+      std::stable_sort(order.begin(), order.end(), [&](Var a, Var b) { return rank(a) < rank(b); });
+    }
     ticks += num_vars_;
   }
   size_t followed = 0;  // --sweepfollow: variables taken from sweep_follow_ (FIFO)

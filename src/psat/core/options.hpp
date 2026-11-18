@@ -12,6 +12,7 @@ namespace psat {
 // X(name, default, min, max, description)
 #define PSAT_OPTIONS(X)                                                                            \
   X(seed, 0, 0, INT32_MAX, "random seed (0 = natural variable order)")                            \
+  X(seedorder, 1, 0, 1, "a nonzero --seed also shuffles the initial decision order (0: natural order; the seed drives only the random choices)") \
   X(verbose, 0, 0, 3, "verbosity level")                                                          \
   X(check, 1, 0, 1, "check a SAT model against the original formula before reporting it")         \
   X(reportmem, 0, 0, 3600, "memory report (resident size and its parts) every <n> seconds and after the large passes, with a progress line (counts, tiers, schedules, pass times) in the search (0: off)") \
@@ -67,11 +68,14 @@ namespace psat {
   X(rephaseint, 1000, 10, 1000000, "base rephase interval (conflicts)")                           \
   X(rephasestable, 0, 0, 2, "rephase only in stable mode (1; 2: the interval counts stable-mode conflicts)") \
   X(targetrestart, 0, 0, 1, "stable-mode restarts restart the target phases' consistent-trail record") \
+  X(rephasescale, 0, 0, 1, "growth of the rephase interval: 0 = --rephaseint x the rephase count, 1 = --rephaseint x n x log10(n + 9)^3 for the n-th rephase") \
+  X(rephasebestkeep, 0, 0, 1, "the best phases' trail record is reset only by a best rephase (B), not by the walk, original and inverted ones") \
   X(prefetch, 0, 0, 2, "prefetch the clauses of long watch lists in propagation on arenas of 8 MB or more (1: every long-clause watch; 2: only where the blocking literal is not true; 64-bit ARM builds only); off: on the i7 with 4 jobs, 1 cost ~20% time") \
   X(walk, 1, 0, 1, "local search phases in the rephase cycle (algorithm: --walkmode)")         \
   X(lucky, 1, 0, 1, "try trivial assignments (all false / all true, both orders) before search")  \
   X(walkeffort, 50, 1, 100000, "walk effort relative to search ticks (per mille)")               \
   X(walkmode, 3, 0, 3, "walk algorithm: 0 = ProbSAT, 1 = DDFW clause weighting (Ishtaiwi et al. 2005), 2 = DDFW with linear weight transfers and weighted-random flips (Chowdhury, Codel, Heule 2023), 3 = ProbSAT for the phases, then the walk of 2 for a model only; with 1-3 a walk that finds a model answers SAT") \
+  X(walkfrom, 0, 0, 1, "the walk starts from: 0 = the saved phases, 1 = the decision phases (the target phase where decisions use it)") \
   X(walkrecord, 0, 0, 1, "a walk's assignment becomes the saved phases only if no earlier walk ended with fewer unsatisfied clauses") \
   X(walkmodel, 2, 0, 2, "--walkmode=3: the model walk's budget: 0 = the phase walk's (walkeffort share, at least 2 x literals); 1 = that while near a model (a minimum of at most sqrt(clauses) x walkmodelnear % unsatisfied clauses), else back off (skip 2^k - 1 calls after k far walks) on the share only; 2 = 1, and near walks get the 2 x literals floor only after a new lowest minimum") \
   X(walkmodelnear, 100, 0, 100000, "--walkmodel=1 / 2: near a model means at most sqrt(clauses) x this % unsatisfied clauses") \
@@ -82,6 +86,7 @@ namespace psat {
   X(randecint, 500, 1, INT32_MAX, "base conflicts between random decision sequences (times the square root of their count)") \
   X(randeclength, 10, 1, 1000000, "conflicts in a random decision sequence")                      \
   X(randecstable, 0, 0, 1, "random decision sequences in stable mode too (else focused mode only)") \
+  X(watchtrue, 0, 0, 1, "propagation: a true non-watched literal found while visiting a clause becomes the blocking literal of the falsified watch (0) or is watched instead (1)") \
   X(chrono, 0, 0, 2, "chronological backtracking (backjumps over more than chronolevels; 2: a missed implication before the next decision backjumps as usual)") \
   X(chronolevels, 100, 0, 1000000, "backjumps over more levels backtrack one level instead")     \
   X(chronounits, 0, 0, 1, "with --chrono: learned units too (assigned at the root out of order, without a restart)") \
@@ -214,7 +219,7 @@ namespace psat {
   X(sweepbackbone, 1, 0, 1, "sweeping checks backbone candidates with Kitten (0: only the units Kitten learns)") \
   X(sweepouter, 1, 0, 1, "sweeping checks equivalences between two outermost environment literals (0: only with an inner one)") \
   X(sweepfollow, 0, 0, 1, "sweeping sweeps a variable again right after an equivalence with it was proved") \
-  X(sweeporder, 0, 0, 2, "order of the swept variables: 0 index, 1 reverse index, 2 most long-clause occurrences first (each sweep sorts again)") \
+  X(sweeporder, 0, 0, 3, "order of the swept variables: 0 index, 1 reverse index, 2 most long-clause occurrences first, 3 fewest first (more than --sweepclauses in a polarity: last; each sweep sorts again)") \
   X(sweepdirty, 0, 0, 1, "sweeping skips variables whose clauses did not change since they were swept (while others remain)") \
   X(binaryproof, 1, 0, 1, "write the DRAT proof in binary format")                                \
   X(strict, 1, 0, 1, "strict DIMACS parsing")

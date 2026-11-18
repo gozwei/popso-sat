@@ -82,6 +82,7 @@ bool Solver::propagate_impl(uint32_t ignore) {
   uint32_t* const arena = arena_.data();
   const uint32_t current = level();
   [[maybe_unused]] const bool prefetch_open_only = opts_.prefetch == 2;  // (kPrefetch only)
+  const bool keep_true = !opts_.watchtrue;  // a true replacement becomes the blocker (0) or the watch (1)
   size_t propagated = propagated_;
   bool conflict = false;
   [[maybe_unused]] uint64_t visit_red = 0, visit_irr = 0, visit_long = 0, implied_red = 0, implied_irr = 0;
@@ -256,7 +257,7 @@ bool Solver::propagate_impl(uint32_t ignore) {
       if (rv >= 0) {
         c.pos = k;
         const Lit r = lits[k];
-        if (rv > 0) {
+        if (rv > 0 && keep_true) {
           // Satisfied by a non-watched literal: keep the watch, remember r as blocker.
           j[-1].blit = r;
           if constexpr (kProp > 0) ++prop_stats_.repl_true;

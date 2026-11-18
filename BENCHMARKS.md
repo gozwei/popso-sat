@@ -8,6 +8,49 @@ UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs are
 gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
 are never mixed.
 
+## v0.4.6
+
+0.4.6 changes no default: on four check instances its search matches 0.4.5 exactly after 60,000
+conflicts, so the v0.4.5 tables below stand for it. New: a second held-out set and options that
+are off (see the [CHANGELOG](CHANGELOG.md)).
+
+### Fresh families 2 (Intel i7-7700K, Linux)
+
+`benchmarks/sets/fresh2.txt`: 49 instances of the 2017-2023 main tracks (25 SAT / 24 UNSAT)
+from 21 families that are in no other set. The set was built after the defaults of 0.4.5 were
+fixed, and no default was chosen on it. 1000 s and 12 GB per instance, four instances at a
+time, every model checked. 0.4.6 wrote a proof for each UNSAT answer; dpr-trim verified 11 within the run. The twelfth,
+mm-2x3-8-8, was solved at 949 s, which left the checker too little time. It was solved again
+(969 s) and its proof (883 MB) verified without a time limit: dpr-trim 1536 s, then cake_lpr
+130 s. Kissat ran without proofs.
+
+| | popso-sat 0.4.6 | Kissat 4.0.4 |
+|---|---|---|
+| solved of 49 (SAT / UNSAT) | 27 (15 / 12) | 24 (15 / 9) |
+| solved within 300 s | 21 | 17 |
+| PAR-2 (s) | 1011.8 | 1132.1 |
+| shifted geometric mean (s) | 240.9 | 338.5 |
+| largest peak memory | 1.9 GB (Kakuro-easy-104) | 1.2 GB (Kakuro-easy-104) |
+
+**What this shows:**
+- 0.4.6 solves 5 instances that Kissat does not:
+  - UNSAT: pmg-12 and x2_128, in under a second (their clauses encode XOR constraints, 127
+    and 255 of them, that sum to 0 = 1 under Gauss-Jordan elimination), and Kakuro-easy-065
+    (765 s);
+  - SAT: Steiner-243-45 (2 s) and LABS_n089 (163 s).
+- Kissat solves 2 that 0.4.6 does not, both SAT:
+  - vlsat2_57038 (295 s): Kissat with seeds 1 and 2 does not solve it within 1000 s either;
+  - ssp-0.4977 (589 s; Kissat seeds 1 and 2: 608 and 491 s). 0.4.6 does not solve it with seeds
+    0-2, but does with local search off (`--walk=0`: 275, 372 and 838 s).
+- Instances both solve, shifted geometric mean: SAT 59 s (0.4.6) against 76 s (Kissat) on 13;
+  UNSAT 132 against 121 s on 9.
+- 22 instances are solved by neither, among them all three intervals instances (exactly-one
+  groups that need counting arguments across groups), three sin_depth_miter instances, the
+  randomG perfect-matching instances and quad_res_r26_m27.
+- On another machine (Intel Xeon E5-1650 v2, Linux, 300 s), the same search solves 20, 19
+  and 21 with seeds 0, 1 and 2 (`--seedorder=0`), so single differences on this set are
+  within seed noise.
+
 ## v0.4.5
 
 New in 0.4.5, on by default: a lower BVA threshold (`--bvamin=180`, was 200). See the

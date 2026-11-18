@@ -1,5 +1,49 @@
 # Changelog
 
+## v0.4.6 — 2026-11-18
+
+A second held-out benchmark set, `fresh2`, and new options, all off. The default search is the
+same as in 0.4.5: on four check instances, conflicts, decisions, propagations and ticks match
+exactly after 60,000 conflicts.
+
+On the Intel i7-7700K (Linux, 1000 s, four instances at a time):
+
+| | 0.4.6 | Kissat 4.0.4 |
+|---|---|---|
+| fresh2, solved of 49 (SAT / UNSAT) | 27 (15 / 12) | 24 (15 / 9) |
+| fresh2, solved within 300 s | 21 | 17 |
+| fresh2, PAR-2 (s) | 1011.8 | 1132.1 |
+
+All 12 UNSAT proofs were written and verified: 11 by dpr-trim within the run, and the proof of
+mm-2x3-8-8 (solved at 949 s, too late for the checker) in a second run without a time limit
+(883 MB, dpr-trim 1536 s, then cake_lpr). See
+[BENCHMARKS.md](BENCHMARKS.md).
+
+- **fresh2** (`benchmarks/sets/fresh2.txt`): 49 instances of the 2017-2023 main tracks (25 SAT,
+  24 UNSAT) from 21 families that are in no other set, so no default was chosen on them.
+- **New options, off by default:**
+  - `--seedorder=0`: a nonzero `--seed` changes only the random choices and keeps the natural
+    decision order. Runs over several seeds then measure search noise; with the default (1),
+    a seed also shuffles the initial order, which loses the order the formula's generator
+    gave the variables;
+  - `--rephasescale=1`: the rephase interval grows as n log10(n + 9)^3 for the n-th rephase,
+    instead of linearly;
+  - `--rephasebestkeep=1`: only a best-phase rephase resets the record of the best trail;
+  - `--walkfrom=1`: local search starts from the decision phases (the target phases where
+    decisions use them) instead of the saved phases;
+  - `--sweeporder=3`: sweeping visits the variables with the fewest long-clause occurrences
+    first. On oisc-subrv-sll-nested-8 with `--sweepfollow=1`, the second and third sweeps find
+    45.8k and 53.3k equivalences, against 667 and 1 in index order;
+  - `--watchtrue=1`: when propagation finds a true literal in a clause, that literal is watched
+    instead of becoming the blocking literal of the falsified watch.
+
+  They came out of experiments on single instances. Two were also run on whole sets at 300 s:
+  - `--watchtrue=1` solved 8 fewer on the sc2026 tuning subset;
+  - `--sweeporder=3 --sweepfollow=1`, over seeds 0-2, solved 267 against 273 on sc2026,
+    130 against 126 on fresh, and tied on fresh2 (61 against 60).
+
+  So all of them stay off.
+
 ## v0.4.5 — 2026-11-16
 
 Bounded variable addition (BVA) runs when its trial round removes at least 18% of the clauses,

@@ -65,11 +65,14 @@
 --rephaseint=10..3000
 --rephasestable=0..2
 --targetrestart=0..1
+--rephasescale=0..1
+--rephasebestkeep=0..1
 --walk=0..1
 --prefetch=0..2
 --walkeffort=1..2000
 --walkmode=0..3
 --walkrecord=0..1
+--walkfrom=0..1
 --walkmodel=0..2
 --walkmodelnear=0..400
 --lucky=0..1
@@ -80,6 +83,7 @@
 --randecint=1..2000
 --randeclength=1..50
 --randecstable=0..1
+--watchtrue=0..1
 --chrono=0..2
 --chronolevels=0..200
 --chronounits=0..1
@@ -194,7 +198,7 @@
 --sweepouter=0..1
 --sweepfollow=0..1
 --sweepdirty=0..1
---sweeporder=0..2
+--sweeporder=0..3
 
 # input and proof format
 --binaryproof=0..1
@@ -229,3 +233,4 @@
 # other inprocessing
 --congruencecost=0..4000000
 --probeuip=0..1
+--seedorder=0..1

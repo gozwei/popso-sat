@@ -116,11 +116,12 @@ void Solver::grow_vars(uint32_t n) {
   if (!renum_ext_.empty()) {
     for (Lit l = 2 * old; l < 2 * n; ++l) renum_ext_.push_back(l);
   }
-  // New variables join the decision queue / heap; a nonzero seed shuffles their order.
+  // New variables join the decision queue / heap; a nonzero seed shuffles their order (unless
+  // --seedorder=0).
   std::vector<Var> fresh;
   fresh.reserve(n - old);
   for (Var v = old; v < n; ++v) fresh.push_back(v);
-  if (opts_.seed) {
+  if (opts_.seed && opts_.seedorder) {
     for (size_t i = fresh.size(); i > 1; --i) {
       rng_ ^= rng_ << 13;
       rng_ ^= rng_ >> 7;
@@ -1097,10 +1098,11 @@ void Solver::rephase() {
   }
   std::copy(saved_.begin(), saved_.end(), target_.begin());
   target_assigned_ = 0;
-  best_assigned_ = 0;
+  if (!opts_.rephasebestkeep || kind == 'B') best_assigned_ = 0;
   const bool by_stable = opts_.rephasestable == 2 && opts_.stable != 0;
-  rephase_limit_ = (by_stable ? stats_.stable_conflicts : stats_.conflicts) +
-                   static_cast<uint64_t>(opts_.rephaseint) * rephase_count_;
+  double delta = static_cast<double>(opts_.rephaseint) * static_cast<double>(rephase_count_);
+  if (opts_.rephasescale) delta *= std::pow(std::log10(static_cast<double>(rephase_count_) + 9.0), 3.0);
+  rephase_limit_ = (by_stable ? stats_.stable_conflicts : stats_.conflicts) + static_cast<uint64_t>(std::min(delta, 1e15));
 }
 
 void Solver::update_target_and_best(uint32_t consistent) {

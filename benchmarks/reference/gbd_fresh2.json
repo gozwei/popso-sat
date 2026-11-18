@@ -1,0 +1,457 @@
+{
+ "generated": "2026-11-18",
+ "args": {
+  "cmd": "heldout",
+  "years": "2017,2018,2019,2020,2021,2022,2023",
+  "out": "fresh2",
+  "size": 80,
+  "per_family": 3,
+  "exclude_families_of": "tune,unsat26,unsat_dev,medium,small,gate,sc2026,fresh,validation,dev_candidates",
+  "max_xz_mb": 100.0,
+  "max_plain_mb": 400.0,
+  "require_nontrivial": true
+ },
+ "instances": [
+  {
+   "hash": "d51594ca1acfffde2632017335900b50",
+   "filename": "LABS_n066_goal005-sc2013.cnf.xz",
+   "year": "2019",
+   "family": "auto-correlation",
+   "result": "sat",
+   "plain_mb": 5.27,
+   "xz_mb": 1.46
+  },
+  {
+   "hash": "3b1e4e9338647be814a875ab0118d877",
+   "filename": "LABS_n089_goal008-sc2013.cnf.xz",
+   "year": "2019",
+   "family": "auto-correlation",
+   "result": "sat",
+   "plain_mb": 24.45,
+   "xz_mb": 5.85
+  },
+  {
+   "hash": "db267ea0279158fb3ef0558b73506089",
+   "filename": "Steiner-135-32-bce.cnf.xz",
+   "year": "2020",
+   "family": "cover",
+   "result": "sat",
+   "plain_mb": 0.13,
+   "xz_mb": 0.01
+  },
+  {
+   "hash": "b5247278fe70f2a5ec06822a78bce5f0",
+   "filename": "Steiner-243-45-bce.cnf.xz",
+   "year": "2020",
+   "family": "cover",
+   "result": "sat",
+   "plain_mb": 0.41,
+   "xz_mb": 0.04
+  },
+  {
+   "hash": "f50508c7983eea7cce9556409c972877",
+   "filename": "Steiner-405-70-bce.cnf.xz",
+   "year": "2020",
+   "family": "cover",
+   "result": "sat",
+   "plain_mb": 1.14,
+   "xz_mb": 0.09
+  },
+  {
+   "hash": "2e69d7e8008270d9115cbda2d172f016",
+   "filename": "manthey_DimacsSorter_37_3-sr2015.cnf.xz",
+   "year": "2019",
+   "family": "dimacs-sorter",
+   "result": "sat",
+   "plain_mb": 0.31,
+   "xz_mb": 0.08
+  },
+  {
+   "hash": "ab3dfe46aee7bfeb8301de497f36a05a",
+   "filename": "Kakuro-easy-052-ext.xml.hg_4.cnf.xz",
+   "year": "2020",
+   "family": "hypertree-decomposition",
+   "result": "sat",
+   "plain_mb": 115.72,
+   "xz_mb": 5.03
+  },
+  {
+   "hash": "b72179b73f013a009f4bb68c4bf31c8b",
+   "filename": "Kakuro-easy-104-ext.xml.hg_6.cnf.xz",
+   "year": "2021",
+   "family": "hypertree-decomposition",
+   "result": "sat",
+   "plain_mb": 356.65,
+   "xz_mb": 16.08
+  },
+  {
+   "hash": "2ff25c7783f8ceb3ebab31eebb98592e",
+   "filename": "Karatsuba6972593x13466917.cnf.xz",
+   "year": "2018",
+   "family": "karatsuba-multiplication",
+   "result": "sat",
+   "plain_mb": 0.55,
+   "xz_mb": 0.12
+  },
+  {
+   "hash": "a5364102dcc3cf5ba701c0bb8de675f2",
+   "filename": "Karatsuba7654321x1234567.cnf.xz",
+   "year": "2018",
+   "family": "karatsuba-multiplication",
+   "result": "sat",
+   "plain_mb": 0.51,
+   "xz_mb": 0.11
+  },
+  {
+   "hash": "9be2676273d338e7844e47a3e8c3de53",
+   "filename": "MM-23-2-2-2-3-4.cnf.xz",
+   "year": "2019",
+   "family": "matrix-multiplication",
+   "result": "sat",
+   "plain_mb": 2.33,
+   "xz_mb": 0.52
+  },
+  {
+   "hash": "f621afd8f3420745688354e17f5d98e7",
+   "filename": "MM-23-4-4-4-4-1.cnf.xz",
+   "year": "2019",
+   "family": "matrix-multiplication",
+   "result": "sat",
+   "plain_mb": 2.33,
+   "xz_mb": 0.53
+  },
+  {
+   "hash": "139c1262e5901a684005ffad897aa7eb",
+   "filename": "maximum_constrained_partition_18_bits_n200.cnf.xz",
+   "year": "2021",
+   "family": "maximum-constraint-partition",
+   "result": "sat",
+   "plain_mb": 2.98,
+   "xz_mb": 0.29
+  },
+  {
+   "hash": "5584cc467c09d0cab489238275c2b92e",
+   "filename": "sp5-21-15-one-stri-tree-noid.cnf.xz",
+   "year": "2021",
+   "family": "minimal-superpermutation",
+   "result": "sat",
+   "plain_mb": 0.19,
+   "xz_mb": 0.04
+  },
+  {
+   "hash": "eb09e5484eaf494d6c1abe60c5b38b7e",
+   "filename": "sp5-26-19-bin-nons-tree-noid.cnf.xz",
+   "year": "2021",
+   "family": "minimal-superpermutation",
+   "result": "sat",
+   "plain_mb": 0.4,
+   "xz_mb": 0.08
+  },
+  {
+   "hash": "89656622f153983b0415cef2aadaadee",
+   "filename": "sp5-26-19-una-nons-tree-noid.cnf.xz",
+   "year": "2021",
+   "family": "minimal-superpermutation",
+   "result": "sat",
+   "plain_mb": 0.48,
+   "xz_mb": 0.09
+  },
+  {
+   "hash": "e85b6cb3e2751d5c80559433ba1adf06",
+   "filename": "vlsat2_24450_2770239.dimacs.cnf.xz",
+   "year": "2020",
+   "family": "petrinet-concurrency",
+   "result": "sat",
+   "plain_mb": 40.0,
+   "xz_mb": 1.42
+  },
+  {
+   "hash": "df8884c93686aa1f0fe4ba12b5a98bde",
+   "filename": "vlsat2_30744_3925645.dimacs.cnf.xz",
+   "year": "2020",
+   "family": "petrinet-concurrency",
+   "result": "sat",
+   "plain_mb": 57.42,
+   "xz_mb": 2.98
+  },
+  {
+   "hash": "7af73f846548141cc97b8a149a20bfbf",
+   "filename": "vlsat2_57038_10572502.dimacs.cnf.xz",
+   "year": "2020",
+   "family": "petrinet-concurrency",
+   "result": "sat",
+   "plain_mb": 158.25,
+   "xz_mb": 7.25
+  },
+  {
+   "hash": "d5453d6d31f33a310ce34ee4bcfcbe50",
+   "filename": "prime_a24_b24.cnf.xz",
+   "year": "2021",
+   "family": "prime-testing",
+   "result": "sat",
+   "plain_mb": 0.81,
+   "xz_mb": 0.08
+  },
+  {
+   "hash": "977dad9d1bfc9de725a4bbf65b407c77",
+   "filename": "MVD_ADS_S11_6_7.cnf.xz",
+   "year": "2021",
+   "family": "relational-dependencies",
+   "result": "sat",
+   "plain_mb": 13.03,
+   "xz_mb": 0.19
+  },
+  {
+   "hash": "25a654a029421baed232de5e6e19c72e",
+   "filename": "qpr-bmp280-driver-14.cnf.xz",
+   "year": "2017",
+   "family": "software-bmc",
+   "result": "sat",
+   "plain_mb": 1.76,
+   "xz_mb": 0.25
+  },
+  {
+   "hash": "e17d3f94f2c0e11ce6143bc4bf298bd7",
+   "filename": "qpr-bmp280-driver-5.cnf.xz",
+   "year": "2017",
+   "family": "software-bmc",
+   "result": "sat",
+   "plain_mb": 1.82,
+   "xz_mb": 0.26
+  },
+  {
+   "hash": "90d6cb8b040b5ad926248e8a75c0fb07",
+   "filename": "ssp-0.046166496845693274.cnf.xz",
+   "year": "2020",
+   "family": "ssp-0",
+   "result": "sat",
+   "plain_mb": 8.46,
+   "xz_mb": 0.75
+  },
+  {
+   "hash": "d39f5c2474124910a607eb378b9f0bc3",
+   "filename": "ssp-0.497665446947731.cnf.xz",
+   "year": "2020",
+   "family": "ssp-0",
+   "result": "sat",
+   "plain_mb": 4.51,
+   "xz_mb": 0.42
+  },
+  {
+   "hash": "ceb4b1db49b77dbd68fa63ce029490c1",
+   "filename": "LABS_n071_goal001-sc2013.cnf.xz",
+   "year": "2019",
+   "family": "auto-correlation",
+   "result": "unsat",
+   "plain_mb": 6.67,
+   "xz_mb": 1.85
+  },
+  {
+   "hash": "064fe286277f695f42b556ef991036ff",
+   "filename": "sin_depth_miter_2.cnf.xz",
+   "year": "2022",
+   "family": "circuit-equialence-checking",
+   "result": "unsat",
+   "plain_mb": 10.71,
+   "xz_mb": 1.88
+  },
+  {
+   "hash": "4a85e090bda23cef9bf2aed55d489ab6",
+   "filename": "sin_depth_miter_5.cnf.xz",
+   "year": "2022",
+   "family": "circuit-equialence-checking",
+   "result": "unsat",
+   "plain_mb": 1.05,
+   "xz_mb": 0.2
+  },
+  {
+   "hash": "e011c703e4a2ff46069ec2af2997b580",
+   "filename": "sin_depth_miter_6.cnf.xz",
+   "year": "2022",
+   "family": "circuit-equialence-checking",
+   "result": "unsat",
+   "plain_mb": 0.96,
+   "xz_mb": 0.18
+  },
+  {
+   "hash": "3b487c256597a90228bcf4a14d07715b",
+   "filename": "dp12u11.used-as.sat04-358-sc2004.cnf.xz",
+   "year": "2019",
+   "family": "dining-philosophers",
+   "result": "unsat",
+   "plain_mb": 0.44,
+   "xz_mb": 0.17
+  },
+  {
+   "hash": "744199dff0b9d2fc6f3f5b73d0f924c1",
+   "filename": "simon-mixed-s02bis-05.cnf.xz",
+   "year": "2020",
+   "family": "dining-philosophers",
+   "result": "unsat",
+   "plain_mb": 0.44,
+   "xz_mb": 0.16
+  },
+  {
+   "hash": "1e8af331b822f6b7bc1754be9d64499f",
+   "filename": "Kakuro-easy-065-ext.xml.hg_3.cnf.xz",
+   "year": "2020",
+   "family": "hypertree-decomposition",
+   "result": "unsat",
+   "plain_mb": 330.36,
+   "xz_mb": 13.29
+  },
+  {
+   "hash": "18416a9ac0909dce5fa96345f784c87e",
+   "filename": "intervals122.cnf.xz",
+   "year": "2023",
+   "family": "interval-matching",
+   "result": "unsat",
+   "plain_mb": 0.68,
+   "xz_mb": 0.1
+  },
+  {
+   "hash": "f090d0d6eaff3b92c817f5db6fa47544",
+   "filename": "intervals718.cnf.xz",
+   "year": "2023",
+   "family": "interval-matching",
+   "result": "unsat",
+   "plain_mb": 0.84,
+   "xz_mb": 0.09
+  },
+  {
+   "hash": "8c7477dc33a412514998a2fd6b32dbf5",
+   "filename": "intervals855.cnf.xz",
+   "year": "2023",
+   "family": "interval-matching",
+   "result": "unsat",
+   "plain_mb": 0.76,
+   "xz_mb": 0.11
+  },
+  {
+   "hash": "a64f3c1afd7e0f6165efbe9fc2fc8003",
+   "filename": "pmg-12-UNSAT.sat05-3940.reshuffled-07.cnf.xz",
+   "year": "2023",
+   "family": "long-learned-clauses",
+   "result": "unsat",
+   "plain_mb": 0.01,
+   "xz_mb": 0.0
+  },
+  {
+   "hash": "c39ff9218232adb739cd31f4c70fb316",
+   "filename": "mm-2x3-8-8-sb.1.sat05-475.reshuffled-07.cnf.xz",
+   "year": "2020",
+   "family": "matrix-multiplication",
+   "result": "unsat",
+   "plain_mb": 2.18,
+   "xz_mb": 0.64
+  },
+  {
+   "hash": "912b89dd471295d3c72c66d0192dff72",
+   "filename": "randomG-B-Mix-n18-d05.cnf.xz",
+   "year": "2021",
+   "family": "perfect-matching",
+   "result": "unsat",
+   "plain_mb": 0.01,
+   "xz_mb": 0.0
+  },
+  {
+   "hash": "50d081a4b18eecdd0bc120f634d57a26",
+   "filename": "randomG-n18-d05.cnf.xz",
+   "year": "2021",
+   "family": "perfect-matching",
+   "result": "unsat",
+   "plain_mb": 0.01,
+   "xz_mb": 0.0
+  },
+  {
+   "hash": "e8c79a0ee6be39b6b2211c9a527c192a",
+   "filename": "randomG-n20-d05.cnf.xz",
+   "year": "2021",
+   "family": "perfect-matching",
+   "result": "unsat",
+   "plain_mb": 0.01,
+   "xz_mb": 0.0
+  },
+  {
+   "hash": "52a9f12c6fb938ec95923268f07d48d0",
+   "filename": "prime_200560490131.cnf.xz",
+   "year": "2018",
+   "family": "prime-testing",
+   "result": "unsat",
+   "plain_mb": 0.45,
+   "xz_mb": 0.05
+  },
+  {
+   "hash": "a1ec978756e656638b7e34cef5ecaf6d",
+   "filename": "quad_res_r26_m27.cnf.xz",
+   "year": "2021",
+   "family": "prime-testing",
+   "result": "unsat",
+   "plain_mb": 0.39,
+   "xz_mb": 0.04
+  },
+  {
+   "hash": "a88dcbc4b23784eaeb4afdde82d4da67",
+   "filename": "MUS-v310-4-sc2013.cnf.xz",
+   "year": "2019",
+   "family": "random-mus",
+   "result": "unsat",
+   "plain_mb": 0.01,
+   "xz_mb": 0.01
+  },
+  {
+   "hash": "33e82a3b6df2b2b63291775c0133a32f",
+   "filename": "MVD_ADS_S1_5_5.cnf.xz",
+   "year": "2021",
+   "family": "relational-dependencies",
+   "result": "unsat",
+   "plain_mb": 20.64,
+   "xz_mb": 0.13
+  },
+  {
+   "hash": "8932cf87c4dfe7aeab8b3ca55eebee64",
+   "filename": "MVD_ADS_S5_6_6.cnf.xz",
+   "year": "2021",
+   "family": "relational-dependencies",
+   "result": "unsat",
+   "plain_mb": 16.94,
+   "xz_mb": 0.18
+  },
+  {
+   "hash": "8ac6fa76df5e0af8cf30e5c3f3a809f8",
+   "filename": "mp1-rubikcube012.cnf.xz",
+   "year": "2017",
+   "family": "rubikcube",
+   "result": "unsat",
+   "plain_mb": 1.18,
+   "xz_mb": 0.08
+  },
+  {
+   "hash": "e53c05f57f118607b6c529bcccc6085e",
+   "filename": "mp1-rubikcube601.cnf.xz",
+   "year": "2017",
+   "family": "rubikcube",
+   "result": "unsat",
+   "plain_mb": 1.06,
+   "xz_mb": 0.06
+  },
+  {
+   "hash": "df29ae150b17d9862388643b912c2c1f",
+   "filename": "mp1-rubikcube901.cnf.xz",
+   "year": "2017",
+   "family": "rubikcube",
+   "result": "unsat",
+   "plain_mb": 0.95,
+   "xz_mb": 0.06
+  },
+  {
+   "hash": "fdb394fb3ccdb308bdf511b8996f4f69",
+   "filename": "x2_128.shuffled-as.sat03-1598-sc2002.cnf.xz",
+   "year": "2019",
+   "family": "xor-chain",
+   "result": "unsat",
+   "plain_mb": 0.01,
+   "xz_mb": 0.01
+  }
+ ]
+}
