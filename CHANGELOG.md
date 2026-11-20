@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.4.7 — 2026-11-19
+
+Counting certificates for pigeonhole systems on a sparse graph: each pigeon may use only some of
+the holes. On by default. Where no such system is found the search is the same as in 0.4.6: on
+four check instances, conflicts, decisions, propagations and ticks match exactly after 60,000
+conflicts.
+
+On the Intel i7-7700K (Linux, 1000 s, four instances at a time):
+
+| | 0.4.7 | 0.4.6 | Kissat 4.0.4 |
+|---|---|---|---|
+| fresh2, solved of 49 (SAT / UNSAT) | 30 (15 / 15) | 27 (15 / 12) | 24 (15 / 9) |
+| fresh2, solved within 300 s | 25 | 21 | 17 |
+| fresh2, PAR-2 (s) | 872.5 | 1011.8 | 1132.1 |
+
+The four new answers are the instances the new pass was developed on, so for their two families
+fresh2 is no longer a held-out set. All 15 UNSAT proofs were written and verified by dpr-trim
+within the run; the four new ones also pass cake_lpr. mm-2x3-8-8, which 0.4.6 solved at 949 s,
+ran into the 1000 s limit in this run (the search on it is the same: equal counts after 400,000
+conflicts). See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Pigeonholes on a sparse graph** (`--countingsparse`, on by default):
+  - The pass looks for at-least-one clauses (pigeons) whose variables occur in no other long
+    clause, and for groups of those variables that exclude each other pairwise, one per pigeon
+    (holes). A pigeon may have a variable for only some of the holes.
+  - A maximum bipartite matching of pigeons to holes is computed. If it leaves a pigeon out,
+    there is a set of m pigeons that can use only m - 1 holes between them (Hall's theorem),
+    and the formula is unsatisfiable.
+  - That set is completed to a full pigeonhole formula: each missing pigeon-hole pair gets a
+    new variable, with its exclusions against the other pigeons of the hole, and the pigeon
+    clauses are widened by the new variables. The pigeonhole certificate of 0.4.0 then refutes
+    it in a separate solver.
+  - In the proof the new exclusions are RAT on the new variable, the widened clauses are
+    subsumed by the pigeon clauses, and every other clause is deleted before the PR clauses.
+    Unit clauses of the input are handled: literals false after unit propagation are left out
+    of the pigeon clauses.
+  - fresh2: randomG-n18-d05 and randomG-n20-d05 (19 pigeons in 18 holes and 21 in 20; half of
+    the pairs absent) are refuted in 0.01 s, intervals855 (49 pigeons in 48 holes, out of 84
+    and 93) in 0.14 s, and intervals122 (66 in 65, out of 84 and 96) in 0.42 s. Neither 0.4.6
+    nor Kissat solves any of them within 1000 s. The proofs take 0.06-3.1 MB; dpr-trim checks
+    them in 0.2-457 s.
+  - Not covered: intervals718, where every pigeon can be matched, so another argument is
+    needed, and randomG-B-Mix, where a variable occurs in two at-least-one clauses.
+  - On the 295 instances of sc2026, fresh and fresh2 the pass finds a structure on these four
+    only, and the counting step takes at most 0.3 s longer than in 0.4.6. On the tuning
+    subsets of sc2026 and fresh (another machine, 300 s) 0.4.7 solves the same 86 and 42
+    instances as 0.4.6, with times within 2%.
+
 ## v0.4.6 — 2026-11-18
 
 A second held-out benchmark set, `fresh2`, and new options, all off. The default search is the

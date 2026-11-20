@@ -531,6 +531,7 @@ class Solver {
   bool counting_detect_clique(CountingState& st);
   bool counting_detect_rphp(CountingState& st);
   bool counting_detect_embedded(CountingState& st);
+  bool counting_detect_sparse(CountingState& st);
   bool counting_virtual(CountingState& st);
   bool counting_isolated(CountingState& st);
   bool counting_add(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);

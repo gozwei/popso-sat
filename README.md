@@ -22,7 +22,8 @@ The defaults were tuned on that sample. On 78 instances of the 2024 and 2025 com
 families never used for tuning, Kissat solves one more: 52 against 51 for 0.4.5 and 48 for 0.4.4.
 0.4.5 has the lower PAR-2 there (785 against 818 s) and solves more within 300 s (45 against 37).
 On a second such set of 49 instances of the 2017-2023 competitions, built after those defaults
-were fixed, 0.4.6 (the same search as 0.4.5) solves 27 against 24 for Kissat
+were fixed, 0.4.6 (the same search as 0.4.5) solves 27 against 24 for Kissat. 0.4.7 solves 30
+there: it adds a counting certificate that was developed on four instances of that set
 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
@@ -77,16 +78,18 @@ A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.t
 (`sets/fresh.txt`), with the same setup and machine; no proofs.
 
 49 instances of the 2017-2023 main tracks from 21 more families in no other set
-(`sets/fresh2.txt`), with the same setup and machine; every UNSAT answer of 0.4.6 checked with
-its proof. 0.4.6 changes no default, so its search is that of 0.4.5.
+(`sets/fresh2.txt`), with the same setup and machine; every UNSAT answer of 0.4.6 and 0.4.7
+checked with its proof. 0.4.6 changes no default, so its search is that of 0.4.5. 0.4.7 adds
+pigeonhole certificates on sparse graphs and leaves the search unchanged where it finds none,
+so only its fresh2 column is new.
 
 Solved / PAR-2 in seconds:
 
-| set | popso-sat 0.4.5 and 0.4.6 | popso-sat 0.4.4 | popso-sat 0.4.0 | Kissat 4.0.4 |
-|---|---|---|---|---|
-| sc2026 (168) | 110 / 773.8 | 110 / 772.5 | 98 / 926.4 | 80 / 1152.3 |
-| fresh (78) | 51 / 785.2 | 48 / 833.5 | | 52 / 818.2 |
-| fresh2 (49) | 27 / 1011.8 | | | 24 / 1132.1 |
+| set | popso-sat 0.4.7 | popso-sat 0.4.5 and 0.4.6 | popso-sat 0.4.4 | popso-sat 0.4.0 | Kissat 4.0.4 |
+|---|---|---|---|---|---|
+| sc2026 (168) | | 110 / 773.8 | 110 / 772.5 | 98 / 926.4 | 80 / 1152.3 |
+| fresh (78) | | 51 / 785.2 | 48 / 833.5 | | 52 / 818.2 |
+| fresh2 (49) | 30 / 872.5 | 27 / 1011.8 | | | 24 / 1132.1 |
 
 **sc2026:** 0.4.5 solves 36 instances that Kissat does not, most of them with counting,
 Gauss-Jordan or mod-p reasoning. Kissat solves 6 that 0.4.5 does not. 0.4.5 and 0.4.4 solve
@@ -98,7 +101,11 @@ solves neither rook instance) and loses none. Kissat solves 9 instances that 0.4
 and 0.4.5 solves 8 that Kissat does not.
 
 **fresh2:** 0.4.6 solves 5 instances that Kissat does not; Kissat solves 2 that 0.4.6 does not
-(one of them only with its default seed).
+(one of them only with its default seed). 0.4.7 refutes four more in under a second
+(randomG-n18, randomG-n20, intervals122 and intervals855: sets of pigeons with one hole too
+few). The new certificate was developed on these four, so they are not an independent test.
+One instance that 0.4.6 solved at 949 s ran into the 1000 s limit in the 0.4.7 run, with the
+same search.
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of
@@ -151,7 +158,9 @@ per-instance times and plots, and the earlier measurements, are in
 - Counting certificates before search: pigeonhole, functional pigeonhole and clique formulas,
   parity (perfect matchings of an odd complete graph), Count^3, clique-colouring and
   relativized pigeonholes are recognized, also with shuffled polarities and, for pigeonholes
-  and cliques, inside larger formulas. Such a structure is refuted with polynomially many PR
+  and cliques, inside larger formulas. Pigeonholes are also found on sparse graphs, where a
+  pigeon may use only some of the holes: bipartite matching finds a set of pigeons with too
+  few holes. Such a structure is refuted with polynomially many PR
   clauses (symmetry-style steps, each checked by the solver before it is written) where
   resolution needs exponentially many steps. Without a structure the search is unchanged.
 - Gauss-Jordan elimination on XOR constraints. The XORs are taken from complete clause

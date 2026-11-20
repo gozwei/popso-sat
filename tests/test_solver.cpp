@@ -1449,6 +1449,175 @@ TEST(counting_satisfiable_variants) {
   }
 }
 
+namespace {
+
+// A pigeonhole system on a sparse graph: pigeon p may use the holes use[p] only, a hole takes at
+// most one pigeon (functional: and a pigeon at most one hole). Variables pigeon by pigeon.
+ClauseList sparse_php(const std::vector<std::vector<int>>& use, int holes, bool functional = false) {
+  ClauseList cl;
+  std::vector<std::vector<int>> in_hole(static_cast<size_t>(holes));
+  int next = 0;
+  for (const auto& hs : use) {
+    std::vector<int> c;
+    for (int h : hs) {
+      c.push_back(++next);
+      in_hole[static_cast<size_t>(h)].push_back(next);
+    }
+    cl.push_back(c);
+    if (!functional) continue;
+    for (size_t a = 0; a < c.size(); ++a) {
+      for (size_t b = a + 1; b < c.size(); ++b) cl.push_back({-c[a], -c[b]});
+    }
+  }
+  for (const auto& m : in_hole) {
+    for (size_t a = 0; a < m.size(); ++a) {
+      for (size_t b = a + 1; b < m.size(); ++b) cl.push_back({-m[a], -m[b]});
+    }
+  }
+  return cl;
+}
+
+// Each hole with probability 1/2, three or more of them (first: a hole the pigeon always has).
+std::vector<std::vector<int>> random_use(int pigeons, int holes, std::mt19937_64& rng, bool own_hole = false) {
+  std::vector<std::vector<int>> use(static_cast<size_t>(pigeons));
+  for (int p = 0; p < pigeons; ++p) {
+    auto& hs = use[static_cast<size_t>(p)];
+    while (hs.size() < 3) {
+      hs.clear();
+      for (int h = 0; h < holes; ++h) {
+        if ((own_hole && h == p) || rng() % 2) hs.push_back(h);
+      }
+    }
+  }
+  return use;
+}
+
+}  // namespace
+
+TEST(counting_sparse_pigeonhole) {
+  // More pigeons than holes on a random bipartite graph (randomG-n18-d05): the absent pairs get
+  // new variables, and the completed pigeonhole formula is refuted in isolation.
+  std::mt19937_64 rng(21);
+  for (int holes = 4; holes <= 10; ++holes) {
+    for (int variant = 0; variant < 4; ++variant) {
+      const bool scrambled = variant & 1, functional = variant & 2;
+      const ClauseList g = sparse_php(random_use(holes + 1, holes, rng), holes, functional);
+      const ClauseList f = scrambled ? scramble(g, rng) : g;
+      Options o;
+      o.counting = 1;
+      const CountingRun r = run_counting(f, o);
+      CHECK_EQ(r.result, kUnsat);
+      CHECK_EQ(r.stats.counting_found, 1u);
+      CHECK_EQ(r.stats.counting_failed, 0u);
+      CHECK(r.stats.counting_pr > 0);
+      CHECK_EQ(r.check.pr, r.stats.counting_pr);
+      CHECK(r.check.ok && r.check.has_empty);
+      if (!r.check.ok || !r.check.has_empty || r.stats.counting_found != 1) {
+        std::fprintf(stderr, "  sparse php %d -> %d (variant %d): %s\n", holes + 1, holes, variant, r.check.error.c_str());
+      }
+      // Without a proof, and with the pass off (small ones: search refutes them).
+      CHECK_EQ(run(max_var_of(f), f, o, false).result, kUnsat);
+      if (holes > 6) continue;
+      o.countingsparse = 0;
+      const CountingRun off = run_counting(f, o);
+      CHECK_EQ(off.result, kUnsat);
+      CHECK(off.check.ok && off.check.has_empty);
+    }
+  }
+}
+
+TEST(counting_sparse_hall_violator) {
+  // As many pigeons as holes, but five of them share four holes: the violator is found by
+  // matching and refuted as a pigeonhole 5 -> 4 (0 + 2 + 6 + 12 PR clauses), whatever the other
+  // pigeons and clauses are.
+  std::mt19937_64 rng(22);
+  std::vector<std::vector<int>> use;
+  for (int p = 0; p < 5; ++p) {
+    std::vector<int> hs;
+    for (int h = 0; h < 4; ++h) {
+      if (h != p % 4) hs.push_back(h);
+    }
+    use.push_back(hs);
+  }
+  for (int p = 5; p < 12; ++p) use.push_back({p, 4 + (p - 3) % 8, 4 + (p - 2) % 8});
+  for (int variant = 0; variant < 4; ++variant) {
+    ClauseList g = sparse_php(use, 12, variant & 2);
+    int v = max_var_of(g);
+    // Other clauses: on the structure variables (binary) and elsewhere.
+    for (int x = 1; x <= 12; x += 3) g.push_back({x, ++v});
+    g.push_back({v + 1, v + 2, v + 3});
+    g.push_back({-(v + 1), -(v + 2), v + 4});
+    const ClauseList f = (variant & 1) ? scramble(g, rng) : g;
+    Options o;
+    o.counting = 1;
+    const CountingRun r = run_counting(f, o);
+    CHECK_EQ(r.result, kUnsat);
+    CHECK_EQ(r.stats.counting_found, 1u);
+    CHECK_EQ(r.stats.counting_failed, 0u);
+    CHECK_EQ(r.stats.counting_pr, 20u);
+    CHECK(r.check.ok && r.check.has_empty);
+    if (!r.check.ok || !r.check.has_empty) std::fprintf(stderr, "  hall violator (variant %d): %s\n", variant, r.check.error.c_str());
+  }
+}
+
+TEST(counting_sparse_after_root_units) {
+  // Unit clauses of the input take holes away: pigeons 0 and 1 lose the two extra holes, which
+  // leaves holes + 1 pigeons with the first holes (the pigeon clauses keep their false literals;
+  // the violator is found on the unassigned ones). With the units first the clauses are shortened
+  // on input and the pass stays off: search refutes it.
+  std::mt19937_64 rng(24);
+  for (int holes = 4; holes <= 8; ++holes) {
+    std::vector<std::vector<int>> use = random_use(holes + 1, holes, rng);
+    use[0].push_back(holes);
+    use[1].push_back(holes + 1);
+    use.push_back({0, holes, holes + 1});
+    const ClauseList g = sparse_php(use, holes + 2);
+    // (variables pigeon by pigeon: the last one of pigeons 0 and 1 is the extra hole's)
+    const int u0 = static_cast<int>(use[0].size()), u1 = u0 + static_cast<int>(use[1].size());
+    for (int first = 0; first < 2; ++first) {
+      ClauseList f;
+      if (first) f = {{-u0}, {-u1}};
+      f.insert(f.end(), g.begin(), g.end());
+      if (!first) {
+        f.push_back({-u0});
+        f.push_back({-u1});
+      }
+      Options o;
+      o.counting = 1;
+      const CountingRun r = run_counting(f, o);
+      CHECK_EQ(r.result, kUnsat);
+      CHECK(r.check.ok && r.check.has_empty);
+      if (!first) {
+        CHECK_EQ(r.stats.counting_found, 1u);
+        CHECK_EQ(r.stats.counting_failed, 0u);
+        CHECK(r.stats.counting_pr > 0);
+      }
+      if (!r.check.ok || !r.check.has_empty) std::fprintf(stderr, "  root units, %d holes (units first %d): %s\n", holes, first, r.check.error.c_str());
+    }
+  }
+}
+
+TEST(counting_sparse_satisfiable) {
+  // Every pigeon has a hole of its own: a perfect matching, nothing found, a correct model.
+  std::mt19937_64 rng(23);
+  for (int n = 4; n <= 12; ++n) {
+    for (int variant = 0; variant < 4; ++variant) {
+      const ClauseList g = sparse_php(random_use(n, n, rng, true), n, variant & 2);
+      const ClauseList f = (variant & 1) ? scramble(g, rng) : g;
+      Options o;
+      o.counting = 1;
+      Solver s(o);
+      s.reserve(max_var_of(f));
+      for (const auto& c : f) s.add_clause(c.data(), c.size());
+      CHECK_EQ(s.solve(), kSat);
+      CHECK_EQ(s.stats().counting_found, 0u);
+      Outcome r = run(max_var_of(f), f, o);
+      CHECK_EQ(r.result, kSat);
+      CHECK(r.model_ok);
+    }
+  }
+}
+
 TEST(counting_refuses_wrong_steps) {
   // A wrong witness (--countingfault) fails the PR check: nothing is written for it, the structure
   // is abandoned with the steps before it kept, and search finishes with a proof that checks.

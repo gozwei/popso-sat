@@ -8,6 +8,68 @@ UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs are
 gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
 are never mixed.
 
+## v0.4.7
+
+New in 0.4.7, on by default: counting certificates for pigeonhole systems on a sparse graph
+(`--countingsparse`, see the [CHANGELOG](CHANGELOG.md)). Where no such system is found the
+search is that of 0.4.6 and 0.4.5: on four check instances it matches exactly after 60,000
+conflicts, so the sc2026 and fresh tables of the v0.4.5 section stand. Of the 295 instances of
+sc2026, fresh and fresh2, the new pass finds a structure on four, all in fresh2.
+
+### Fresh families 2 (Intel i7-7700K, Linux)
+
+The set and setup of the v0.4.6 section: 49 instances, 1000 s and 12 GB per instance, four
+instances at a time, every model checked. 0.4.7 wrote a proof for each of its 15 UNSAT answers,
+and dpr-trim verified all 15 within the run. The 0.4.6 and Kissat columns are the runs of the
+v0.4.6 section.
+
+**fresh2 is no longer held out for two families.** The new pass was developed on the randomG
+and intervals instances of this set, after the 0.4.6 run showed that neither solver solves
+them. The four answers gained are exactly those instances; on the other 45 the search is
+unchanged.
+
+| | popso-sat 0.4.7 | popso-sat 0.4.6 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 49 (SAT / UNSAT) | 30 (15 / 15) | 27 (15 / 12) | 24 (15 / 9) |
+| solved within 300 s | 25 | 21 | 17 |
+| PAR-2 (s) | 872.5 | 1011.8 | 1132.1 |
+| shifted geometric mean (s) | 163.3 | 240.9 | 338.5 |
+| largest peak memory | 1.9 GB (Kakuro-easy-104) | 1.9 GB (Kakuro-easy-104) | 1.2 GB (Kakuro-easy-104) |
+
+**What this shows:**
+- Gained over 0.4.6, each refuted before search as a set of pigeons with one hole too few:
+
+  | instance | pigeons / holes refuted | pigeons / holes in the formula | solve (s) | proof (MB) | dpr-trim (s) |
+  |---|---|---|---|---|---|
+  | randomG-n18-d05 | 19 / 18 | 19 / 18 | 0.01 | 0.06 | 0.2 |
+  | randomG-n20-d05 | 21 / 20 | 21 / 20 | 0.01 | 0.09 | 0.3 |
+  | intervals855 | 49 / 48 | 84 / 93 | 0.14 | 1.5 | 85 |
+  | intervals122 | 66 / 65 | 84 / 96 | 0.42 | 3.1 | 457 |
+
+  The four proofs also pass the verified checker cake_lpr (0.2 to 183 s).
+- Lost against 0.4.6: mm-2x3-8-8. 0.4.6 solved it at 949 s (and at 969 s in a second run);
+  this run reached the 1000 s limit. The search on it is unchanged (equal conflicts,
+  decisions, propagations and ticks after 400,000 conflicts), so the difference is timing at
+  the limit. On the 18 instances that both versions solve in more than 5 s, the median time
+  ratio is 1.006 (0.95 to 1.09).
+- 0.4.7 solves 9 instances that Kissat does not: the four above and the five of the v0.4.6
+  section. Kissat solves 3 that 0.4.7 does not: mm-2x3-8-8 (346 s), vlsat2_57038 and
+  ssp-0.4977.
+- Instances both solve, shifted geometric mean: SAT 59 s (0.4.7) against 76 s (Kissat) on 13;
+  UNSAT 104 against 105 s on 8.
+- 16 instances are solved by neither, among them intervals718 (every pigeon can be matched
+  there, so it needs another argument), randomG-B-Mix-n18-d05 (a different encoding), three
+  sin_depth_miter instances and quad_res_r26_m27.
+
+### Cost of the new pass (Intel Xeon E5-1650 v2, Linux)
+
+- All 295 instances of sc2026, fresh and fresh2, stopped after the first conflict: the
+  counting step takes at most 0.3 s longer than in 0.4.6, and 2.5 s more summed over all
+  instances (45.0 against 42.5 s).
+- Tuning subsets at 300 s, four instances at a time: 0.4.7 solves the same 86 of 109 (sc2026)
+  and 42 of 57 (fresh) as 0.4.6; on the instances that take more than 5 s the time ratio is
+  between 0.98 and 1.02 (median 1.000).
+
 ## v0.4.6
 
 0.4.6 changes no default: on four check instances its search matches 0.4.5 exactly after 60,000

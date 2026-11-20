@@ -250,9 +250,9 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
     """Counting principles for --counting (not in the default mix): pigeonhole (plain, functional,
     clique formulas with k variables per pair), perfect matching of K_n, partition of n points into
     triples, clique-colouring, graph colouring with a planted clique (a pigeonhole inside a larger
-    formula), relativized pigeonhole. Sometimes satisfiable (pigeons <= holes, even n, 3 | n, clique <= colours), scrambled
+    formula), relativized pigeonhole, pigeonhole on a sparse graph. Sometimes satisfiable (pigeons <= holes, even n, 3 | n, clique <= colours), scrambled
     (renamed variables, flipped polarities), or with one clause added or removed."""
-    kind = rng.choice(["php", "fphp", "clique", "matching", "triples", "clqcl", "gcol", "rphp"])
+    kind = rng.choice(["php", "fphp", "clique", "matching", "triples", "clqcl", "gcol", "rphp", "sphp"])
     sat = rng.random() < 0.25
     clauses: list[list[int]] = []
     # At-most-one constraints over auxiliary variables (pigeonholes, matchings, triples) half the time.
@@ -375,6 +375,35 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
         unsat = clique > m
         if not unsat:
             sat = None  # (the random edges may still make it unsatisfiable)
+    elif kind == "sphp":
+        # A pigeonhole system on a sparse graph: a pigeon may use only some of the holes (now and
+        # then two of them: a binary pigeon clause), sometimes at most one of them.
+        holes = rng.randint(3, 7)
+        pigeons = holes + (rng.choice([-1, 0]) if sat else rng.choice([0, 1, 1, 2]))
+        p = rng.uniform(0.4, 0.8)
+        in_hole: list[list[int]] = [[] for _ in range(holes)]
+        nvars = 0
+        for _ in range(pigeons):
+            hs = [h for h in range(holes) if rng.random() < p]
+            if len(hs) < 2:
+                hs = sorted(rng.sample(range(holes), 3))
+            row = []
+            for h in hs:
+                nvars += 1
+                row.append(nvars)
+                in_hole[h].append(nvars)
+            clauses.append(row)
+            if rng.random() < 0.3:
+                amo_groups.append(row)
+        amo_groups += [m for m in in_hole if len(m) > 1]
+        name, unsat = f"sphp{pigeons}x{holes}", pigeons > holes
+        if rng.random() < 0.4:  # unit clauses: a pigeon in a hole (the others lose it), or not in it
+            for _ in range(rng.randint(1, 2)):
+                clauses.append([rng.randint(1, nvars) * rng.choice([1, -1])])
+            name += "+units"
+            unsat = False
+        if not unsat:
+            sat = None  # (a set of pigeons may still have too few holes)
     else:
         n = rng.choice([6]) if sat else rng.choice([4, 5, 7, 8])
         through: list[list[int]] = [[] for _ in range(n)]
