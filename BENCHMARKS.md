@@ -8,6 +8,137 @@ runs, where every UNSAT answer of popso-sat was checked with its proof. Otherwis
 are verified separately by the correctness gate ([benchmarks/gate.py](benchmarks/gate.py))
 and the fuzzer. Tables from different machines are never mixed.
 
+## v0.4.9
+
+New in 0.4.9: clique-colouring formulas and relativized pigeonholes with more places than
+pigeons are refuted by extension (`--countingextend`, see the [CHANGELOG](CHANGELOG.md)). Where
+no such structure is found the search is that of 0.4.8: on four check instances it matches
+exactly after 60,000 conflicts, so the fresh2 and chessboard tables of the v0.4.8 section and
+the sc2026 and fresh tables of the v0.4.5 section stand. Of the 295 instances of sc2026, fresh
+and fresh2, three are clique-colourings; 0.4.8 solved them already, and 0.4.9 writes a
+different, shorter proof for them.
+
+### Scan of pigeonhole-type families (Intel i7-7700K, Linux)
+
+`benchmarks/sets/phfam.txt`: 115 instances that are in no other set, from the families
+pigeon-hole (33), relativized-pigeon-hole (16), cardinality-constraints (15), sgen (10) of the
+SAT Competition main tracks, and every instance of binary-pigeon-hole (4), sudoku-php (14),
+clique-coloring (13) and coloring-clique (10) in the benchmark database. 300 s and 12 GB per
+instance, four instances at a time, every model checked; popso-sat with proofs, Kissat without.
+
+**This is a map, not a held-out comparison.** The families have instances in the tuning sets.
+The set was built after 0.4.8 was released, to see where its counting certificates stop; the
+plan new in 0.4.9 was then written for instances of this set.
+
+| | popso-sat 0.4.9 | popso-sat 0.4.8 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 115 (SAT / UNSAT) | 81 (14 / 67) | 65 (14 / 51) | 36 (12 / 24) |
+| PAR-2 (s) | 189.1 | 282.2 | 433.9 |
+| shifted geometric mean (s) | 26.7 | 55.8 | 151.4 |
+| UNSAT proofs verified by dpr-trim in the run | 61 of 67 | 42 of 51 | |
+
+Solved per family:
+
+| family | instances | popso-sat 0.4.9 | popso-sat 0.4.8 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| pigeon-hole | 33 | 14 | 16 | 7 |
+| relativized-pigeon-hole | 16 | 16 | 9 | 1 |
+| clique-coloring | 13 | 13 | 1 | 0 |
+| coloring-clique | 10 | 10 | 10 | 0 |
+| cardinality-constraints | 15 | 10 | 11 | 12 |
+| sudoku-php | 14 | 14 | 14 | 14 |
+| sgen, sgen-balanced | 10 | 4 | 4 | 2 |
+| binary-pigeon-hole | 4 | 0 | 0 | 0 |
+
+**What this shows:**
+- Gained over 0.4.8, each refuted before search in 0.03 to 4.9 s: the 12 clqcl instances of
+  2025 (6 to 11 positions, 25 to 100 vertices) and 7 relativized pigeonholes (rphp4_080,
+  rphp4_090, rphp5_050, rphp5_100, rphp_p8_r160, rphp_p8_r170, rphp_p8_r250). 0.4.8 recognised
+  all 19 and skipped them: the plan without new variables was over its budget. All 19 proofs
+  were verified within the run.
+- Lost against 0.4.8: three instances that 0.4.8 solved at 285, 293 and 295 s
+  (a_rphp065_04, a_rphp035_05 and squ_any_s09x07_c27_sinx) are over the 300 s limit in this
+  run. No structure is found on them and the search is unchanged (a_rphp035_05: equal
+  conflicts, decisions, propagations and ticks after 300,000 conflicts). On the 15 instances
+  that both versions solve in more than 5 s, the median time ratio is 1.001 (0.90 to 1.10).
+  A run of 0.4.9 with the extension only for over-budget structures solved two of the three
+  (83 of 115).
+- 0.4.9 solves 49 instances that Kissat does not. Kissat solves 4 that 0.4.9 does not in this
+  run: e_rphp035_05 (232 s), squ_any_s09x07_c27_bail (288 s) and two of the three above.
+- 30 instances are solved by neither: 16 of the 22 relativized pigeonholes of 2018 with added
+  clauses or auxiliary variables (a_rphp, e_rphp, ae_rphp, in the pigeon-hole family), the
+  four binary pigeonholes, four sgen instances, three squ_any instances, php14e14, edges-024
+  and bsat210.
+- Six proofs of 0.4.9 were not checked within the run's limit of 630 s: two after a search of
+  271 and 292 s, and those of rphp_p60_r60, p90, p95 and p105 (as many places as pigeons, the
+  plan of 0.4.0, refuted in 0.6 to 6.6 s). The proof of rphp_p60_r60 has 138,650 PR clauses on a
+  formula of 214,350 clauses; dpr-trim verifies it in 199 s on an idle Apple M4 Pro. The cost
+  grows quickly with the size, so the three larger ones need much longer.
+
+### Proofs by extension (Intel i7-7700K, Linux)
+
+Each of the 36 clique-colouring and relativized instances at hand that 0.4.9 refutes by
+extension (32 of the scan, 4 of the other sets) was solved with a proof, checked by dpr-trim
+and then by the verified checker cake_lpr, one instance at a time on the idle machine. All 36
+are verified. Examples:
+
+| instance | pigeons / intermediates / holes | new variables | PR clauses | solve (s) | proof (MB) | dpr-trim (s) | cake_lpr (s) |
+|---|---|---|---|---|---|---|---|
+| cliquecoloring_n32_k5_c4 (sc2026) | 5 / 32 / 4 | 820 | 20 | 0.07 | 0.26 | 0.4 | 0.1 |
+| clqcl_25_7_6 | 7 / 25 / 6 | 1,267 | 70 | 0.13 | 0.37 | 0.8 | 0.2 |
+| clqcl_30_7_6 | 7 / 30 / 6 | 1,512 | 70 | 0.20 | 0.51 | 1.2 | 0.2 |
+| clqcl_30_11_10 | 11 / 30 / 10 | 3,740 | 330 | 0.96 | 1.46 | 8.4 | 0.8 |
+| clqcl_100_6_5 | 6 / 100 / 5 | 3,630 | 40 | 2.74 | 3.35 | 32 | 1.9 |
+| rphp5_100_shuffled | 5 / 100 / 4 | 2,420 | 20 | 0.11 | 0.29 | 2.0 | 0.3 |
+| rphp_p8_r160 | 8 / 160 / 7 | 10,136 | 112 | 1.42 | 1.85 | 31 | 3.3 |
+| rphp_p8_r250 | 8 / 250 / 7 | 15,806 | 112 | 3.82 | 3.43 | 214 | 6.9 |
+
+- Over the 36: solved in at most 3.8 s, proofs of at most 3.4 MB, dpr-trim at most 214 s
+  (38 s without rphp_p8_r250), cake_lpr at most 6.9 s.
+- With the plan without new variables (0.4.8), clqcl_30_7_6 takes 60,900 PR clauses: solved in
+  1.7 s, a proof of 1.9 MB, dpr-trim 60 s, cake_lpr 229 s on this machine.
+- On the 12 instances of the scan that the plan without new variables solves, the extension
+  is 5 to 80 times faster to solve and 15 to 45 times faster to check with dpr-trim (Apple M4
+  Pro: 0.07 to 0.52 s instead of 2.0 to 22.8 s).
+
+### Unseen instances of the 0.4.8 development families (Intel Xeon E5-1650 v2, Linux)
+
+`benchmarks/sets/matching.txt`: every instance of the families interval-matching (20),
+perfect-matching (14) and mutilated-chessboard (4) in the benchmark database that is in no
+other set. The sparse-graph certificates of 0.4.7 and 0.4.8 were developed on six other
+instances of the first two families and on chessboards; these 38 were downloaded after 0.4.8
+was released and had never been run. 1000 s and 12 GB per instance, four instances at a time,
+proofs off. The pass is unchanged in 0.4.9.
+
+| | popso-sat 0.4.8 | popso-sat 0.4.7 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 38 | 38 | 21 | 8 |
+| solved within 300 s | 38 | 21 | 5 |
+| PAR-2 (s) | 0.01 | 902.3 | 1637.1 |
+| interval-matching (20) | 20 | 12 | 0 |
+| perfect-matching (14) | 14 | 5 | 4 |
+| mutilated-chessboard (4) | 4 | 4 | 4 |
+
+- 0.4.8 refutes each of the 38 in at most 0.03 s. On the Intel i7-7700K all 38 proofs pass
+  dpr-trim (at most 0.9 s) and cake_lpr (at most 1.3 s).
+- Four instances are not solved in any competition (intervals435, intervals599, intervals728,
+  randomG-B-Mix-n19).
+- Four more are listed as satisfiable in the benchmark database: randomG-B-Mix-n17,
+  randomG-B-Mix-n20, randomG-Mix-n19 and randomG-Mix-n20, none of them used in a competition
+  track. They are unsatisfiable: each has n + 1 pigeons for n holes, and both checkers accept
+  the refutations. The benchmark runner reported them as wrong answers against the database
+  label, which is how this was noticed; the set file lists them as unsat with a note.
+
+### Cost of the pass (Intel Xeon E5-1650 v2, Linux)
+
+- All 295 instances of sc2026, fresh and fresh2, stopped after the first conflict: the
+  counting step finds the same structures as 0.4.8 and none is abandoned or skipped. The three
+  clique-colourings take 0.09, 0.16 and 0.27 s instead of 0.34, 1.3 and 3.0 s.
+- Tuning subsets at 300 s, four instances at a time, run with the extension only for
+  over-budget structures (the default differs from that on the three clique-colourings): the
+  same 86 of 109 (sc2026) and 42 of 57 (fresh) as 0.4.8, with summed times on the solved
+  instances within 1% (ratios 1.006 and 1.009).
+
 ## v0.4.8
 
 New in 0.4.8: the pigeonhole certificates on sparse graphs of 0.4.7 recognise more encodings

@@ -537,6 +537,7 @@ class Solver {
   bool counting_isolated(CountingState& st);
   bool counting_isolated_sparse(CountingState& st);
   void counting_plan(CountingState& st);
+  bool counting_extend(CountingState& st, uint32_t base);
   bool counting_add(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
   bool counting_add_unit(CountingState& st, Lit u);
   bool counting_check_pr(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);

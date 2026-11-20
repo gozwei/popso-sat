@@ -92,6 +92,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -2717,6 +2718,192 @@ bool Solver::counting_add_unit(CountingState& st, Lit u) {
   return counting_add(st, &u, 1, nullptr, 0);
 }
 
+// Refutation by extension, for a clique-colouring or a relativized pigeonhole with more places than
+// pigeons whose own plan is over budget (its PR clauses grow with the square of the vertices or
+// places). Pigeons i (positions), intermediates u (vertices, places) and holes k (colours):
+// P[i][u] = st.q, Q[u][k] = st.r, and "u is taken" O[u] (the in-use literal of a place; for a
+// vertex a new variable o[u] = OR_i P[i][u]). New variables from `base` on, each defined by
+// clauses that are RAT on it:
+//   w[u][k] = O[u] and Q[u][k]            (the taken intermediate u has hole k)
+//   z[i][u][k] = P[i][u] and w[u][k]      (pigeon i, by way of u, has hole k)
+//   y[i][k] = OR_u z[i][u][k]             (pigeon i has hole k)
+// for the pigeons i <= holes only. RUP lemmas then give a plain pigeonhole on y:
+//   clique-colouring: (-P[i][u] v -o[v] v -Q[u][k] v -Q[v][k]), u != v (another position at v
+//     makes u and v adjacent);
+//   (-w[u][k] v -w[v][k]), u < v;
+//   (-z[i][u][k] v -y[j][k]), i != j;  then (-y[i][k] v -y[j][k]);
+//   (-P[i][u] v y[i][0] v .. v y[i][h-1]);  then (y[i][0] v .. v y[i][h-1]).
+// Every other clause with a y variable is then deleted (the swap witnesses of the pigeonhole plan
+// would falsify the definitions), and st becomes the pigeonhole of holes + 1 pigeons on y, which
+// counting_certify refutes. Each step is checked on the clauses before it is written; a failed
+// check leaves definitions and implied lemmas behind, and the search goes on.
+bool Solver::counting_extend(CountingState& st, uint32_t base) {
+  const uint32_t n = st.positions, r = st.vertices, h = st.colours, m = h + 1;
+  const bool rel = st.relativized;
+  auto P = [&](uint32_t i, uint32_t u) { return st.q[size_t{i} * r + u]; };
+  auto Q = [&](uint32_t u, uint32_t k) { return st.r[size_t{u} * h + k]; };
+  const uint32_t o0 = base, w0 = o0 + (rel ? 0 : r), z0 = w0 + r * h, y0 = z0 + m * r * h;
+  auto O = [&](uint32_t u) { return rel ? st.used[u] : make_lit(o0 + u, false); };
+  auto W = [&](uint32_t u, uint32_t k) { return make_lit(w0 + u * h + k, false); };
+  auto Z = [&](uint32_t i, uint32_t u, uint32_t k) { return make_lit(z0 + (i * r + u) * h + k, false); };
+  auto Y = [&](uint32_t i, uint32_t k) { return make_lit(y0 + i * h + k, false); };
+  auto over = [&]() {
+    if (st.work + (stats_.ticks - st.ticks0) > st.limit) {
+      st.failure = "budget";
+      return true;
+    }
+    if (stop_requested()) {
+      st.failure = "stopped (time limit or interrupted)";
+      return true;
+    }
+    return false;
+  };
+  // A definition clause: RAT on its first literal (checked as a PR clause with that witness).
+  auto define = [&](const Lit* d, size_t nd) {
+    if (!counting_check_pr(st, d, nd, d, 1)) return false;
+    if (proof_) proof_->add(d, nd);
+    counting_added_ = true;
+    ++stats_.counting_lemmas;
+    if (nd == 2) {
+      add_binary(d[0], d[1], false);
+    } else {
+      const uint32_t ref = new_clause(d, static_cast<uint32_t>(nd), false, 0, true);
+      for (size_t i = 0; i < nd; ++i) {
+        if (std::vector<uint32_t>* o = st.occ_of(d[i])) o->push_back(ref);
+      }
+    }
+    return true;
+  };
+  auto define2 = [&](Lit a, Lit b) {
+    const Lit d[2] = {a, b};
+    return define(d, 2);
+  };
+  auto lemma2 = [&](Lit a, Lit b) {
+    const Lit d[2] = {a, b};
+    return counting_add(st, d, 2, nullptr, 0);
+  };
+  std::vector<Lit> c;
+  std::vector<uint32_t> drop;       // long clauses with a y variable, deleted before the pigeonhole plan
+  std::vector<Lit> drop_bin;        // binary ones (pairs)
+  auto last_clause = [&](size_t before) {  // the long clause just added, if it was
+    if (clauses_.size() == before) {
+      if (!st.failure) st.failure = "a lemma was not added";
+      return false;
+    }
+    drop.push_back(clauses_.back());
+    return true;
+  };
+  if (!rel) {  // o[u] = OR_i P[i][u]
+    for (uint32_t u = 0; u < r; ++u) {
+      if (over()) return false;
+      for (uint32_t i = 0; i < n; ++i) {
+        if (!define2(O(u), negate(P(i, u)))) return false;
+      }
+      c.assign(1, negate(O(u)));
+      for (uint32_t i = 0; i < n; ++i) c.push_back(P(i, u));
+      if (!define(c.data(), c.size())) return false;
+    }
+  }
+  for (uint32_t u = 0; u < r; ++u) {
+    if (over()) return false;
+    for (uint32_t k = 0; k < h; ++k) {
+      const Lit w = W(u, k);
+      const Lit d[3] = {w, negate(O(u)), negate(Q(u, k))};
+      if (!define2(negate(w), O(u)) || !define2(negate(w), Q(u, k)) || !define(d, 3)) return false;
+    }
+  }
+  for (uint32_t i = 0; i < m; ++i) {
+    for (uint32_t u = 0; u < r; ++u) {
+      if (over()) return false;
+      for (uint32_t k = 0; k < h; ++k) {
+        const Lit z = Z(i, u, k);
+        const Lit d[3] = {z, negate(P(i, u)), negate(W(u, k))};
+        if (!define2(negate(z), P(i, u)) || !define2(negate(z), W(u, k)) || !define(d, 3)) return false;
+      }
+    }
+    for (uint32_t k = 0; k < h; ++k) {
+      for (uint32_t u = 0; u < r; ++u) {
+        if (!define2(Y(i, k), negate(Z(i, u, k)))) return false;
+        drop_bin.push_back(Y(i, k));
+        drop_bin.push_back(negate(Z(i, u, k)));
+      }
+      c.assign(1, negate(Y(i, k)));
+      for (uint32_t u = 0; u < r; ++u) c.push_back(Z(i, u, k));
+      const size_t before = clauses_.size();
+      if (!define(c.data(), c.size()) || !last_clause(before)) return false;
+    }
+  }
+  if (!rel) {
+    for (uint32_t i = 0; i < n; ++i) {
+      for (uint32_t u = 0; u < r; ++u) {
+        if (over()) return false;
+        for (uint32_t v = 0; v < r; ++v) {
+          if (v == u) continue;
+          for (uint32_t k = 0; k < h; ++k) {
+            const Lit d[4] = {negate(P(i, u)), negate(O(v)), negate(Q(u, k)), negate(Q(v, k))};
+            if (!counting_add(st, d, 4, nullptr, 0)) return false;
+          }
+        }
+      }
+    }
+  }
+  for (uint32_t u = 0; u < r; ++u) {
+    if (over()) return false;
+    for (uint32_t v = u + 1; v < r; ++v) {
+      for (uint32_t k = 0; k < h; ++k) {
+        if (!lemma2(negate(W(u, k)), negate(W(v, k)))) return false;
+      }
+    }
+  }
+  for (uint32_t i = 0; i < m; ++i) {
+    for (uint32_t j = 0; j < m; ++j) {
+      if (j == i) continue;
+      for (uint32_t u = 0; u < r; ++u) {
+        if (over()) return false;
+        for (uint32_t k = 0; k < h; ++k) {
+          if (!lemma2(negate(Z(i, u, k)), negate(Y(j, k)))) return false;
+          drop_bin.push_back(negate(Z(i, u, k)));
+          drop_bin.push_back(negate(Y(j, k)));
+        }
+      }
+    }
+  }
+  for (uint32_t i = 0; i < m; ++i) {
+    for (uint32_t j = i + 1; j < m; ++j) {
+      for (uint32_t k = 0; k < h; ++k) {
+        if (!lemma2(negate(Y(i, k)), negate(Y(j, k)))) return false;
+      }
+    }
+  }
+  for (uint32_t i = 0; i < m; ++i) {
+    if (over()) return false;
+    for (uint32_t u = 0; u < r; ++u) {
+      c.assign(1, negate(P(i, u)));
+      for (uint32_t k = 0; k < h; ++k) c.push_back(Y(i, k));
+      const size_t before = clauses_.size();
+      if (!counting_add(st, c.data(), c.size(), nullptr, 0) || !last_clause(before)) return false;
+    }
+    c.clear();
+    for (uint32_t k = 0; k < h; ++k) c.push_back(Y(i, k));
+    if (!counting_add(st, c.data(), c.size(), nullptr, 0)) return false;
+  }
+  for (const uint32_t ref : drop) delete_irredundant(ref);
+  for (size_t i = 0; i < drop_bin.size(); i += 2) {
+    delete_binary(drop_bin[i], drop_bin[i + 1]);
+    --binaries_irredundant_;
+  }
+  st.round.clear();
+  st.kind = kPigeonhole;
+  st.pigeons = m;
+  st.holes = h;
+  st.k = 1;
+  st.cell.resize(size_t{m} * h);
+  for (uint32_t i = 0; i < m; ++i) {
+    for (uint32_t k = 0; k < h; ++k) st.cell[size_t{i} * h + k] = Y(i, k);
+  }
+  return true;
+}
+
 bool Solver::counting_certify(CountingState& st) {
   auto over = [&]() {
     if (st.work + (stats_.ticks - st.ticks0) > st.limit) {
@@ -3162,7 +3349,7 @@ void Solver::counting() {
   if (st.kind == kClique) {
     factor = st.relativized ? std::max(6.0, 2.5 * st.vertices) : std::max(6.0, st.vertices / 3.0);
   }
-  const double estimate = static_cast<double>(st.steps_pr + st.steps_units) * (6 * degree + 4 * occs + 16) * factor;
+  double estimate = static_cast<double>(st.steps_pr + st.steps_units) * (6 * degree + 4 * occs + 16) * factor;
   const double budget = static_cast<double>(opts_.countingeffort) * 1e6;
   auto report = [&](const char* outcome) {
     if (!opts_.verbose) return;
@@ -3172,6 +3359,33 @@ void Solver::counting() {
                 static_cast<unsigned long long>(st.steps_units), static_cast<double>(st.work) / 1e6, estimate / 1e6, seconds() - t0);
     std::fflush(stdout);
   };
+  // Over budget: a clique-colouring (or a relativized pigeonhole with its plan) may still be
+  // refuted by extension (counting_extend), whose lemmas grow with vertices^2 x colours instead of
+  // PR clauses with positions^2 x vertices^2 x colours.
+  // Its work (measured on clqcl_* and rphp_p8_r*, within a factor of two): a lemma
+  // (-z[i][u][k] v -y[j][k]) propagates over the places and the pigeons, a clique-colouring's
+  // adjacency lemma over the vertices. With --countingextend=2 (the default) also whenever that is
+  // the cheaper plan: on the clique-colourings the other plan solves, proofs are 3 to 9 times
+  // shorter and dpr-trim checks them 15 to 45 times faster.
+  uint32_t fresh = 0;
+  if (st.kind == kClique && opts_.countingextend && st.colours >= 2 && st.positions > st.colours) {
+    const double n = st.positions, m = st.colours + 1.0, r = st.vertices, h = st.colours;
+    const double lemmas = (st.relativized ? 0.0 : n * r * r * h) + r * r * h / 2 + m * m * r * h + 8 * m * r * h;
+    const double extended = 24 * lemmas + 1.5 * m * m * m * r * r * h + (st.relativized ? 0.0 : 9 * n * r * r * r * h);
+    const double vars = (st.relativized ? 0.0 : r) + r * h + m * r * h + m * h;
+    if (extended <= budget && vars <= 1e7 && (estimate > budget || (opts_.countingextend > 1 && extended < estimate))) {
+      estimate = extended;
+      fresh = static_cast<uint32_t>(vars);
+      st.steps_pr = st.steps_units = 0;
+      for (uint64_t lvl = 1; lvl <= st.colours; ++lvl) {
+        st.steps_pr += lvl * (lvl - 1);
+        st.steps_units += lvl;
+      }
+      const size_t len = std::strlen(desc);
+      std::snprintf(desc + len, sizeof desc - len, ", by extension with %u new variables", fresh);
+      counting_desc_ = desc;
+    }
+  }
   if (estimate > budget) {
     ++stats_.counting_skipped;
     report("over budget, skipped");
@@ -3198,6 +3412,11 @@ void Solver::counting() {
       report("abandoned (assigned at the root)");
       return;
     }
+  }
+  const uint32_t extend_base = num_vars_;
+  if (fresh) {  // (before the per-variable arrays below, and before the saved phases are copied)
+    grow_vars(num_vars_ + fresh);
+    for (Var v = extend_base; v < num_vars_; ++v) st.extra_vars.push_back(v);
   }
   // Occurrence lists of the structure literals (both polarities) over all long clauses.
   st.slot.assign(num_vars_, UINT32_MAX);
@@ -3283,7 +3502,7 @@ void Solver::counting() {
     ~RestoreProof() { s.proof_ = p; }
   } restore_proof{*this, main_proof};
   if (buffered) proof_ = buffered.get();
-  const bool ok = counting_certify(st);
+  const bool ok = (!fresh || counting_extend(st, extend_base)) && counting_certify(st);
   if (buffered) {
     proof_ = main_proof;
     buffered->flush();

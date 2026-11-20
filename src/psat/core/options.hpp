@@ -156,6 +156,7 @@ namespace psat {
   X(countingeffort, 2000, 1, 1000000, "counting certificates: budget of a structure in millions of work units") \
   X(countingprobe, 0, 0, 1, "counting: also at-most-one constraints over auxiliary variables (exclusions by read-only probing)") \
   X(countingsparse, 2, 0, 2, "counting: pigeonhole systems on a sparse graph (a pigeon may use only some of the holes): a set of pigeons with fewer holes, found by bipartite matching, is refuted in isolation by elimination on the graph (new variables only where a pigeon needs another one's hole); 2: also with at-most-one constraints over auxiliary variables (exclusions by propagation over the binary clauses)") \
+  X(countingextend, 2, 0, 2, "counting: a clique-colouring, or a relativized pigeonhole with more places than pigeons, is refuted with new variables (pigeon i has hole k: at some place or vertex with that hole), which leaves a small pigeonhole; 1: only when the plan without new variables is over budget; 2: whenever the extension is the cheaper plan") \
   X(countingfault, 0, 0, INT32_MAX, "debugging: the k-th counting PR step gets a wrong witness (its check must refuse it)") \
   X(congruenceclosure, 1, 0, 1, "AND gate congruence to a fixpoint per call (union-find, re-hashing)")   \
   X(congruencerewrite, 0, 0, 1, "congruence closure rewrites degenerate gates instead of dropping them: x + x + R = R in XORs, ITE(c, t, -t) as an XOR, ITE(c, c, e) / ITE(c, t, c) / ITE(c, t, -c) as AND gates") \

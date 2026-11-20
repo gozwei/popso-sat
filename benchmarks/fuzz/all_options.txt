@@ -209,6 +209,7 @@
 --countingeffort=1..5000
 --countingprobe=0..1
 --countingsparse=0..2
+--countingextend=0..2
 --countingfault=0..50
 --xorsub=0..1
 --xorsubmin=0..1000

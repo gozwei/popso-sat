@@ -1,5 +1,62 @@
 # Changelog
 
+## v0.4.9 — 2026-11-20
+
+Clique-colouring formulas, and relativized pigeonholes with more resting places than pigeons,
+are now refuted with new variables that reduce them to a small plain pigeonhole. The plan of
+0.4.8 for these two structures stayed without new variables, and its cost grew so fast with
+the number of vertices or places that the larger instances were recognised and then skipped.
+Where no such structure is found the search is the same as in 0.4.8: on four check instances,
+conflicts, decisions, propagations and ticks match exactly after 60,000 conflicts.
+
+The instances were found by a scan of 115 SAT Competition instances from pigeonhole-type
+families that are in none of the other sets (`sets/phfam.txt`). On the Intel i7-7700K (Linux,
+300 s, four instances at a time, popso-sat with proofs):
+
+| | 0.4.9 | 0.4.8 | Kissat 4.0.4 |
+|---|---|---|---|
+| phfam, solved of 115 (SAT / UNSAT) | 81 (14 / 67) | 65 (14 / 51) | 36 (12 / 24) |
+| phfam, PAR-2 (s) | 189.1 | 282.2 | 433.9 |
+
+This is not a held-out comparison: the families have instances in the tuning sets, and the new
+plan was written for the 19 instances it gains (12 clique-colourings of 2025, 7 relativized
+pigeonholes of 2016 to 2024) after the 0.4.8 run had shown them. Three instances that 0.4.8
+solved at 285 to 295 s are over the 300 s limit in the 0.4.9 run; the search on them is
+unchanged. See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **Refutation by extension** (`--countingextend=2`, the default; `1`: only when the plan
+  without new variables is over budget; `0`: off). Pigeons i (the positions of the clique, or
+  the pigeons), intermediates u (vertices, or resting places) and holes k (colours, or holes):
+  - New variables say "the occupied intermediate u has hole k", "pigeon i, by way of u, has
+    hole k" and "pigeon i has hole k". Each is defined by clauses that are RAT on it.
+  - RUP lemmas then give a plain pigeonhole on the last ones: every pigeon has a hole, and no
+    two pigeons share one. Only the first holes + 1 pigeons are used.
+  - The definitions of "pigeon i has hole k" are deleted again, and the pigeonhole plan of
+    0.4.0 refutes what is left: 40 PR clauses for five holes.
+  - Every step is checked by the solver on its own clauses before it is written, as for the
+    other counting certificates.
+- **Shorter proofs for the instances 0.4.8 already solved.** The default takes the extension
+  whenever it is estimated to be the cheaper plan. clqcl_30_7_6: 70 PR clauses instead of
+  60,900, a proof of 0.5 MB instead of 1.9 MB; dpr-trim checks it in 1.2 s instead of 60 s and
+  the verified checker cake_lpr in 0.2 s instead of 229 s (Intel i7-7700K). This also changes
+  the proofs of three instances of the sc2026 and fresh sets (cliquecoloring_n32_k5_c4,
+  clqcl_25_7_6, clqcl_25_8_7), solved as before.
+- All 36 clique-colouring and relativized instances at hand were checked with dpr-trim and
+  then cake_lpr: all verified, dpr-trim in at most 214 s (rphp_p8_r250: 8 pigeons, 250 places,
+  15,806 new variables) and otherwise under 38 s, cake_lpr in at most 7 s.
+- New sets: `sets/phfam.txt` (the scan) and `sets/matching.txt`, 38 instances of the families
+  that the sparse-graph certificates of 0.4.8 were developed on (interval matching, perfect
+  matchings of random graphs, mutilated chessboards), downloaded after 0.4.8 was released and
+  never run before. 0.4.8 refutes all 38 in at most 0.03 s each, with every proof accepted by
+  cake_lpr; 0.4.7 solves 21 and Kissat 8 (Intel Xeon E5-1650 v2, 1000 s).
+  - Four of the 38 are listed as satisfiable in the benchmark database (randomG-B-Mix-n17,
+    randomG-B-Mix-n20, randomG-Mix-n19, randomG-Mix-n20; none was used in a competition
+    track). They are unsatisfiable: each has n + 1 pigeons for n holes, and dpr-trim and
+    cake_lpr accept the refutations. The set file lists them as unsat and says so.
+- Still unsolved in the scan (34 of 115): among them 18 relativized pigeonholes of 2018 with
+  added clauses or auxiliary variables, which the detector does not recognise, the four
+  binary pigeonholes, and four sgen instances.
+
 ## v0.4.8 — 2026-11-20
 
 The pigeonhole certificates on sparse graphs of 0.4.7 recognise more encodings, and their

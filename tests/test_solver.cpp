@@ -2107,6 +2107,7 @@ TEST(counting_relativized_pigeonhole) {
     for (int scrambled = 0; scrambled < 2; ++scrambled) {
       Options o;
       o.counting = 1;
+      o.countingextend = 0;  // (more places: the plan without new variables)
       const ClauseList f = relativized_php(n, r, h);
       const CountingRun res = run_counting(scrambled ? scramble(f, rng) : f, o);
       CHECK_EQ(res.result, kUnsat);
@@ -2133,6 +2134,83 @@ TEST(counting_relativized_pigeonhole) {
   CHECK_EQ(res.stats.counting_failed, 1u);
   CHECK_EQ(res.stats.counting_pr, 3u);
   CHECK(res.check.ok && res.check.has_empty);
+}
+
+TEST(counting_by_extension) {
+  // A clique-colouring or a relativized pigeonhole with more places than pigeons, refuted with new
+  // variables ("pigeon i has hole k") and a pigeonhole of holes + 1 pigeons on them: the PR
+  // clauses are those of that small pigeonhole only. --countingextend=2 (the default) takes this
+  // plan whenever it is the cheaper one; 1 only when the plan without new variables is over budget.
+  std::mt19937_64 rng(23);
+  auto small_php = [](uint64_t h) {
+    uint64_t pr = 0;
+    for (uint64_t lvl = 1; lvl <= h; ++lvl) pr += lvl * (lvl - 1);
+    return pr;
+  };
+  for (int clique = 0; clique < 2; ++clique) {
+    const std::vector<std::tuple<int, int, int>> cases =
+        clique ? std::vector<std::tuple<int, int, int>>{{6, 4, 3}, {7, 4, 3}, {8, 5, 3}, {9, 5, 4}}
+               : std::vector<std::tuple<int, int, int>>{{4, 6, 3}, {5, 6, 4}, {4, 10, 3}, {6, 9, 5}};
+    for (const auto& [a, b, c] : cases) {
+      for (int scrambled = 0; scrambled < 2; ++scrambled) {
+        Options o;
+        o.counting = 1;
+        o.countingextend = 2;
+        const ClauseList f = clique ? clique_colouring(a, b, c) : relativized_php(a, b, c);
+        const CountingRun r = run_counting(scrambled ? scramble(f, rng) : f, o);
+        CHECK_EQ(r.result, kUnsat);
+        CHECK_EQ(r.stats.counting_found, 1u);
+        CHECK_EQ(r.stats.counting_failed, 0u);
+        CHECK_EQ(r.stats.conflicts, 0u);
+        CHECK_EQ(r.stats.counting_pr, small_php(static_cast<uint64_t>(c)));
+        CHECK(r.check.ok && r.check.has_empty);
+        if (!r.check.ok || !r.check.has_empty) {
+          std::fprintf(stderr, "  %s %d %d %d: %s\n", clique ? "clqcl" : "rphp", a, b, c, r.check.error.c_str());
+        }
+      }
+    }
+  }
+  {  // over budget without new variables (the smallest budget): level 1 takes the extension
+    Options o;
+    o.counting = 1;
+    o.countingextend = 1;
+    o.countingeffort = 1;
+    const CountingRun r = run_counting(relativized_php(4, 30, 3), o);
+    CHECK_EQ(r.result, kUnsat);
+    CHECK_EQ(r.stats.counting_failed, 0u);
+    CHECK_EQ(r.stats.conflicts, 0u);
+    CHECK_EQ(r.stats.counting_pr, small_php(3));
+    CHECK(r.check.ok && r.check.has_empty);
+    o.countingextend = 0;  // switched off: skipped, search
+    const CountingRun off = run_counting(relativized_php(4, 30, 3), o);
+    CHECK_EQ(off.result, kUnsat);
+    CHECK_EQ(off.stats.counting_skipped, 1u);
+    CHECK_EQ(off.stats.counting_pr, 0u);
+    CHECK(off.stats.conflicts > 0);
+    CHECK(off.check.ok && off.check.has_empty);
+  }
+  // A wrong witness in the small pigeonhole: refused, search finishes. (Four holes: with three,
+  // its PR clauses are implied by unit propagation and no witness is looked at.)
+  for (const int fault : {1, 2, 5}) {
+    Options o;
+    o.counting = 1;
+    o.countingextend = 2;
+    o.countingfault = fault;
+    const CountingRun r = run_counting(clique_colouring(8, 5, 4), o);
+    CHECK_EQ(r.result, kUnsat);
+    CHECK_EQ(r.stats.counting_failed, 1u);
+    CHECK_EQ(r.stats.counting_pr, static_cast<uint64_t>(fault - 1));
+    CHECK(r.check.ok && r.check.has_empty);
+  }
+  for (const auto& [n, r, h] : std::vector<std::tuple<int, int, int>>{{4, 6, 4}, {3, 8, 3}}) {  // satisfiable
+    Options o;
+    o.counting = 1;
+    o.countingextend = 2;
+    const ClauseList f = scramble(relativized_php(n, r, h), rng);
+    Outcome res = run(max_var_of(f), f, o);
+    CHECK_EQ(res.result, kSat);
+    CHECK(res.model_ok);
+  }
 }
 
 TEST(counting_auxiliary_at_most_one) {
@@ -2181,7 +2259,8 @@ TEST(counting_auxiliary_at_most_one) {
 }
 
 TEST(counting_clique_colouring) {
-  // Refuted before search with 4-literal PR clauses (positions swap) and RUP lemmas; plain and
+  // The plan without new variables (--countingextend=0; the default is counting_by_extension):
+  // refuted before search with 4-literal PR clauses (positions swap) and RUP lemmas; plain and
   // scrambled; the satisfiable ones (k <= m) are not recognised. (Colour clauses of 3 or more
   // literals: binary ones are not looked at.)
   std::mt19937_64 rng(15);
@@ -2189,6 +2268,7 @@ TEST(counting_clique_colouring) {
     for (int scrambled = 0; scrambled < 2; ++scrambled) {
       Options o;
       o.counting = 1;
+      o.countingextend = 0;
       const ClauseList f = clique_colouring(n, k, m);
       const CountingRun r = run_counting(scrambled ? scramble(f, rng) : f, o);
       CHECK_EQ(r.result, kUnsat);
@@ -2203,6 +2283,7 @@ TEST(counting_clique_colouring) {
   for (const auto& [n, k, m] : std::vector<std::tuple<int, int, int>>{{6, 3, 3}, {6, 4, 4}}) {
     Options o;
     o.counting = 1;
+    o.countingextend = 0;
     const ClauseList f = scramble(clique_colouring(n, k, m), rng);
     Outcome r = run(max_var_of(f), f, o);
     CHECK_EQ(r.result, kSat);
@@ -2211,6 +2292,7 @@ TEST(counting_clique_colouring) {
   // A wrong witness: the check refuses it, search finishes, the proof checks.
   Options o;
   o.counting = 1;
+  o.countingextend = 0;
   o.countingfault = 7;
   const CountingRun r = run_counting(clique_colouring(6, 4, 3), o);
   CHECK_EQ(r.result, kUnsat);

@@ -26,7 +26,8 @@ were fixed, 0.4.6 (the same search as 0.4.5) solves 27 against 24 for Kissat. 0.
 there: 0.4.7 and 0.4.8 add counting certificates that were developed on six instances of that
 set. The same certificates refute the 18 mutilated chessboards of the 2018-2025 competitions
 (up to 22 x 22) in under 0.1 s each, with proofs that the verified checker cake_lpr accepts in
-seconds; Kissat solves 9 of them within 1000 s (see [BENCHMARKS.md](BENCHMARKS.md)).
+seconds; Kissat solves 9 of them within 1000 s. On 38 further instances of those families that
+had never been run, 0.4.8 solves all 38 and Kissat 8 (see [BENCHMARKS.md](BENCHMARKS.md)).
 
 ## Build
 
@@ -83,7 +84,8 @@ A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.t
 (`sets/fresh2.txt`), with the same setup and machine; every UNSAT answer of 0.4.6, 0.4.7 and
 0.4.8 checked with its proof. 0.4.6 changes no default, so its search is that of 0.4.5. 0.4.7
 and 0.4.8 add pigeonhole certificates on sparse graphs and leave the search unchanged where
-they find none, so only the fresh2 column of 0.4.8 is new.
+they find none, so only the fresh2 column of 0.4.8 is new. 0.4.9 solves the same instances
+of these sets as 0.4.8.
 
 Solved / PAR-2 in seconds:
 
@@ -115,6 +117,16 @@ of 2018 to 2025 (15 x 15 to 22 x 22), 1000 s, Intel Xeon E5-1650 v2: 0.4.8 refut
 most 0.03 s each, Kissat solves 9 and 0.4.7 solves 5. All 18 proofs pass dpr-trim and the
 verified checker cake_lpr in under 8 s each. Two of these instances were used to develop the
 certificate, so this is not a held-out set.
+
+**Unseen instances of the same families:** 38 instances of the interval-matching,
+perfect-matching and mutilated-chessboard families that are in no other set, downloaded after
+0.4.8 was released (`sets/matching.txt`), 1000 s, Intel Xeon E5-1650 v2: 0.4.8 refutes all 38
+in at most 0.03 s each, 0.4.7 solves 21 and Kissat 8. All 38 proofs pass dpr-trim and
+cake_lpr. Four of them are listed as satisfiable in the benchmark database; they are not.
+
+**Pigeonhole-type families:** a scan of 115 further instances (`sets/phfam.txt`), 300 s, Intel
+i7-7700K: 0.4.9 solves 81, 0.4.8 solves 65 and Kissat 36. The plan new in 0.4.9 was written
+for instances of this set, so this is not a held-out comparison either.
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of
@@ -170,9 +182,11 @@ per-instance times and plots, and the earlier measurements, are in
   and cliques, inside larger formulas. Pigeonholes are also found on sparse graphs, where a
   pigeon may use only some of the holes (mutilated chessboards, matchings in bipartite
   graphs): bipartite matching finds a set of pigeons with too few holes, which is refuted by
-  elimination on the graph. Such a structure is refuted with polynomially many PR
-  clauses (symmetry-style steps, each checked by the solver before it is written) where
-  resolution needs exponentially many steps. Without a structure the search is unchanged.
+  elimination on the graph. Clique-colourings and relativized pigeonholes with spare
+  places are reduced to a small pigeonhole with new variables. Such a structure is refuted
+  with polynomially many PR clauses (symmetry-style steps, each checked by the solver before
+  it is written) where resolution needs exponentially many steps. Without a structure the
+  search is unchanged.
 - Gauss-Jordan elimination on XOR constraints. The XORs are taken from complete clause
   encodings. An inconsistent XOR system is refuted before search, with a DRAT proof that sums
   the XORs as chains of extension variables. Otherwise, if the XORs cover enough of the
