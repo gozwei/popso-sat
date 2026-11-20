@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.10 — 2026-11-20
+
+No change to the solver. One case of the unit test added in 0.4.9 ran a search of 300,000
+conflicts (two minutes; under the sanitizers it ran into the 30-minute limit of the CI job,
+which was cancelled for 0.4.9). It now uses a smaller formula; the unit tests take 50 s
+instead of 170 s.
+
 ## v0.4.9 — 2026-11-20
 
 Clique-colouring formulas, and relativized pigeonholes with more resting places than pigeons,

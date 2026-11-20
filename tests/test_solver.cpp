@@ -2181,8 +2181,8 @@ TEST(counting_by_extension) {
     CHECK_EQ(r.stats.conflicts, 0u);
     CHECK_EQ(r.stats.counting_pr, small_php(3));
     CHECK(r.check.ok && r.check.has_empty);
-    o.countingextend = 0;  // switched off: skipped, search
-    const CountingRun off = run_counting(relativized_php(4, 30, 3), o);
+    o.countingextend = 0;  // switched off: skipped, search (10 places: 30 take 300,000 conflicts)
+    const CountingRun off = run_counting(relativized_php(4, 10, 3), o);
     CHECK_EQ(off.result, kUnsat);
     CHECK_EQ(off.stats.counting_skipped, 1u);
     CHECK_EQ(off.stats.counting_pr, 0u);
