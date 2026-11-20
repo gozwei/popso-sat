@@ -1528,8 +1528,8 @@ TEST(counting_sparse_pigeonhole) {
 
 TEST(counting_sparse_hall_violator) {
   // As many pigeons as holes, but five of them share four holes: the violator is found by
-  // matching and refuted as a pigeonhole 5 -> 4 (0 + 2 + 6 + 12 PR clauses), whatever the other
-  // pigeons and clauses are.
+  // matching and refuted by elimination (at most the 0 + 2 + 6 + 12 PR clauses of the pigeonhole
+  // 5 -> 4), whatever the other pigeons and clauses are.
   std::mt19937_64 rng(22);
   std::vector<std::vector<int>> use;
   for (int p = 0; p < 5; ++p) {
@@ -1554,7 +1554,7 @@ TEST(counting_sparse_hall_violator) {
     CHECK_EQ(r.result, kUnsat);
     CHECK_EQ(r.stats.counting_found, 1u);
     CHECK_EQ(r.stats.counting_failed, 0u);
-    CHECK_EQ(r.stats.counting_pr, 20u);
+    CHECK(r.stats.counting_pr > 0 && r.stats.counting_pr <= 20u);
     CHECK(r.check.ok && r.check.has_empty);
     if (!r.check.ok || !r.check.has_empty) std::fprintf(stderr, "  hall violator (variant %d): %s\n", variant, r.check.error.c_str());
   }
@@ -1594,6 +1594,202 @@ TEST(counting_sparse_after_root_units) {
       }
       if (!r.check.ok || !r.check.has_empty) std::fprintf(stderr, "  root units, %d holes (units first %d): %s\n", holes, first, r.check.error.c_str());
     }
+  }
+}
+
+namespace {
+
+// A matching formula on a bipartite graph: pigeon p may use the holes use[p] only; a hole takes at
+// most one pigeon, by pairwise clauses or (seq, four or more pigeons) by a sequential counter
+// over new variables; both: also the at-least-one clause of every hole with two or more pigeons
+// (a perfect matching); noise: that many other exclusions between variables of different pigeons
+// and holes. Variables pigeon by pigeon, then the counters'.
+ClauseList matching_formula(const std::vector<std::vector<int>>& use, int holes, bool both, bool seq, int noise,
+                            std::mt19937_64& rng) {
+  ClauseList cl;
+  std::vector<std::vector<int>> in_hole(static_cast<size_t>(holes));
+  std::vector<std::pair<int, int>> where;  // per variable (from 1): pigeon, hole
+  where.emplace_back(-1, -1);
+  int next = 0;
+  for (size_t p = 0; p < use.size(); ++p) {
+    std::vector<int> c;
+    for (int h : use[p]) {
+      c.push_back(++next);
+      in_hole[static_cast<size_t>(h)].push_back(next);
+      where.emplace_back(static_cast<int>(p), h);
+    }
+    cl.push_back(c);
+  }
+  const int structure = next;
+  for (const auto& m : in_hole) {
+    if (both && m.size() > 1) cl.push_back(m);
+    const size_t n = m.size();
+    if (!seq || n < 4) {
+      for (size_t a = 0; a < n; ++a) {
+        for (size_t b = a + 1; b < n; ++b) cl.push_back({-m[a], -m[b]});
+      }
+      continue;
+    }
+    std::vector<int> t(n - 1);
+    for (int& v : t) v = ++next;
+    cl.push_back({-m[0], t[0]});
+    for (size_t i = 1; i + 1 < n; ++i) {
+      cl.push_back({-m[i], t[i]});
+      cl.push_back({-t[i - 1], t[i]});
+      cl.push_back({-m[i], -t[i - 1]});
+    }
+    cl.push_back({-m[n - 1], -t[n - 2]});
+  }
+  for (int added = 0, tries = 0; added < noise && tries < 1000; ++tries) {
+    const int x = 1 + static_cast<int>(rng() % static_cast<uint64_t>(structure));
+    const int y = 1 + static_cast<int>(rng() % static_cast<uint64_t>(structure));
+    const auto& wx = where[static_cast<size_t>(x)];
+    const auto& wy = where[static_cast<size_t>(y)];
+    if (wx.first == wy.first || wx.second == wy.second) continue;
+    cl.push_back({-x, -y});
+    ++added;
+  }
+  return cl;
+}
+
+}  // namespace
+
+TEST(counting_sparse_matching_variants) {
+  // The same violators with the holes' at-least-one clauses (the pigeons are one side of a
+  // 2-colouring of the clause graph), with at-most-one constraints over auxiliary variables (the
+  // exclusions are found by propagation and derived in the proof), and with other exclusions
+  // between the pigeons' variables (the classes of exclusions are split into cliques).
+  std::mt19937_64 rng(31);
+  for (int holes = 5; holes <= 9; ++holes) {
+    for (int variant = 0; variant < 16; ++variant) {
+      const bool both = variant & 1, seq = variant & 2, scrambled = variant & 8;
+      const int noise = (variant & 4) ? 2 : 0;
+      const ClauseList g = matching_formula(random_use(holes + 1, holes, rng), holes, both, seq, noise, rng);
+      const ClauseList f = scrambled ? scramble(g, rng) : g;
+      Options o;
+      o.counting = 1;
+      const CountingRun r = run_counting(f, o);
+      CHECK_EQ(r.result, kUnsat);
+      CHECK_EQ(r.stats.counting_failed, 0u);
+      CHECK(r.check.ok && r.check.has_empty);
+      if (!noise) {  // (with other exclusions the split may leave too many holes: search then)
+        CHECK_EQ(r.stats.counting_found, 1u);
+        CHECK(r.stats.counting_pr > 0);
+        CHECK_EQ(r.check.pr, r.stats.counting_pr);
+      }
+      if (!r.check.ok || !r.check.has_empty || (!noise && r.stats.counting_found != 1)) {
+        std::fprintf(stderr, "  matching %d -> %d (variant %d): %s\n", holes + 1, holes, variant, r.check.error.c_str());
+      }
+      CHECK_EQ(run(max_var_of(f), f, o, false).result, kUnsat);
+      if (!seq) continue;
+      // Without probing the counters hide the holes: search refutes it.
+      o.countingsparse = 1;
+      const CountingRun plain = run_counting(f, o);
+      CHECK_EQ(plain.result, kUnsat);
+      CHECK(plain.check.ok && plain.check.has_empty);
+    }
+  }
+}
+
+TEST(counting_sparse_short_pigeons) {
+  // Pigeons with two holes (binary clauses, or clauses with a literal false at the root): seven
+  // pigeons in six holes, four of them short.
+  std::mt19937_64 rng(32);
+  const std::vector<std::vector<int>> use = {{0, 1, 2}, {1, 2, 3}, {2, 3, 4}, {3, 4}, {4, 5}, {5, 0}, {0, 5}};
+  for (int variant = 0; variant < 8; ++variant) {
+    const bool scrambled = variant & 1, seq = variant & 2, shortened = variant & 4;
+    std::vector<std::vector<int>> u = use;
+    if (shortened) {  // a third hole of its own for each short pigeon, taken away by a unit clause
+      for (size_t p = 3; p < u.size(); ++p) u[p].push_back(static_cast<int>(3 + p));
+    }
+    ClauseList g = matching_formula(u, shortened ? 10 : 6, false, seq, 0, rng);
+    if (shortened) {  // (variables pigeon by pigeon: 9 for the long pigeons, then three each)
+      for (int p = 3; p < 7; ++p) g.push_back({-(9 + 3 * (p - 2))});
+    }
+    const ClauseList f = scrambled ? scramble(g, rng) : g;
+    Options o;
+    o.counting = 1;
+    const CountingRun r = run_counting(f, o);
+    CHECK_EQ(r.result, kUnsat);
+    CHECK_EQ(r.stats.counting_failed, 0u);
+    CHECK(r.check.ok && r.check.has_empty);
+    // (Scrambled, a unit clause may come before its pigeon clause, which is then shortened on
+    // input: the pass stays off and search refutes the formula.)
+    const bool expected = !(scrambled && shortened);
+    if (expected) {
+      CHECK_EQ(r.stats.counting_found, 1u);
+      CHECK(r.stats.counting_pr > 0);
+    }
+    if (!r.check.ok || !r.check.has_empty || (expected && r.stats.counting_found != 1)) {
+      std::fprintf(stderr, "  short pigeons (variant %d): %s\n", variant, r.check.error.c_str());
+    }
+  }
+}
+
+// The n x n board without two opposite corners, a variable per domino: every square is covered
+// (at-least-one clause) by exactly one domino (pairwise exclusions).
+ClauseList mutilated_chessboard(int n) {
+  std::vector<std::vector<int>> at(static_cast<size_t>(n * n));
+  auto gone = [&](int r, int c) { return (r == 0 && c == 0) || (r == n - 1 && c == n - 1); };
+  int v = 0;
+  for (int r = 0; r < n; ++r) {
+    for (int c = 0; c < n; ++c) {
+      if (gone(r, c)) continue;
+      for (int d = 0; d < 2; ++d) {
+        const int r2 = r + d, c2 = c + 1 - d;
+        if (r2 >= n || c2 >= n || gone(r2, c2)) continue;
+        ++v;
+        at[static_cast<size_t>(r * n + c)].push_back(v);
+        at[static_cast<size_t>(r2 * n + c2)].push_back(v);
+      }
+    }
+  }
+  ClauseList f;
+  for (const auto& vs : at) {
+    if (vs.empty()) continue;
+    f.push_back(vs);
+    for (size_t i = 0; i < vs.size(); ++i) {
+      for (size_t j = i + 1; j < vs.size(); ++j) f.push_back({-vs[i], -vs[j]});
+    }
+  }
+  return f;
+}
+
+TEST(counting_sparse_elimination) {
+  // Mutilated chessboards: the squares of one colour are pigeons with at most four holes each. The
+  // refutation works on that graph (new variables only where a round needs them): far fewer PR
+  // clauses than the pigeonhole formula on all pairs (n = 8: 31 pigeons, 8990 PR clauses).
+  std::mt19937_64 rng(41);
+  for (int n = 4; n <= 10; n += 2) {
+    for (int variant = 0; variant < 2; ++variant) {
+      const ClauseList g = mutilated_chessboard(n);
+      const ClauseList f = variant ? scramble(g, rng) : g;
+      Options o;
+      o.counting = 1;
+      const CountingRun r = run_counting(f, o);
+      CHECK_EQ(r.result, kUnsat);
+      CHECK_EQ(r.stats.counting_failed, 0u);
+      CHECK(r.check.ok && r.check.has_empty);
+      if (n >= 6) {  // (n = 4: the violator has two holes, too small)
+        CHECK_EQ(r.stats.counting_found, 1u);
+        CHECK(r.stats.counting_pr > 0 && r.stats.counting_pr < static_cast<uint64_t>(n * n * n));
+        CHECK_EQ(r.stats.conflicts, 0u);
+      }
+      if (!r.check.ok || !r.check.has_empty) std::fprintf(stderr, "  chessboard %d (variant %d): %s\n", n, variant, r.check.error.c_str());
+    }
+  }
+  // A wrong witness is refused: the structure is abandoned, nothing of it is written, and search
+  // refutes the formula.
+  for (int fault : {1, 2, 5, 40}) {
+    Options o;
+    o.counting = 1;
+    o.countingfault = fault;
+    const CountingRun r = run_counting(mutilated_chessboard(6), o);
+    CHECK_EQ(r.result, kUnsat);
+    CHECK_EQ(r.stats.counting_failed, 1u);
+    CHECK_EQ(r.stats.counting_pr, 0u);
+    CHECK(r.stats.conflicts > 0);
+    CHECK(r.check.ok && r.check.has_empty);
   }
 }
 

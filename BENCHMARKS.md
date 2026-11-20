@@ -3,10 +3,166 @@
 Measurements of popso-sat against established open-source solvers. Every SAT answer in these
 runs was checked against the formula by the benchmark runner
 ([benchmarks/run.py](benchmarks/run.py)); no run produced a wrong answer. Proofs were switched
-off for the timing runs, except the SAT Competition 2026 runs from v0.4.0 on, where every
-UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs are verified separately by the correctness
-gate ([benchmarks/gate.py](benchmarks/gate.py)) and the fuzzer. Tables from different machines
-are never mixed.
+off for the timing runs, except the SAT Competition 2026 runs from v0.4.0 on and the fresh2
+runs, where every UNSAT answer of popso-sat was checked with its proof. Otherwise UNSAT proofs
+are verified separately by the correctness gate ([benchmarks/gate.py](benchmarks/gate.py))
+and the fuzzer. Tables from different machines are never mixed.
+
+## v0.4.8
+
+New in 0.4.8: the pigeonhole certificates on sparse graphs of 0.4.7 recognise more encodings
+(`--countingsparse=2`, the default), and their proofs are written by elimination on the sparse
+graph itself (see the [CHANGELOG](CHANGELOG.md)). Where no such system is found the search is
+that of 0.4.7, 0.4.6 and 0.4.5: on four check instances it matches exactly after 60,000
+conflicts, so the sc2026 and fresh tables of the v0.4.5 section stand. Of the 295 instances of
+sc2026, fresh and fresh2, the pass finds a structure on six, all in fresh2.
+
+### Fresh families 2 (Intel i7-7700K, Linux)
+
+The set and setup of the v0.4.6 section: 49 instances, 1000 s and 12 GB per instance, four
+instances at a time, every model checked. 0.4.8 wrote a proof for each of its 17 UNSAT answers,
+and dpr-trim verified all 17 within the run. The 0.4.7, 0.4.6 and Kissat columns are the runs
+of the v0.4.7 and v0.4.6 sections.
+
+**fresh2 is not held out for two families.** The pass was developed on the randomG and
+intervals instances of this set. The six answers gained over 0.4.6 are exactly those instances;
+on the other 43 the search is unchanged.
+
+| | popso-sat 0.4.8 | popso-sat 0.4.7 | popso-sat 0.4.6 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| solved of 49 (SAT / UNSAT) | 32 (15 / 17) | 30 (15 / 15) | 27 (15 / 12) | 24 (15 / 9) |
+| solved within 300 s | 27 | 25 | 21 | 17 |
+| PAR-2 (s) | 790.0 | 872.5 | 1011.8 | 1132.1 |
+| shifted geometric mean (s) | 133.1 | 163.3 | 240.9 | 338.5 |
+| largest peak memory | 1.9 GB (Kakuro-easy-104) | 1.9 GB (Kakuro-easy-104) | 1.9 GB (Kakuro-easy-104) | 1.2 GB (Kakuro-easy-104) |
+
+**What this shows:**
+- Gained over 0.4.7: intervals718 (one pigeon of its violating set has only two holes, which
+  0.4.7 did not read as a pigeon) and randomG-B-Mix-n18-d05 (at-most-one constraints with
+  auxiliary variables). Lost: none.
+- The six instances with a certificate, each refuted before search:
+
+  | instance | pigeons / holes refuted | pigeons / holes in the formula | new variables | PR clauses | solve (s) | proof (MB) | dpr-trim (s) |
+  |---|---|---|---|---|---|---|---|
+  | randomG-n18-d05 | 19 / 18 | 19 / 18 | 63 | 772 | 0.01 | 0.03 | 0.1 |
+  | randomG-B-Mix-n18-d05 | 19 / 18 | 19 / 18 | 63 | 772 | 0.01 | 0.04 | 0.1 |
+  | randomG-n20-d05 | 21 / 20 | 21 / 20 | 86 | 1,133 | 0.01 | 0.04 | 0.1 |
+  | intervals855 | 49 / 48 | 84 / 93 | 0 | 1,557 | 0.02 | 0.4 | 0.3 |
+  | intervals718 | 46 / 45 | 84 / 96 | 1 | 1,798 | 0.03 | 0.4 | 0.3 |
+  | intervals122 | 66 / 65 | 84 / 96 | 3 | 3,731 | 0.03 | 0.4 | 0.8 |
+
+  With the proofs of 0.4.7, intervals855 took 85 s and intervals122 457 s in dpr-trim (1.5 and
+  3.1 MB, 91,520 PR clauses for intervals122). The six proofs also pass the verified checker
+  cake_lpr (0.1 to 4.7 s).
+- mm-2x3-8-8, which 0.4.6 solved at 949 s, reaches the 1000 s limit again, as in the 0.4.7
+  run. On the 18 instances that 0.4.7 and 0.4.8 both solve in more than 5 s, the median time
+  ratio is 0.993 (0.96 to 1.04).
+- 0.4.8 solves 11 instances that Kissat does not: the six above and the five of the v0.4.6
+  section. Kissat solves 3 that 0.4.8 does not: mm-2x3-8-8 (346 s), vlsat2_57038 and
+  ssp-0.4977.
+- Instances both solve, shifted geometric mean: SAT 59 s (0.4.8) against 76 s (Kissat) on 13;
+  UNSAT 103 against 105 s on 8.
+- 14 instances are solved by neither, among them three sin_depth_miter instances,
+  quad_res_r26_m27, two LABS and two Steiner instances.
+
+### Mutilated chessboards (Intel Xeon E5-1650 v2, Linux)
+
+An n x n board without two opposite corners cannot be covered by dominoes: the squares of one
+colour are pigeons, those of the other colour are holes, and there is one hole too few. The set
+(`sets/mchess.txt`) holds every instance of this family in the SAT Competition main tracks of
+2018 to 2025: mchess_15 to mchess_20 (2018; some again in 2024 and 2025) and twelve boards of
+2023 with blocked clauses added (mchess-mixed). 1000 s and 12 GB per instance, four instances
+at a time, proofs off.
+
+**This set is not held out.** Two of the mchess16-mixed instances were development instances
+of the pass, and the family was the reason for the proof change.
+
+| | popso-sat 0.4.8 | popso-sat 0.4.7 | Kissat 4.0.4 |
+|---|---|---|---|
+| solved of 18 | 18 | 5 | 9 |
+| solved within 300 s | 18 | 5 | 4 |
+| PAR-2 (s) | 0.02 | 1472.1 | 1155.4 |
+| shifted geometric mean (s) | 0.02 | 493.8 | 424.6 |
+
+Time in seconds (TL: not solved in 1000 s):
+
+| instance | popso-sat 0.4.8 | popso-sat 0.4.7 | Kissat 4.0.4 |
+|---|---|---|---|
+| mchess_15 | 0.01 | 167 | 48 |
+| mchess_16 | 0.01 | 203 | 315 |
+| mchess_17 | 0.01 | TL | TL |
+| mchess_18 | 0.01 | TL | TL |
+| mchess_19 | 0.01 | TL | TL |
+| mchess_20 | 0.02 | TL | TL |
+| mchess16-mixed-25percent-blocked | 0.01 | 67 | 171 |
+| mchess16-mixed-35percent-blocked | 0.01 | 46 | 59 |
+| mchess16-mixed-45percent-blocked | 0.01 | 14 | 4.9 |
+| mchess18-mixed-25percent-blocked | 0.01 | TL | 410 |
+| mchess18-mixed-35percent-blocked | 0.01 | TL | 520 |
+| mchess18-mixed-45percent-blocked | 0.02 | TL | 393 |
+| mchess20-mixed-25percent-blocked | 0.02 | TL | TL |
+| mchess20-mixed-35percent-blocked | 0.02 | TL | TL |
+| mchess20-mixed-45percent-blocked | 0.02 | TL | 877 |
+| mchess22-mixed-25percent-blocked | 0.03 | TL | TL |
+| mchess22-mixed-35percent-blocked | 0.03 | TL | TL |
+| mchess22-mixed-45percent-blocked | 0.03 | TL | TL |
+
+**What this shows:**
+- 0.4.8 refutes every board before search, in a time that grows slowly with the board. 0.4.7
+  finds no structure in these formulas (they hold the at-least-one clauses of both colours,
+  and squares with only two neighbours) and solves the five boards up to 16 x 16 by search.
+- Kissat solves the boards up to 16 x 16 and, with blocked clauses, four of the six boards of
+  18 x 18 and 20 x 20.
+
+### Proofs of the mutilated chessboards (Intel i7-7700K, Linux)
+
+Each of the 18 proofs was checked by dpr-trim and then by the verified checker cake_lpr, one
+instance at a time while a four-instance benchmark was running on the same machine. All 18
+are verified. A second run of the set with proofs (four instances at a time, dpr-trim only)
+also verified all 18.
+
+| instance | pigeons / holes refuted | new variables | PR clauses | proof (MB) | dpr-trim (s) | cake_lpr (s) |
+|---|---|---|---|---|---|---|
+| mchess_15 | 112 / 111 | 564 | 2,136 | 0.12 | 0.17 | 0.15 |
+| mchess_16 | 127 / 126 | 710 | 2,830 | 0.15 | 0.25 | 0.24 |
+| mchess_17 | 144 / 143 | 821 | 3,379 | 0.18 | 0.33 | 0.33 |
+| mchess_18 | 161 / 160 | 982 | 4,164 | 0.22 | 0.50 | 0.51 |
+| mchess_19 | 180 / 179 | 1,179 | 5,428 | 0.28 | 0.75 | 0.82 |
+| mchess_20 | 199 / 198 | 1,328 | 6,239 | 0.32 | 0.94 | 1.00 |
+| mchess16-mixed-25percent-blocked | 127 / 126 | 691 | 2,677 | 0.19 | 0.40 | 0.22 |
+| mchess16-mixed-35percent-blocked | 127 / 126 | 692 | 2,682 | 0.19 | 0.41 | 0.26 |
+| mchess16-mixed-45percent-blocked | 127 / 126 | 686 | 2,651 | 0.19 | 0.47 | 0.41 |
+| mchess18-mixed-25percent-blocked | 161 / 160 | 1,001 | 4,305 | 0.30 | 1.65 | 0.99 |
+| mchess18-mixed-35percent-blocked | 161 / 160 | 966 | 4,032 | 0.29 | 0.95 | 0.49 |
+| mchess18-mixed-45percent-blocked | 161 / 160 | 1,043 | 4,600 | 0.33 | 1.08 | 0.66 |
+| mchess20-mixed-25percent-blocked | 199 / 198 | 1,399 | 6,895 | 0.47 | 2.21 | 2.00 |
+| mchess20-mixed-35percent-blocked | 199 / 198 | 1,303 | 5,967 | 0.41 | 1.85 | 1.14 |
+| mchess20-mixed-45percent-blocked | 199 / 198 | 1,358 | 6,299 | 0.44 | 2.09 | 1.90 |
+| mchess22-mixed-25percent-blocked | 241 / 240 | 1,783 | 9,302 | 0.63 | 4.30 | 5.19 |
+| mchess22-mixed-35percent-blocked | 241 / 240 | 1,775 | 8,768 | 0.61 | 6.01 | 7.14 |
+| mchess22-mixed-45percent-blocked | 241 / 240 | 1,770 | 8,839 | 0.61 | 6.16 | 7.86 |
+
+- On an even board the two colours keep n²/2 and n²/2 - 2 squares, and the refuted set
+  leaves out one pigeon (127 pigeons and 126 holes for 16 x 16). That set has 16,002
+  pigeon-hole pairs, of which 474 are in the formula.
+- With the completion of 0.4.7 (a new variable for every missing pair) mchess_16 would take
+  666,750 PR clauses and 15,528 new variables. A proof of that kind for
+  mchess16-mixed-35percent-blocked, 31 MB, was stopped after 78 minutes in dpr-trim without
+  a verdict.
+- Generated boards (Apple M4 Pro, one at a time): 32 x 32 in 0.2 s with a 1.7 MB proof that
+  dpr-trim checks in 16 s; 48 x 48 in 0.3 s, 7.1 MB, 158 s; 64 x 64 (2,047 pigeons, 335,834 PR
+  clauses, 28,379 new variables) in 1.1 s, 22 MB, 1,244 s. Checking time grows faster than
+  solving time.
+
+### Cost of the pass (Intel Xeon E5-1650 v2, Linux)
+
+- All 295 instances of sc2026, fresh and fresh2, stopped after the first conflict: the
+  counting step takes at most 0.4 s longer than in 0.4.7, and 2.5 s more summed over all
+  instances (47.5 against 45.0 s; 42.5 s for 0.4.6).
+- Tuning subsets at 300 s, four instances at a time, run with the new detection before the
+  proof change (which acts only where a structure is found): the same 86 of 109 (sc2026) and
+  42 of 57 (fresh) as 0.4.7, with summed times on the solved instances within 1% (ratios 0.999
+  and 0.994).
 
 ## v0.4.7
 

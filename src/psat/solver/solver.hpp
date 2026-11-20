@@ -525,15 +525,18 @@ class Solver {
   // Counting certificates (counting.cpp, --counting): PR refutations of detected pigeonhole,
   // parity and Count^3 systems, before search.
   struct CountingState;
+  struct CountingPlan;
   void counting();
   bool counting_detect(CountingState& st);
   bool counting_certify(CountingState& st);
   bool counting_detect_clique(CountingState& st);
   bool counting_detect_rphp(CountingState& st);
   bool counting_detect_embedded(CountingState& st);
-  bool counting_detect_sparse(CountingState& st);
+  bool counting_detect_sparse(CountingState& st, bool probe);
   bool counting_virtual(CountingState& st);
   bool counting_isolated(CountingState& st);
+  bool counting_isolated_sparse(CountingState& st);
+  void counting_plan(CountingState& st);
   bool counting_add(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
   bool counting_add_unit(CountingState& st, Lit u);
   bool counting_check_pr(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
@@ -551,6 +554,7 @@ class Solver {
   // deletions of an isolated refutation (counting_isolated) cannot name.
   bool input_shortened_ = false;
   bool counting_isolated_ = false;  // this solver refutes an isolated subsystem (no nested search for one)
+  const CountingPlan* counting_plan_ = nullptr;  // ... by elimination, on this structure (no detection)
 
   // --- Gauss-Jordan elimination (gauss.cpp, --gauss) ------------------------------------------
   // The main solver extracts XORs and, if the formula has enough of them, runs a detached solver

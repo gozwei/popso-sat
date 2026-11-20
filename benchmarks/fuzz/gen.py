@@ -397,11 +397,26 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
                 amo_groups.append(row)
         amo_groups += [m for m in in_hole if len(m) > 1]
         name, unsat = f"sphp{pigeons}x{holes}", pigeons > holes
+        if rng.random() < 0.3:  # the holes' at-least-one clauses too: a perfect matching of the graph
+            clauses += [list(m) for m in in_hole if len(m) > 1]
+            name += "+both"
+        if rng.random() < 0.3:  # other exclusions between the pigeons' variables
+            for _ in range(rng.randint(1, 4)):
+                x, y = rng.sample(range(1, nvars + 1), 2)
+                clauses.append([-x, -y])
+            name += "+excl"
         if rng.random() < 0.4:  # unit clauses: a pigeon in a hole (the others lose it), or not in it
             for _ in range(rng.randint(1, 2)):
                 clauses.append([rng.randint(1, nvars) * rng.choice([1, -1])])
             name += "+units"
             unsat = False
+        if rng.random() < 0.3:  # each at-most-one constraint in an encoding of its own
+            nv = nvars + 1
+            for g in amo_groups:
+                nv = _at_most_one(g, clauses, rng.choice(AMO_ENCODINGS), nv)
+            nvars = nv - 1
+            amo_groups = []
+            name += "-mixed"
         if not unsat:
             sat = None  # (a set of pigeons may still have too few holes)
     else:

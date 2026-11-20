@@ -155,7 +155,7 @@ namespace psat {
   X(counting, 1, 0, 1, "counting certificates before search: pigeonhole / parity / Count^3 / clique-colouring get PR clauses (DPR proof)") \
   X(countingeffort, 2000, 1, 1000000, "counting certificates: budget of a structure in millions of work units") \
   X(countingprobe, 0, 0, 1, "counting: also at-most-one constraints over auxiliary variables (exclusions by read-only probing)") \
-  X(countingsparse, 1, 0, 1, "counting: pigeonhole systems on a sparse graph (a pigeon may use only some of the holes): a set of pigeons with fewer holes, found by bipartite matching, is completed to a pigeonhole formula with new variables and refuted in isolation") \
+  X(countingsparse, 2, 0, 2, "counting: pigeonhole systems on a sparse graph (a pigeon may use only some of the holes): a set of pigeons with fewer holes, found by bipartite matching, is refuted in isolation by elimination on the graph (new variables only where a pigeon needs another one's hole); 2: also with at-most-one constraints over auxiliary variables (exclusions by propagation over the binary clauses)") \
   X(countingfault, 0, 0, INT32_MAX, "debugging: the k-th counting PR step gets a wrong witness (its check must refuse it)") \
   X(congruenceclosure, 1, 0, 1, "AND gate congruence to a fixpoint per call (union-find, re-hashing)")   \
   X(congruencerewrite, 0, 0, 1, "congruence closure rewrites degenerate gates instead of dropping them: x + x + R = R in XORs, ITE(c, t, -t) as an XOR, ITE(c, c, e) / ITE(c, t, c) / ITE(c, t, -c) as AND gates") \

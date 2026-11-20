@@ -1,5 +1,84 @@
 # Changelog
 
+## v0.4.8 — 2026-11-20
+
+The pigeonhole certificates on sparse graphs of 0.4.7 recognise more encodings, and their
+proofs are now written on the sparse graph itself, which makes them far shorter and quick to
+check. Where no such system is found the search is the same as in 0.4.7: on four check
+instances, conflicts, decisions, propagations and ticks match exactly after 60,000 conflicts.
+
+Mutilated chessboards (an n x n board without two opposite corners cannot be covered by
+dominoes) are the best-known formulas of this kind. The SAT Competition main tracks of 2018,
+2023, 2024 and 2025 contain 18 of them, from 15 x 15 to 22 x 22 (`sets/mchess.txt`). On the
+Intel Xeon E5-1650 v2 (Linux, 1000 s, four instances at a time):
+
+| | 0.4.8 | 0.4.7 | Kissat 4.0.4 |
+|---|---|---|---|
+| mchess, solved of 18 | 18 | 5 | 9 |
+| mchess, PAR-2 (s) | 0.02 | 1472.1 | 1155.4 |
+
+0.4.8 refutes each of the 18 in at most 0.03 s. Every proof passes dpr-trim and the verified
+checker cake_lpr, in at most 6.2 s and 7.9 s (Intel i7-7700K). This set is not held out: two of
+its instances were development instances of the new pass.
+
+On the fresh2 set (Intel i7-7700K, Linux, 1000 s, four instances at a time):
+
+| | 0.4.8 | 0.4.7 | 0.4.6 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| fresh2, solved of 49 (SAT / UNSAT) | 32 (15 / 17) | 30 (15 / 15) | 27 (15 / 12) | 24 (15 / 9) |
+| fresh2, solved within 300 s | 27 | 25 | 21 | 17 |
+| fresh2, PAR-2 (s) | 790.0 | 872.5 | 1011.8 | 1132.1 |
+
+The two new answers, intervals718 and randomG-B-Mix-n18-d05, were listed as not covered in
+0.4.7 and were development instances of this release, as the four of 0.4.7 were: for the
+randomG and intervals families fresh2 is not a held-out set. All 17 UNSAT proofs were written
+and verified by dpr-trim within the run. See [BENCHMARKS.md](BENCHMARKS.md).
+
+- **More encodings of a sparse pigeonhole** (`--countingsparse=2`, the default; `1` leaves
+  out the exclusions found by unit propagation, the third item):
+  - Pigeons with two holes: at-least-one clauses of two literals, and longer clauses with
+    only two literals left after unit propagation (the squares of a chessboard with two
+    neighbours; intervals718 was missing one such pigeon).
+  - Graphs given with the at-least-one clauses of both sides, so that every variable occurs
+    in two of them (randomG-B, the mutilated chessboard). The graph of these clauses is
+    2-coloured, and each colour class in turn is taken as the pigeons.
+  - At-most-one constraints encoded with auxiliary variables (sequential counters, commander
+    and product encodings): two variables exclude each other if setting one falsifies the
+    other by unit propagation over the binary clauses. The proof derives each such exclusion
+    as a RUP clause first.
+  - Other exclusions between the pigeons' variables, such as blocked clauses added to the
+    formula: a group of variables that is not a clique of exclusions is split into cliques
+    instead of being dropped.
+- **Proofs by elimination on the graph.** 0.4.7 completed the set of m pigeons with m - 1
+  holes to a full pigeonhole formula, with a new variable for every missing pigeon-hole pair,
+  and proof checkers visit every clause of that formula for each PR clause. 0.4.8 keeps the
+  graph sparse:
+  - A round picks a pigeon q and one of its holes h and shows that q may rest in h. Each
+    other pigeon of h gets q's other holes, with a new variable only where it has none. PR
+    clauses then swap that pigeon with q, RUP units empty h for q, and q is placed.
+  - The pair (q, h) is the one with the fewest PR clauses in its round, (r - 1)(c - 1) for a
+    pigeon with r holes and a hole with c pigeons. This is Markowitz's pivot rule from sparse
+    Gaussian elimination, and the new variables are its fill-in. On a complete graph the
+    rounds are those of the pigeonhole certificate of 0.4.0.
+  - Every step is checked by the solver on its own clauses before it is written, as for the
+    other counting certificates, and the proof drops the clauses of a round once they are
+    satisfied.
+  - mchess_16 (127 pigeons, 126 holes, 474 of the 16,002 pairs present): 2,830 PR clauses and
+    710 new variables, a proof of 0.15 MB that dpr-trim checks in 0.3 s. The completed formula
+    would take 666,750 PR clauses and 15,528 new variables. A proof of that kind for
+    mchess16-mixed-35percent-blocked (31 MB) was stopped after 78 minutes in dpr-trim
+    without a verdict.
+  - The proofs of the four fresh2 instances of 0.4.7 shrink as well: intervals122 from
+    91,520 PR clauses to 3,731, and its dpr-trim time from 457 s to 0.8 s.
+- Generated boards up to 64 x 64 (2,047 pigeons) are refuted in about a second. The pass
+  works on boards up to about 90 x 90; checking time grows faster than solving time
+  (dpr-trim: 16 s for 32 x 32, 158 s for 48 x 48 and 1,244 s for 64 x 64 on an Apple M4 Pro).
+- On the 295 instances of sc2026, fresh and fresh2 the pass finds a structure on the six
+  fresh2 instances only. Where it finds none, the counting step takes at most 0.4 s longer
+  than in 0.4.7, and 2.5 s more summed over all instances. On the tuning subsets of sc2026
+  and fresh (300 s) the detection of 0.4.8 solves the same 86 and 42 instances as 0.4.7,
+  with summed times within 1%.
+
 ## v0.4.7 — 2026-11-19
 
 Counting certificates for pigeonhole systems on a sparse graph: each pigeon may use only some of

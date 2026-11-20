@@ -65,7 +65,12 @@
 //   subsystem's clauses runs the pigeonhole plan; the proof then deletes every other clause (the
 //   PR checks see the subsystem only, as in that solver, and do not visit the rest of the formula
 //   for each step) and continues with its refutation. A subset of the clauses is unsatisfiable,
-//   so is the formula.
+//   so is the formula;
+// - a pigeonhole on a sparse graph, also in isolation, by elimination on the graph itself (see
+//   Elimination below): a round lets one pigeon rest in one of its holes, after PR clauses that
+//   swap it with the other pigeons of that hole; those get its other holes, with new variables
+//   where they had none. The steps and the clauses a checker visits for each of them grow with
+//   the fill of the elimination, not with pigeons times holes.
 //
 // Every PR clause C with witness w is checked before it is written. The negation of C is
 // propagated at decision level 1 (assignment A); every clause D that w touches without satisfying
@@ -100,7 +105,7 @@ namespace psat {
 
 namespace {
 
-constexpr int kPigeonhole = 1, kParity = 2, kCount3 = 3, kClique = 4, kRphp = 5;
+constexpr int kPigeonhole = 1, kParity = 2, kCount3 = 3, kClique = 4, kRphp = 5, kElimination = 6;
 
 uint64_t choose2(uint64_t n) { return n < 2 ? 0 : n * (n - 1) / 2; }
 uint64_t choose3(uint64_t n) { return n < 3 ? 0 : n * (n - 1) * (n - 2) / 6; }
@@ -113,7 +118,278 @@ size_t triple_index(uint32_t a, uint32_t b, uint32_t c) {
   return static_cast<size_t>(choose3(c) + choose2(b) + a);
 }
 
+// Refutation of a pigeonhole system on a sparse graph by elimination (the plan; the solver checks
+// and writes its steps). A cell is a (pigeon, hole) pair with a variable; pigeons have at-least-one
+// clauses over their cells, the cells of a hole exclude each other, and there are fewer holes than
+// pigeons. A round picks a pigeon q and one of its holes h, and argues that q rests in h:
+//  - every other pigeon i with a cell a in h gets a cell in each other hole j of q where it has
+//    none: a new variable f, the clauses (-f v -u) for the cells u of j (RAT on -f, which no
+//    clause contains yet), then f joins i's clause (the wider clause is implied; the narrow one is
+//    deleted: a witness may satisfy the wide one by f alone);
+//  - for i's cell a in h and q's cell b in j, the PR clause (-a v -b) with the witness "i and q
+//    swap": {-a, i's cell in j, q's cell in h, -b};
+//  - then -a by RUP for every such a (a pigeon in h leaves q no hole), q's cell in h as a unit (RAT:
+//    every clause with its negation is satisfied), and the negations of q's other cells (RAT: the
+//    only clause with them, q's, is satisfied).
+// What is left is the system without q and h: one pigeon and one hole fewer, the pigeons of h with
+// q's other holes instead. The pivot is the cell with the least (r - 1)(c - 1), r cells of its
+// pigeon and c of its hole (Markowitz's rule of sparse Gaussian elimination: the number of PR
+// clauses of the round, and a bound on its new variables). On a complete graph these are the
+// rounds of the pigeonhole plan above; on a sparse one far fewer steps and clauses: the mutilated
+// chessboard 16 x 16 (127 pigeons, 126 holes, 474 cells) takes 2,964 PR clauses and 723 new
+// variables instead of the 666,750 and 15,528 of the pigeonhole formula on all pairs, and a
+// proof checker visits every live clause for each step (dpr-trim: 0.2 s instead of hours).
+// The plan keeps the root assignment that the solver's unit propagation gives after each unit (a
+// pigeon with one cell left takes it, and the hole's other cells are false), so that its steps
+// name unassigned variables only; it ends when a pigeon has no cell left (the solver's
+// propagation then fails).
+class Elimination {
+ public:
+  // Steps of a round, in a flat list: the code, then its operands (cells).
+  //   kExclude f u: the new cell f excludes u; kWiden p n f1 .. fn: pigeon p's clause gets n new
+  //   cells; kPr a b x q: (-a v -b) with the witness {-a, x, q, -b}; kUnit a: the RUP unit -a;
+  //   kRat l: the RAT unit l (cell * 2 + negated).
+  enum : uint32_t { kExclude, kWiden, kPr, kUnit, kRat };
+  // Pigeon p has the cells [poff[p], poff[p + 1]); hole[c] is the hole of cell c.
+  Elimination(uint32_t pigeons, uint32_t holes, const std::vector<uint32_t>& poff, const std::vector<uint32_t>& hole)
+      : pig_(hole.size()), hole_(hole), state_(hole.size(), 0), role_(hole.size(), 0), rows_(pigeons), cols_(holes),
+        rlive_(pigeons), clive_(holes, 0), rested_(pigeons, 0), at_(holes, kAbsent) {
+    for (uint32_t p = 0; p < pigeons; ++p) {
+      for (uint32_t c = poff[p]; c < poff[p + 1]; ++c) {
+        pig_[c] = p;
+        rows_[p].push_back(c);
+        cols_[hole[c]].push_back(c);
+        ++clive_[hole[c]];
+      }
+      rlive_[p] = poff[p + 1] - poff[p];
+      live_.push_back(p);
+    }
+  }
+  bool done() const { return conflict_ || finished_; }
+  bool refuted() const { return conflict_; }
+  uint32_t cells() const { return static_cast<uint32_t>(pig_.size()); }
+  // Totals so far: PR clauses, units (RUP and RAT), other clauses, and the cells of the holes these
+  // steps look at (for the work estimate); the plan's own work.
+  uint64_t steps_pr = 0, steps_units = 0, steps_lemmas = 0, degree = 0, work = 0;
+
+  void round(std::vector<uint32_t>& ops) {
+    ops.clear();
+    uint64_t best = UINT64_MAX;
+    uint32_t vq = kAbsent;
+    size_t keep = 0;
+    for (const uint32_t p : live_) {
+      if (rested_[p]) continue;
+      live_[keep++] = p;
+      if (!best) continue;
+      compact(rows_[p]);
+      const uint64_t r = rows_[p].size();
+      for (const uint32_t v : rows_[p]) {
+        const uint64_t key = (r - 1) * (clive_[hole_[v]] - 1);
+        if (key < best) {
+          best = key;
+          vq = v;
+        }
+      }
+    }
+    live_.resize(keep);
+    if (vq == kAbsent) {
+      finished_ = true;  // (no pigeon left: not refuted)
+      return;
+    }
+    const uint32_t q = pig_[vq], h = hole_[vq];
+    compact(cols_[h]);
+    compact(rows_[q]);
+    others_.clear();
+    rest_.clear();
+    for (const uint32_t u : cols_[h]) {
+      if (u != vq) others_.push_back(u);
+    }
+    for (const uint32_t v : rows_[q]) {
+      if (v != vq) rest_.push_back(v);
+    }
+    if (!others_.empty() && !rest_.empty()) {
+      for (const uint32_t a : others_) {
+        const uint32_t i = pig_[a];
+        compact(rows_[i]);
+        for (const uint32_t v : rows_[i]) at_[hole_[v]] = v;
+        added_.clear();
+        for (const uint32_t b : rest_) {
+          const uint32_t j = hole_[b];
+          if (at_[j] != kAbsent) continue;
+          const uint32_t f = cells();
+          pig_.push_back(i);
+          hole_.push_back(j);
+          state_.push_back(0);
+          role_.push_back(0);
+          compact(cols_[j]);
+          for (const uint32_t u : cols_[j]) {
+            ops.push_back(kExclude);
+            ops.push_back(f);
+            ops.push_back(u);
+          }
+          steps_lemmas += cols_[j].size();
+          degree += cols_[j].size() * (cols_[j].size() + 1) / 2;
+          cols_[j].push_back(f);
+          ++clive_[j];
+          at_[j] = f;
+          added_.push_back(f);
+        }
+        if (!added_.empty()) {
+          ops.push_back(kWiden);
+          ops.push_back(i);
+          ops.push_back(static_cast<uint32_t>(added_.size()));
+          ops.insert(ops.end(), added_.begin(), added_.end());
+          rows_[i].insert(rows_[i].end(), added_.begin(), added_.end());
+          rlive_[i] += static_cast<uint32_t>(added_.size());
+          ++steps_lemmas;
+        }
+        for (const uint32_t b : rest_) {
+          ops.push_back(kPr);
+          ops.push_back(a);
+          ops.push_back(b);
+          ops.push_back(at_[hole_[b]]);
+          ops.push_back(vq);
+          degree += clive_[h] + clive_[hole_[b]];
+        }
+        steps_pr += rest_.size();
+        for (const uint32_t v : rows_[i]) at_[hole_[v]] = kAbsent;
+        work += rows_[i].size() + 4 * rest_.size();
+      }
+      // The units, with the round's PR clauses in the propagation (role 1: i's cell in h, 2: q's
+      // cell elsewhere; every pair of the two kinds has a clause).
+      for (const uint32_t a : others_) role_[a] = 1;
+      for (const uint32_t b : rest_) role_[b] = 2;
+      for (const uint32_t a : others_) {
+        if (state_[a]) continue;
+        ops.push_back(kUnit);
+        ops.push_back(a);
+        ++steps_units;
+        degree += others_.size() + rest_.size();
+        set_false(a);
+        propagate();
+        if (conflict_) break;
+      }
+      for (const uint32_t a : others_) role_[a] = 0;
+      for (const uint32_t b : rest_) role_[b] = 0;
+    }
+    if (!conflict_ && !state_[vq]) {
+      ops.push_back(kRat);
+      ops.push_back(2 * vq);
+      ++steps_units;
+      degree += others_.size();
+      set_true(vq);
+      propagate();
+    }
+    if (!conflict_) {
+      // Pigeons at rest (q, and those the propagation placed): their other cells are false.
+      for (const uint32_t p : resting_) {
+        for (const uint32_t v : rows_[p]) {
+          if (state_[v]) continue;
+          ops.push_back(kRat);
+          ops.push_back(2 * v + 1);
+          ++steps_units;
+          degree += clive_[hole_[v]];
+          state_[v] = 2;
+          --clive_[hole_[v]];
+          --rlive_[p];
+        }
+        work += rows_[p].size();
+      }
+    }
+    resting_.clear();
+  }
+
+ private:
+  static constexpr uint32_t kAbsent = UINT32_MAX;
+  void compact(std::vector<uint32_t>& cells) {  // the unassigned ones stay
+    size_t keep = 0;
+    work += cells.size();
+    for (const uint32_t c : cells) {
+      if (!state_[c]) cells[keep++] = c;
+    }
+    cells.resize(keep);
+  }
+  void set_false(uint32_t v) {
+    if (state_[v] == 2) return;
+    if (state_[v] == 1) {
+      conflict_ = true;
+      return;
+    }
+    state_[v] = 2;
+    --rlive_[pig_[v]];
+    --clive_[hole_[v]];
+    queue_.push_back(2 * v + 1);
+  }
+  void set_true(uint32_t v) {
+    if (state_[v] == 1) return;
+    if (state_[v] == 2) {
+      conflict_ = true;
+      return;
+    }
+    state_[v] = 1;
+    --rlive_[pig_[v]];
+    --clive_[hole_[v]];
+    if (!rested_[pig_[v]]) {
+      rested_[pig_[v]] = 1;
+      resting_.push_back(pig_[v]);
+    }
+    queue_.push_back(2 * v);
+  }
+  // Unit propagation over the pigeon clauses, the exclusions and the round's PR clauses.
+  void propagate() {
+    while (!queue_.empty() && !conflict_) {
+      const uint32_t x = queue_.back(), v = x >> 1;
+      queue_.pop_back();
+      if (!(x & 1)) {  // true: the hole's other cells are false
+        const std::vector<uint32_t>& col = cols_[hole_[v]];
+        for (size_t k = 0; k < col.size(); ++k) {
+          if (!state_[col[k]]) set_false(col[k]);
+        }
+        work += col.size();
+        if (role_[v] == 1) {
+          for (const uint32_t b : rest_) set_false(b);
+        } else if (role_[v] == 2) {
+          for (const uint32_t a : others_) set_false(a);
+        }
+      } else {  // false: its pigeon may have one cell left, or none
+        const uint32_t p = pig_[v];
+        if (rested_[p]) continue;
+        if (!rlive_[p]) {
+          conflict_ = true;
+        } else if (rlive_[p] == 1) {
+          for (const uint32_t c : rows_[p]) {
+            if (!state_[c]) {
+              set_true(c);
+              break;
+            }
+          }
+          work += rows_[p].size();
+        }
+      }
+    }
+    queue_.clear();
+  }
+
+  std::vector<uint32_t> pig_, hole_;  // per cell
+  std::vector<uint8_t> state_;        // per cell: 0 unassigned, 1 true, 2 false
+  std::vector<uint8_t> role_;
+  std::vector<std::vector<uint32_t>> rows_, cols_;  // cells of a pigeon / hole (the unassigned ones among them count)
+  std::vector<uint32_t> rlive_, clive_;             // unassigned cells
+  std::vector<uint8_t> rested_;                     // per pigeon: has a true cell
+  std::vector<uint32_t> at_;                        // per hole: the cell of the pigeon at hand
+  std::vector<uint32_t> live_, others_, rest_, added_, resting_, queue_;
+  bool conflict_ = false, finished_ = false;
+};
+
 }  // namespace
+
+// The structure a sparse pigeonhole is refuted on by elimination: the cells are the isolated
+// solver's variables 0 .. hole.size() - 1, the plan's new cells the `fresh` variables after them.
+struct Solver::CountingPlan {
+  uint32_t pigeons = 0, holes = 0, fresh = 0;
+  std::vector<uint32_t> poff, hole;
+  uint64_t steps_pr = 0, steps_units = 0;
+};
 
 struct Solver::CountingState {
   int kind = 0;
@@ -133,6 +409,7 @@ struct Solver::CountingState {
   // refutation gives them new variables. The system the violator was found in, for the report.
   bool sparse = false;
   uint32_t missing = 0, graph_pigeons = 0, graph_holes = 0;
+  CountingPlan plan;                       // its refutation by elimination (counting_plan)
   // Virtual exclusions (at-most-one constraints over auxiliary variables), found by probing:
   // vlit[voff[x] .. voff[x + 1]) are literals that x falsifies by propagation.
   bool virt = false;
@@ -939,260 +1216,551 @@ bool Solver::counting_detect_embedded(CountingState& st) {
 }
 
 // Pigeonhole systems on a sparse graph (randomG-n18-d05: 19 pigeons, 18 holes, half of the pairs
-// absent, i.e. no perfect matching of an unbalanced bipartite graph). Pigeons are long clauses
-// whose variables occur in no other long clause; holes are the classes of their literals joined
-// by exclusions (binary clauses) across pigeons, each class a clique with at most one literal of
-// a pigeon; a pigeon may use only some of the holes. Pigeons in a class that is no such clique are
-// dropped, and the classes formed again. A maximum matching of pigeons to holes that leaves a
-// pigeon unmatched gives a Hall violator: the pigeons S reached from it by alternating paths
-// have |S| - 1 holes between them. With a new variable for every absent (pigeon, hole) pair that
-// subsystem is the pigeonhole formula |S| -> |S| - 1, refuted in isolation (counting_isolated).
-// The formula may say anything else: other clauses are ignored here and deleted from the proof.
-bool Solver::counting_detect_sparse(CountingState& st) {
-  const size_t nv = num_vars_;
+// absent, i.e. no perfect matching of an unbalanced bipartite graph).
+//  - Vertex clauses are the candidate pigeons: long clauses whose variables occur in at most two
+//    long clauses, with one polarity, and clauses of two literals that occur in no other clause of
+//    two literals (the squares with two neighbours of a mutilated chessboard). A variable in two
+//    vertex clauses is an edge of a graph given with the at-least-one clauses of both sides
+//    (randomG-B): the clause graph is 2-coloured, and each side in turn gives the pigeons (the
+//    larger side of each component first); components with an odd cycle are left out.
+//  - Exclusions: binary clauses between structure literals of different pigeons, and with `probe`
+//    also pairs where one literal falsifies the other by propagation over the binary clauses
+//    (at-most-one constraints over auxiliary variables; the proof derives them by RUP). The
+//    propagation stops at falsified structure literals: (y v z) of a short pigeon would carry on
+//    from -y to z and its exclusions, in other holes.
+//  - Holes: the classes of structure literals joined by exclusions. A class that is no clique is
+//    split into cliques greedily (the literal with the most exclusions first, then the candidates
+//    with the most exclusions among the candidates): other exclusions between the pigeons'
+//    variables (blocked clauses added to the formula) are no reason to give up. Any partition
+//    into cliques is sound; a coarser one finds more.
+//  - A maximum matching of pigeons to holes that leaves a pigeon unmatched gives a Hall violator:
+//    the pigeons S reached from it by alternating paths have |S| - 1 holes between them. That
+//    subsystem is refuted in isolation by elimination (counting_isolated_sparse), with new
+//    variables only where a pigeon needs another one's hole.
+// Clauses satisfied at the root do not count, and literals false at the root are left out (a unit
+// clause of the input takes a pigeon's hole: the pigeon clause is satisfied, the other pigeons
+// lose the hole). The formula may say anything else: other clauses are ignored here and deleted
+// from the proof.
+bool Solver::counting_detect_sparse(CountingState& st, bool probe) {
+  const size_t nv = num_vars_, nl = 2 * nv;
   constexpr uint32_t kNone = UINT32_MAX;
   const uint64_t cap = st.work + 4 * (arena_.size() + 2 * binaries_irredundant_) + 8'000'000;
-  // 1. Candidate pigeons: long clauses with three or more unassigned literals, whose variables
-  //    occur in no other long clause. Clauses satisfied at the root do not count, and literals
-  //    false at the root are left out (a unit clause of the input takes a pigeon's hole: the
-  //    pigeon clause is satisfied, the other pigeons lose the hole). The literals of candidate i
-  //    are clits[coff[i] .. coff[i + 1]).
-  auto satisfied = [this](const Clause& c) {
+  // 1. Vertex clauses. The unassigned literals of vertex clause i are clits[coff[i] .. coff[i + 1]);
+  //    cref[i] is its clause, or none for a binary clause. The long ones come first.
+  auto unassigned = [this](const Clause& c) {  // the number of unassigned literals; 0 if satisfied
+    uint32_t n = 0;
     for (uint32_t k = 0; k < c.size; ++k) {
-      if (vals_[c.lits()[k]] > 0) return true;
+      const int8_t v = vals_[c.lits()[k]];
+      if (v > 0) return 0u;
+      n += !v;
     }
-    return false;
+    return n;
   };
-  std::vector<uint8_t> mult(nv, 0);
+  std::vector<uint8_t> mult(nv, 0), pol(nv, 0);  // long clauses of a variable (up to 3), its polarities there
+  std::vector<uint32_t> two, more;               // long clauses with two unassigned literals, with more
   for (const uint32_t ref : clauses_) {
     const Clause& c = clause(ref);
     if (c.garbage || c.redundant) continue;
     st.work += c.size / 4 + 1;
-    if (satisfied(c)) continue;
+    const uint32_t n = unassigned(c);
+    if (n < 2) continue;
+    if (n == 2) {
+      two.push_back(ref);
+      continue;
+    }
+    more.push_back(ref);
     for (uint32_t k = 0; k < c.size; ++k) {
-      if (vals_[c.lits()[k]]) continue;
-      uint8_t& m = mult[var_of(c.lits()[k])];
-      if (m < 2) ++m;
+      const Lit l = c.lits()[k];
+      if (vals_[l]) continue;
+      uint8_t& m = mult[var_of(l)];
+      if (m < 3) ++m;
+      pol[var_of(l)] |= is_negative(l) ? 2 : 1;
     }
   }
-  std::vector<uint32_t> cand, coff(1, 0), owner(nv, kNone);
-  std::vector<Lit> clits, slit(nv, kNoLit);  // slit: the structure literal of a variable
-  for (const uint32_t ref : clauses_) {
+  std::vector<uint32_t> cref, coff(1, 0);
+  std::vector<Lit> clits;
+  for (const uint32_t ref : more) {
     const Clause& c = clause(ref);
-    if (c.garbage || c.redundant || satisfied(c)) continue;
     const size_t start = clits.size();
     bool ok = true;
     for (uint32_t k = 0; k < c.size && ok; ++k) {
       const Lit l = c.lits()[k];
       if (vals_[l]) continue;
-      ok = mult[var_of(l)] == 1;
+      ok = mult[var_of(l)] <= 2 && pol[var_of(l)] != 3;
       clits.push_back(l);
     }
-    if (!ok || clits.size() - start < 3) {
+    if (!ok) {
       clits.resize(start);
       continue;
     }
-    for (size_t k = start; k < clits.size(); ++k) {
-      owner[var_of(clits[k])] = static_cast<uint32_t>(cand.size());
-      slit[var_of(clits[k])] = clits[k];
-    }
-    cand.push_back(ref);
+    cref.push_back(ref);
     coff.push_back(static_cast<uint32_t>(clits.size()));
   }
-  st.work += clauses_.size() / 4 + nv / 16;
-  if (cand.size() < 3 || st.work > cap) return false;
-  // 2. Holes: classes of structure literals joined by exclusions across pigeons.
-  std::vector<uint8_t> dead(cand.size(), 0);
-  auto find = [](std::vector<uint32_t>& up, uint32_t v) {
-    while (up[v] != v) v = up[v] = up[up[v]];
+  st.work += more.size() / 2 + nv / 16;
+  const auto nlong = static_cast<uint32_t>(cref.size());
+  if (nlong < 3 || st.work > cap) return false;
+  // Short vertex clauses (y v z): y and z occur in no other clause of two literals, and their
+  // variables in at most one long clause, there with the same polarity. Where the long vertex
+  // clauses have literals of one sign only, so have the short ones (the binary clauses of a
+  // sequential counter are no pigeons). Two short vertex clauses with y and -y end up on
+  // different sides below.
+  {
+    uint8_t sign = 3;  // of the long vertex clauses' literals: 1 positive, 2 negative, 0 both
+    for (const Lit l : clits) sign &= is_negative(l) ? 2 : 1;
+    auto fits = [&](Lit l) {  // (but for the other clauses of two literals)
+      const Var v = var_of(l);
+      if (vals_[l] || (sign && sign != (is_negative(l) ? 2 : 1))) return false;
+      return mult[v] <= 1 && !(pol[v] & (is_negative(l) ? 1 : 2));
+    };
+    auto add = [&](Lit a, Lit b, uint32_t ref) {
+      clits.push_back(a);
+      clits.push_back(b);
+      cref.push_back(ref);
+      coff.push_back(static_cast<uint32_t>(clits.size()));
+    };
+    // The unassigned literals of the long clauses with two of them, sorted.
+    std::vector<Lit> twolits;
+    for (const uint32_t ref : two) {
+      const Clause& c = clause(ref);
+      for (uint32_t k = 0; k < c.size; ++k) {
+        if (!vals_[c.lits()[k]]) twolits.push_back(c.lits()[k]);
+      }
+    }
+    std::sort(twolits.begin(), twolits.end());
+    auto in_two = [&](Lit l) {
+      const auto r = std::equal_range(twolits.begin(), twolits.end(), l);
+      return static_cast<size_t>(r.second - r.first);
+    };
+    // Literals with one binary clause: (literal, the other one), ascending.
+    std::vector<std::pair<Lit, Lit>> single;
+    for (Lit l = 0; l < nl; ++l) {
+      if (!fits(l)) continue;
+      uint32_t n = 0, seen = 0;
+      Lit other = kNoLit;
+      for (const Watch& w : watches_[l]) {
+        ++seen;
+        if (!w.binary() || w.redundant_binary() || vals_[w.blit]) continue;
+        other = w.blit;
+        if (++n > 1) break;
+      }
+      st.work += seen / 4 + 1;
+      if (n == 1 && !in_two(l)) single.emplace_back(l, other);
+    }
+    if (st.work > cap) return false;
+    for (const auto& s : single) {
+      if (s.first < s.second && var_of(s.first) != var_of(s.second) &&
+          std::binary_search(single.begin(), single.end(), std::make_pair(s.second, s.first))) {
+        add(s.first, s.second, kNone);
+      }
+    }
+    auto no_binary = [&](Lit l) {
+      for (const Watch& w : watches_[l]) {
+        if (w.binary() && !w.redundant_binary() && !vals_[w.blit]) return false;
+      }
+      return true;
+    };
+    for (const uint32_t ref : two) {
+      const Clause& c = clause(ref);
+      Lit ab[2] = {kNoLit, kNoLit};
+      uint32_t n = 0;
+      for (uint32_t k = 0; k < c.size && n < 2; ++k) {
+        if (!vals_[c.lits()[k]]) ab[n++] = c.lits()[k];
+      }
+      if (var_of(ab[0]) == var_of(ab[1]) || !fits(ab[0]) || !fits(ab[1])) continue;
+      if (in_two(ab[0]) != 1 || in_two(ab[1]) != 1 || !no_binary(ab[0]) || !no_binary(ab[1])) continue;
+      add(ab[0], ab[1], ref);
+    }
+    st.work += single.size() + 4 * two.size();
+  }
+  const auto nvert = static_cast<uint32_t>(cref.size());
+  // 2. The clause graph (vertex clauses sharing a variable) and its 2-colouring. side[i]: 0 or 1,
+  //    2 in a component with an odd cycle.
+  std::vector<uint8_t> side(nvert, 3);
+  std::vector<uint32_t> queue;
+  bool two_sided = false;
+  {
+    std::vector<uint32_t> first(nv, kNone), second(nv, kNone);
+    for (uint32_t i = 0; i < nvert; ++i) {
+      for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
+        const Var v = var_of(clits[k]);
+        (first[v] == kNone ? first[v] : second[v]) = i;
+      }
+    }
+    for (uint32_t s = 0; s < nvert; ++s) {
+      if (side[s] != 3) continue;
+      queue.assign(1, s);
+      side[s] = 0;
+      bool odd = false;
+      uint32_t zeros = 0;
+      for (size_t at = 0; at < queue.size(); ++at) {
+        const uint32_t i = queue[at];
+        zeros += side[i] == 0;
+        for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
+          const Var v = var_of(clits[k]);
+          const uint32_t j = first[v] == i ? second[v] : first[v];
+          if (j == kNone) continue;
+          if (side[j] == 3) {
+            side[j] = side[i] ^ 1;
+            queue.push_back(j);
+          } else if (side[j] == side[i]) {
+            odd = true;
+          }
+        }
+        st.work += coff[i + 1] - coff[i];
+      }
+      const bool flip = 2 * zeros < queue.size();  // (side 0: the larger one)
+      for (const uint32_t i : queue) side[i] = odd ? 2 : side[i] ^ (flip ? 1 : 0);
+      two_sided = two_sided || (!odd && queue.size() > 1);
+    }
+    st.work += nv / 8;
+  }
+  if (st.work > cap) return false;
+  // 3. Each side in turn: exclusions, holes, a maximum matching, a Hall violator; first with the
+  //    exclusions of binary clauses, then with those found by probing too. The structure
+  //    literals of a side are numbered pigeon by pigeon: those of pigeon p are
+  //    slits[poff[p] .. poff[p + 1]), and rank[v] is the number of the one on variable v.
+  std::vector<uint32_t> rank(nv, kNone);
+  std::vector<uint32_t> pig, poff, ownr, hole, parent, degree, stamp, xoff, xadj;
+  std::vector<Lit> slits, trail;
+  std::vector<uint8_t> alive;
+  std::vector<std::pair<uint32_t, uint32_t>> edges;  // exclusions, between structure literals, both ways
+  std::vector<std::pair<Lit, Lit>> virt;             // those found by probing
+  std::vector<int8_t> val;
+  uint32_t now = 0, np = 0, ns = 0;
+  auto find = [&](uint32_t v) {
+    while (parent[v] != v) v = parent[v] = parent[parent[v]];
     return v;
   };
-  // The structure literals of other live pigeons that x excludes (duplicates included).
-  auto exclusions = [&](Lit x, auto&& visit) {
-    const uint32_t mine = owner[var_of(x)];
-    for (const Watch& w : watches_[negate(x)]) {
-      if (!w.binary() || w.redundant_binary()) continue;
-      const Var u = var_of(w.blit);
-      if (owner[u] == kNone || owner[u] == mine || dead[owner[u]] || slit[u] != negate(w.blit)) continue;
-      visit(u);
+  // Holes, matching and violator with the exclusions in `edges`: 1 found (st is filled), 0 not,
+  // -1 out of budget.
+  auto attempt = [&]() -> int {
+    std::sort(edges.begin(), edges.end());
+    edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
+    st.work += edges.size();
+    xoff.assign(ns + 1, 0);
+    for (const auto& e : edges) ++xoff[e.first + 1];
+    for (uint32_t v = 0; v < ns; ++v) xoff[v + 1] += xoff[v];
+    xadj.resize(edges.size());
+    for (size_t i = 0; i < edges.size(); ++i) xadj[i] = edges[i].second;
+    // A short pigeon needs an exclusion with a long pigeon's literal (others are no part of this).
+    alive.assign(np, 1);
+    for (uint32_t p = 0; p < np; ++p) {
+      if (pig[p] < nlong) continue;
+      bool any = false;
+      for (uint32_t v = poff[p]; v < poff[p + 1] && !any; ++v) {
+        for (uint32_t e = xoff[v]; e < xoff[v + 1] && !any; ++e) any = pig[ownr[xadj[e]]] < nlong;
+      }
+      alive[p] = any;
     }
-    st.work += watches_[negate(x)].size() / 4 + 1;
-  };
-  std::vector<uint32_t> parent(nv), hole(nv, kNone), hole_size, stamp(nv, 0), seen, kill;
-  std::vector<uint8_t> bad;
-  uint32_t holes = 0, now = 0;
-  for (int round = 0;; ++round) {
+    // Holes: classes of the exclusion graph, split into cliques where they are none.
+    parent.resize(ns);
     std::iota(parent.begin(), parent.end(), 0u);
-    std::fill(hole.begin(), hole.end(), kNone);
-    st.work += nv / 8;
-    for (uint32_t i = 0; i < cand.size(); ++i) {
-      if (dead[i]) continue;
-      for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
-        const Var v = var_of(clits[k]);
-        exclusions(clits[k], [&](Var u) { parent[find(parent, u)] = find(parent, v); });
-      }
-      if (st.work > cap) return false;
+    for (const auto& e : edges) {
+      if (e.first < e.second && alive[ownr[e.first]] && alive[ownr[e.second]]) parent[find(e.first)] = find(e.second);
     }
-    holes = 0;
-    hole_size.clear();
-    for (uint32_t i = 0; i < cand.size(); ++i) {
-      if (dead[i]) continue;
-      for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
-        const Var v = var_of(clits[k]);
-        const uint32_t r = find(parent, v);
-        if (hole[r] == kNone) {
-          hole[r] = holes++;
-          hole_size.push_back(0);
+    std::vector<uint32_t> members;  // the live structure literals, by class
+    {
+      std::vector<uint32_t> start(ns + 1, 0);
+      uint32_t count = 0;
+      for (uint32_t v = 0; v < ns; ++v) {
+        if (!alive[ownr[v]]) continue;
+        ++start[find(v) + 1];
+        ++count;
+      }
+      for (uint32_t v = 0; v < ns; ++v) start[v + 1] += start[v];
+      members.resize(count);
+      for (uint32_t v = 0; v < ns; ++v) {
+        if (alive[ownr[v]]) members[start[find(v)]++] = v;
+      }
+      st.work += 2 * ns;
+    }
+    hole.assign(ns, kNone);
+    degree.assign(ns, 0);
+    stamp.assign(ns, 0);
+    now = 0;
+    uint32_t holes = 0;
+    std::vector<uint32_t> cs, next, chosen;
+    for (size_t a = 0; a < members.size();) {
+      size_t b = a;
+      const uint32_t root = find(members[a]);
+      while (b < members.size() && find(members[b]) == root) ++b;
+      const size_t size = b - a;
+      bool clique = true;
+      for (size_t i = a; i < b; ++i) {
+        const uint32_t v = members[i];
+        uint32_t d = 0;
+        for (uint32_t e = xoff[v]; e < xoff[v + 1]; ++e) d += alive[ownr[xadj[e]]];
+        degree[v] = d;
+        clique = clique && d + 1 == size;
+        st.work += xoff[v + 1] - xoff[v] + 1;
+      }
+      if (clique) {
+        for (size_t i = a; i < b; ++i) hole[members[i]] = holes;
+        ++holes;
+        a = b;
+        continue;
+      }
+      if (size > 4096) return 0;
+      // (In the order of the exclusions within the class, most first.)
+      std::sort(members.begin() + static_cast<std::ptrdiff_t>(a), members.begin() + static_cast<std::ptrdiff_t>(b),
+                [&](uint32_t x, uint32_t y) { return degree[x] != degree[y] ? degree[x] > degree[y] : x < y; });
+      st.work += size;
+      for (size_t i = a; i < b; ++i) {
+        const uint32_t v = members[i];
+        if (hole[v] != kNone) continue;
+        // The clique of v: of the unassigned literals it excludes, the one with the most
+        // exclusions among them, then the same among those that one excludes too, and so on.
+        cs.clear();
+        for (uint32_t e = xoff[v]; e < xoff[v + 1]; ++e) {
+          const uint32_t u = xadj[e];
+          if (alive[ownr[u]] && hole[u] == kNone) cs.push_back(u);
         }
-        hole[v] = hole[r];
-        ++hole_size[hole[v]];
+        chosen.assign(1, v);
+        while (!cs.empty()) {
+          ++now;
+          for (const uint32_t u : cs) stamp[u] = now;
+          uint32_t best = kNone, most = 0;
+          for (const uint32_t u : cs) {
+            uint32_t d = 0;
+            for (uint32_t e = xoff[u]; e < xoff[u + 1]; ++e) d += stamp[xadj[e]] == now;
+            st.work += xoff[u + 1] - xoff[u] + 1;
+            if (best == kNone || d > most) {
+              best = u;
+              most = d;
+            }
+          }
+          chosen.push_back(best);
+          next.clear();
+          for (uint32_t e = xoff[best]; e < xoff[best + 1]; ++e) {
+            if (stamp[xadj[e]] == now) next.push_back(xadj[e]);
+          }
+          cs.swap(next);
+        }
+        for (const uint32_t u : chosen) hole[u] = holes;
+        ++holes;
+        if (st.work > cap) return -1;
       }
+      a = b;
     }
-    // A hole takes at most one literal of a pigeon, and its literals exclude each other.
-    bad.assign(holes, 0);
-    seen.assign(holes, kNone);
-    for (uint32_t i = 0; i < cand.size(); ++i) {
-      if (dead[i]) continue;
-      for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
-        const Var v = var_of(clits[k]);
+    if (st.work > cap) return -1;
+    // A maximum matching of the live pigeons to holes: greedy, then augmenting paths
+    // (breadth-first).
+    std::vector<uint32_t> match_hole(holes, kNone), match_pig(np, kNone);
+    uint32_t live = 0;
+    for (uint32_t p = 0; p < np; ++p) {
+      if (!alive[p]) continue;
+      ++live;
+      for (uint32_t v = poff[p]; v < poff[p + 1]; ++v) {
         const uint32_t h = hole[v];
-        if (seen[h] == i) bad[h] = 1;
-        seen[h] = i;
-        ++now;
-        uint32_t count = 0;
-        exclusions(clits[k], [&](Var u) {
-          if (hole[u] != h || stamp[u] == now) return;
-          stamp[u] = now;
-          ++count;
-        });
-        if (count + 1 != hole_size[h]) bad[h] = 1;
-      }
-      if (st.work > cap) return false;
-    }
-    kill.clear();
-    for (uint32_t i = 0; i < cand.size(); ++i) {
-      if (dead[i]) continue;
-      for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
-        if (!bad[hole[var_of(clits[k])]]) continue;
-        kill.push_back(i);
+        if (match_hole[h] != kNone) continue;
+        match_hole[h] = p;
+        match_pig[p] = h;
         break;
       }
+      st.work += (poff[p + 1] - poff[p]) / 4 + 1;
     }
-    if (kill.empty()) break;
-    if (round == 3) return false;
-    for (const uint32_t i : kill) dead[i] = 1;
-  }
-  std::vector<uint32_t> pig;  // the live pigeons
-  for (uint32_t i = 0; i < cand.size(); ++i) {
-    if (!dead[i]) pig.push_back(i);
-  }
-  const auto np = static_cast<uint32_t>(pig.size());
-  if (np < 3) return false;
-  // 3. A maximum matching of pigeons to holes: greedy, then augmenting paths (breadth-first).
-  std::vector<uint32_t> match_hole(holes, kNone), match_pig(np, kNone);
-  auto hole_at = [&](uint32_t p, uint32_t k) { return hole[var_of(clits[coff[pig[p]] + k])]; };
-  auto size_of = [&](uint32_t p) { return coff[pig[p] + 1] - coff[pig[p]]; };
-  for (uint32_t p = 0; p < np; ++p) {
-    for (uint32_t k = 0; k < size_of(p); ++k) {
-      const uint32_t h = hole_at(p, k);
-      if (match_hole[h] != kNone) continue;
-      match_hole[h] = p;
-      match_pig[p] = h;
-      break;
-    }
-    st.work += size_of(p) / 4 + 1;
-  }
-  std::vector<uint32_t> pstamp(np, 0), hstamp(holes, 0), reached(holes, kNone), queue, best_pigeons, best_holes, hs;
-  uint32_t run = 0;
-  // The pigeons and holes reached from p0 by alternating paths; true if a free hole ended one
-  // (then the matching grew by one).
-  auto search = [&](uint32_t p0) {
-    ++run;
-    queue.assign(1, p0);
-    hs.clear();
-    pstamp[p0] = run;
-    for (size_t at = 0; at < queue.size(); ++at) {
-      const uint32_t q = queue[at];
-      st.work += size_of(q) + 1;
-      for (uint32_t k = 0; k < size_of(q); ++k) {
-        const uint32_t h = hole_at(q, k);
-        if (hstamp[h] == run) continue;
-        hstamp[h] = run;
-        reached[h] = q;
-        hs.push_back(h);
-        const uint32_t m = match_hole[h];
-        if (m == kNone) {  // augment along the path back to p0
-          for (uint32_t hh = h, pp = q;;) {
-            const uint32_t before = match_pig[pp];
-            match_hole[hh] = pp;
-            match_pig[pp] = hh;
-            if (pp == p0) break;
-            hh = before;
-            pp = reached[hh];
+    if (live < 3) return 0;
+    std::vector<uint32_t> pstamp(np, 0), hstamp(holes, 0), reached(holes, kNone), best_pigeons, best_holes, hs;
+    uint32_t run = 0;
+    // The pigeons and holes reached from p0 by alternating paths; true if a free hole ended one
+    // (then the matching grew by one).
+    auto search = [&](uint32_t p0) {
+      ++run;
+      queue.assign(1, p0);
+      hs.clear();
+      pstamp[p0] = run;
+      for (size_t at = 0; at < queue.size(); ++at) {
+        const uint32_t q = queue[at];
+        st.work += poff[q + 1] - poff[q] + 1;
+        for (uint32_t v = poff[q]; v < poff[q + 1]; ++v) {
+          const uint32_t h = hole[v];
+          if (hstamp[h] == run) continue;
+          hstamp[h] = run;
+          reached[h] = q;
+          hs.push_back(h);
+          const uint32_t m = match_hole[h];
+          if (m == kNone) {  // augment along the path back to p0
+            for (uint32_t hh = h, pp = q;;) {
+              const uint32_t before = match_pig[pp];
+              match_hole[hh] = pp;
+              match_pig[pp] = hh;
+              if (pp == p0) break;
+              hh = before;
+              pp = reached[hh];
+            }
+            return true;
           }
-          return true;
-        }
-        if (pstamp[m] != run) {
-          pstamp[m] = run;
-          queue.push_back(m);
+          if (pstamp[m] != run) {
+            pstamp[m] = run;
+            queue.push_back(m);
+          }
         }
       }
+      return false;
+    };
+    for (uint32_t p = 0; p < np; ++p) {
+      if (!alive[p] || match_pig[p] != kNone) continue;
+      search(p);
+      if (st.work > cap) return -1;
     }
-    return false;
+    // The smallest Hall violator among those of the first unmatched pigeons. (Three holes or
+    // more: then a pigeon of two literals has an absent pair, and its clause is replaced.)
+    uint32_t tried = 0;
+    for (uint32_t p = 0; p < np && tried < 16; ++p) {
+      if (!alive[p] || match_pig[p] != kNone) continue;
+      ++tried;
+      if (search(p)) return -1;  // (cannot happen: the matching is maximum)
+      if (st.work > cap) return -1;
+      if (queue.size() != hs.size() + 1) return -1;
+      if (hs.size() < 3) continue;
+      if (best_pigeons.empty() || queue.size() < best_pigeons.size()) {
+        best_pigeons = queue;
+        best_holes = hs;
+      }
+    }
+    if (best_pigeons.empty()) return 0;  // every pigeon has a hole
+    const auto pigeons = static_cast<uint32_t>(best_pigeons.size()), nholes = static_cast<uint32_t>(best_holes.size());
+    if (uint64_t{pigeons} * nholes > (uint64_t{1} << 24)) return 0;
+    std::sort(best_pigeons.begin(), best_pigeons.end());
+    std::sort(best_holes.begin(), best_holes.end());
+    std::vector<uint32_t> local(holes, kNone);
+    for (uint32_t i = 0; i < nholes; ++i) local[best_holes[i]] = i;
+    st.cell.assign(size_t{pigeons} * nholes, kNoLit);
+    for (uint32_t i = 0; i < pigeons; ++i) {
+      const uint32_t p = best_pigeons[i];
+      st.longs.push_back(cref[pig[p]]);
+      for (uint32_t v = poff[p]; v < poff[p + 1]; ++v) {
+        st.cell[size_t{i} * nholes + local[hole[v]]] = slits[v];
+        st.vars.push_back(var_of(slits[v]));
+      }
+    }
+    std::sort(st.vars.begin(), st.vars.end());
+    if (!virt.empty()) {
+      std::sort(virt.begin(), virt.end());
+      virt.erase(std::unique(virt.begin(), virt.end()), virt.end());
+      st.voff.assign(nl + 1, 0);
+      for (const auto& pr : virt) ++st.voff[pr.first + 1];
+      for (size_t l = 0; l < nl; ++l) st.voff[l + 1] += st.voff[l];
+      st.vlit.resize(virt.size());
+      for (size_t i = 0; i < virt.size(); ++i) st.vlit[i] = virt[i].second;
+      st.virt = true;
+      st.work += virt.size();
+    }
+    st.missing = static_cast<uint32_t>(std::count(st.cell.begin(), st.cell.end(), kNoLit));
+    st.kind = kPigeonhole;
+    st.embedded = true;
+    st.sparse = true;
+    st.pigeons = pigeons;
+    st.holes = nholes;
+    st.k = 1;
+    st.graph_pigeons = live;
+    st.graph_holes = holes;
+    return 1;  // (the steps and the work estimate: counting_plan)
   };
-  for (uint32_t p = 0; p < np; ++p) {
-    if (match_pig[p] != kNone) continue;
-    search(p);
-    if (st.work > cap) return false;
-  }
-  // 4. The smallest Hall violator among those of the first unmatched pigeons.
-  uint32_t tried = 0;
-  for (uint32_t p = 0; p < np && tried < 16; ++p) {
-    if (match_pig[p] != kNone) continue;
-    ++tried;
-    if (search(p)) return false;  // (cannot happen: the matching is maximum)
-    if (st.work > cap) return false;
-    if (queue.size() != hs.size() + 1) return false;
-    if (best_pigeons.empty() || queue.size() < best_pigeons.size()) {
-      best_pigeons = queue;
-      best_holes = hs;
+  // One side: 1 found, 0 not, -1 out of budget.
+  auto run_side = [&]() -> int {
+    // Exclusions by binary clauses.
+    edges.clear();
+    virt.clear();
+    for (uint32_t x = 0; x < ns; ++x) {
+      const Lit nx = negate(slits[x]);
+      for (const Watch& w : watches_[nx]) {
+        if (!w.binary() || w.redundant_binary()) continue;
+        const uint32_t u = rank[var_of(w.blit)];
+        if (u == kNone || ownr[u] == ownr[x] || slits[u] != negate(w.blit)) continue;
+        edges.emplace_back(x, u);
+      }
+      st.work += watches_[nx].size() / 4 + 1;
+      if (st.work > cap || edges.size() > 8'000'000) return -1;
     }
-  }
-  if (best_pigeons.empty() || best_holes.empty()) return false;  // every pigeon has a hole
-  const auto pigeons = static_cast<uint32_t>(best_pigeons.size()), nholes = static_cast<uint32_t>(best_holes.size());
-  if (uint64_t{pigeons} * nholes > (uint64_t{1} << 24)) return false;
-  std::sort(best_pigeons.begin(), best_pigeons.end());
-  std::sort(best_holes.begin(), best_holes.end());
-  std::vector<uint32_t> local(holes, kNone);
-  for (uint32_t i = 0; i < nholes; ++i) local[best_holes[i]] = i;
-  st.cell.assign(size_t{pigeons} * nholes, kNoLit);
-  for (uint32_t i = 0; i < pigeons; ++i) {
-    const uint32_t ci = pig[best_pigeons[i]];
-    st.longs.push_back(cand[ci]);
-    for (uint32_t k = coff[ci]; k < coff[ci + 1]; ++k) {
-      const Lit x = clits[k];
-      st.cell[size_t{i} * nholes + local[hole[var_of(x)]]] = x;
-      st.vars.push_back(var_of(x));
+    if (!edges.empty()) {  // (else no hole has two pigeons)
+      const int r = attempt();
+      if (r) return r;
     }
+    if (!probe) return 0;
+    // Exclusions by probing: each structure literal is propagated over the binary clauses; a
+    // literal that falsifies a structure literal is recorded and not followed. Given up after
+    // 256 probes without any, and within a budget of its own (a probe through a sequential
+    // counter of m literals costs m: 4M covers 126 holes of 127 pigeons each).
+    if (val.empty()) val.assign(vals_.begin(), vals_.end());
+    const uint64_t probe_cap = std::min(cap, st.work + (arena_.size() + 2 * binaries_irredundant_) / 32 + 4'000'000);
+    stamp.assign(ns, 0);
+    now = 0;
+    for (uint32_t x = 0; x < ns; ++x) {
+      if (x == 256 && virt.empty()) return 0;
+      const Lit lx = slits[x];
+      trail.assign(1, lx);
+      val[lx] = 1;
+      val[negate(lx)] = -1;
+      bool conflict = false;
+      size_t leaves = 0;
+      for (size_t head = 0; head < trail.size() && !conflict && trail.size() < 4096; ++head) {
+        const Lit t = trail[head];
+        const uint32_t r = rank[var_of(t)];
+        if (head && r != kNone && slits[r] == negate(t)) {
+          ++leaves;
+          continue;
+        }
+        const Lit f = negate(t);
+        for (const Watch& w : watches_[f]) {  // binary clauses (f v b): b
+          if (!w.binary() || w.redundant_binary()) continue;
+          const int8_t v = val[w.blit];
+          if (v > 0) continue;
+          if (v < 0) {
+            conflict = true;
+            break;
+          }
+          val[w.blit] = 1;
+          val[negate(w.blit)] = -1;
+          trail.push_back(w.blit);
+        }
+        st.work += watches_[f].size() / 4 + 1;
+      }
+      if (!conflict && leaves) {
+        ++now;
+        for (const Watch& w : watches_[negate(lx)]) {  // (excluded by a binary clause: known)
+          if (!w.binary() || w.redundant_binary()) continue;
+          const uint32_t u = rank[var_of(w.blit)];
+          if (u != kNone) stamp[u] = now;
+        }
+        for (size_t m = 1; m < trail.size(); ++m) {
+          const uint32_t u = rank[var_of(trail[m])];
+          if (u == kNone || ownr[u] == ownr[x] || slits[u] != negate(trail[m]) || stamp[u] == now) continue;
+          edges.emplace_back(x, u);
+          edges.emplace_back(u, x);
+          virt.emplace_back(lx, slits[u]);
+          virt.emplace_back(slits[u], lx);
+        }
+      }
+      for (const Lit t : trail) val[t] = val[negate(t)] = 0;
+      if (st.work > probe_cap || edges.size() > 8'000'000) return st.work > cap ? -1 : 0;
+    }
+    if (virt.empty()) return 0;  // (the same exclusions as before)
+    return attempt();
+  };
+  for (uint8_t which = 0; which < (two_sided ? 2 : 1); ++which) {
+    pig.clear();
+    poff.assign(1, 0);
+    slits.clear();
+    ownr.clear();
+    for (uint32_t i = 0; i < nvert; ++i) {
+      if (side[i] != which) continue;
+      for (uint32_t k = coff[i]; k < coff[i + 1]; ++k) {
+        rank[var_of(clits[k])] = static_cast<uint32_t>(slits.size());
+        slits.push_back(clits[k]);
+        ownr.push_back(static_cast<uint32_t>(pig.size()));
+      }
+      pig.push_back(i);
+      poff.push_back(static_cast<uint32_t>(slits.size()));
+    }
+    np = static_cast<uint32_t>(pig.size());
+    ns = static_cast<uint32_t>(slits.size());
+    st.work += nvert / 4 + ns;
+    const int r = np < 3 ? 0 : run_side();
+    if (r) return r > 0;
+    for (const Lit l : slits) rank[var_of(l)] = kNone;
   }
-  std::sort(st.vars.begin(), st.vars.end());
-  st.missing = static_cast<uint32_t>(std::count(st.cell.begin(), st.cell.end(), kNoLit));
-  st.kind = kPigeonhole;
-  st.embedded = true;
-  st.sparse = true;
-  st.pigeons = pigeons;
-  st.holes = nholes;
-  st.k = 1;
-  st.graph_pigeons = np;
-  st.graph_holes = holes;
-  st.all_vars = st.cell.size();
-  for (uint64_t m = 1; m <= nholes; ++m) {
-    st.steps_pr += m * (m - 1);
-    st.steps_units += m;
-  }
-  st.degree_sum = uint64_t{nholes} * st.all_vars;  // (in the completed subsystem: about one per pigeon)
-  st.long_sum = uint64_t{nholes} * st.all_vars;
-  return true;
+  return false;
 }
 
 // Refutes the embedded subsystem on its own: a solver on its pigeon clauses and its at-most-one
@@ -1201,21 +1769,12 @@ bool Solver::counting_detect_sparse(CountingState& st) {
 // continues with the isolated solver's proof, which ends with the empty clause. Refuting a subset
 // of the clauses refutes the formula. Otherwise nothing is written.
 bool Solver::counting_isolated(CountingState& st) {
+  if (st.sparse) return counting_isolated_sparse(st);
   const uint32_t holes = st.holes, pigeons = st.pigeons;
   // The isolated solver's variable of a cell is the cell's index (pigeon * holes + hole).
   std::vector<uint32_t> where(num_vars_, UINT32_MAX);
   std::vector<Lit> to_main;
-  // Sparse pigeonhole: a cell without a variable gets a new one, above the solver's variables (in
-  // the isolated solver and in the proof only: this solver ends here if the refutation succeeds,
-  // and nothing is written if it does not).
-  Var fresh = num_vars_;
   for (uint32_t i = 0; i < pigeons * holes; ++i) {
-    if (st.cell[i] == kNoLit) {
-      to_main.push_back(make_lit(fresh, false));
-      to_main.push_back(make_lit(fresh, true));
-      ++fresh;
-      continue;
-    }
     const Var v = var_of(st.cell[i]);
     if (where[v] != UINT32_MAX) {
       st.failure = "variable in two cells";
@@ -1227,17 +1786,11 @@ bool Solver::counting_isolated(CountingState& st) {
     to_main.push_back(external_lit(make_lit(v, true)));
   }
   auto dimacs = [&](Lit x) { return to_dimacs(make_lit(where[var_of(x)], is_negative(x))); };
-  // The literal of a cell in the isolated solver, and in this solver's proof (a new variable is
-  // beyond the proof writer's map and written as it is).
-  auto cell_dimacs = [&](uint32_t c) { return st.cell[c] == kNoLit ? static_cast<int>(c) + 1 : dimacs(st.cell[c]); };
-  auto cell_lit = [&](uint32_t c) { return st.cell[c] == kNoLit ? to_main[2 * size_t{c}] : st.cell[c]; };
   // In the subsystem: (-a v -b) for structure literals a, b of one hole and different pigeons, or
-  // of one pigeon (not in a sparse pigeonhole: the new variables have no such clauses, and the PR
-  // checks need them for all of a pigeon's variables or for none).
+  // of one pigeon.
   auto in_subsystem = [&](Lit a, Lit b) {  // the binary clause (-a v -b)
     const uint32_t wa = where[var_of(a)], wb = where[var_of(b)];
     if (wa == UINT32_MAX || wb == UINT32_MAX || st.cell[wa] != a || st.cell[wb] != b || wa == wb) return false;
-    if (st.sparse) return wa / holes != wb / holes && wa % holes == wb % holes;
     return (wa / holes != wb / holes) == (wa % holes == wb % holes);
   };
   Options o = opts_;
@@ -1262,7 +1815,7 @@ bool Solver::counting_isolated(CountingState& st) {
     std::vector<int> cl;
     for (uint32_t i = 0; i < pigeons; ++i) {
       cl.clear();
-      for (uint32_t h = 0; h < holes; ++h) cl.push_back(cell_dimacs(i * holes + h));
+      for (uint32_t h = 0; h < holes; ++h) cl.push_back(dimacs(st.cell[i * holes + h]));
       iso.add_clause(cl.data(), cl.size());
     }
     // Its at-most-one clauses: binary clauses of the formula, and virtual exclusions, which the
@@ -1271,7 +1824,6 @@ bool Solver::counting_isolated(CountingState& st) {
     std::vector<uint64_t> fed;
     for (uint32_t i = 0; i < pigeons * holes; ++i) {
       const Lit a = st.cell[i];
-      if (a == kNoLit) continue;
       for (const Watch& w : watches_[negate(a)]) {
         if (!w.binary() || w.redundant_binary()) continue;
         const Lit b = negate(w.blit);
@@ -1279,26 +1831,6 @@ bool Solver::counting_isolated(CountingState& st) {
           const int bin[2] = {dimacs(negate(a)), dimacs(negate(b))};
           iso.add_clause(bin, 2);
           fed.push_back(uint64_t{a} << 32 | b);
-        }
-      }
-    }
-    // Sparse pigeonhole: a new variable excludes the other variables of its hole. Pairs of cells,
-    // the first one new; in the proof each clause is RAT on its first literal, the negated new
-    // variable, which no clause contains yet (the widened pigeon clauses come after all of them).
-    std::vector<uint32_t> completion;
-    if (st.sparse) {
-      for (uint32_t h = 0; h < holes; ++h) {
-        for (uint32_t i = 0; i < pigeons; ++i) {
-          const uint32_t ci = i * holes + h;
-          if (st.cell[ci] != kNoLit) continue;
-          for (uint32_t j = 0; j < pigeons; ++j) {
-            const uint32_t cj = j * holes + h;
-            if (j == i || (st.cell[cj] == kNoLit && j > i)) continue;
-            const int bin[2] = {-cell_dimacs(ci), -cell_dimacs(cj)};
-            iso.add_clause(bin, 2);
-            completion.push_back(ci);
-            completion.push_back(cj);
-          }
         }
       }
     }
@@ -1346,36 +1878,11 @@ bool Solver::counting_isolated(CountingState& st) {
         proof_->add(bin, 2);
       }
       stats_.counting_lemmas += lemmas.size() / 2;
-      // Sparse pigeonhole: the new variables' exclusions, then each pigeon clause widened by the
-      // new variables of its absent holes (implied by the pigeon clause, whose other literals are
-      // false at the root; that clause is deleted below: a witness may satisfy the wide clause by
-      // a new variable and falsify the narrow one). A pigeon clause with every hole stays as it
-      // is: its literals false at the root are false for the checker too.
-      std::vector<uint32_t> keep;
-      for (size_t i = 0; i < completion.size(); i += 2) {
-        const Lit bin[2] = {negate(cell_lit(completion[i])), negate(cell_lit(completion[i + 1]))};
-        proof_->add(bin, 2);
-      }
-      std::vector<Lit> wide;
-      for (uint32_t i = 0; i < pigeons; ++i) {
-        bool widened = false;
-        wide.clear();
-        for (uint32_t h = 0; h < holes; ++h) {
-          widened = widened || st.cell[i * holes + h] == kNoLit;
-          wide.push_back(cell_lit(i * holes + h));
-        }
-        if (!widened) {
-          keep.push_back(st.longs[i]);
-          continue;
-        }
-        proof_->add(wide.data(), wide.size());
-        ++stats_.counting_lemmas;
-      }
-      stats_.counting_lemmas += completion.size() / 2;
       // Delete every other clause, then the isolated refutation. The PR checks need the other
       // clauses on the subsystem's variables gone (the checker then sees the subsystem only, as
       // the isolated solver did); the rest goes too, since dpr-trim and cake_lpr visit every
       // clause of the formula for each PR clause (exam_90_80: dpr-trim 2729 s for a 0.8 s solve).
+      std::vector<uint32_t> keep = st.longs;
       std::sort(keep.begin(), keep.end());
       for (const uint32_t ref : clauses_) {
         const Clause& c = clause(ref);
@@ -1403,6 +1910,235 @@ bool Solver::counting_isolated(CountingState& st) {
   inconsistent_ = true;
   return true;
 }
+
+// The elimination plan of a sparse pigeonhole (see Elimination): the structure in the plan's
+// numbering (the cells in the order of st.cell), and a first run that counts its steps and new
+// variables for the report and the work estimate. Over the budget, or without a refutation at the
+// end, the estimate is set beyond every budget.
+void Solver::counting_plan(CountingState& st) {
+  CountingPlan& plan = st.plan;
+  plan.pigeons = st.pigeons;
+  plan.holes = st.holes;
+  plan.poff.assign(1, 0);
+  for (uint32_t i = 0; i < st.pigeons; ++i) {
+    for (uint32_t h = 0; h < st.holes; ++h) {
+      if (st.cell[size_t{i} * st.holes + h] != kNoLit) plan.hole.push_back(h);
+    }
+    plan.poff.push_back(static_cast<uint32_t>(plan.hole.size()));
+  }
+  const uint64_t budget = static_cast<uint64_t>(opts_.countingeffort) * 1000000;
+  Elimination elim(plan.pigeons, plan.holes, plan.poff, plan.hole);
+  std::vector<uint32_t> ops;
+  bool over = false;
+  while (!elim.done() && !over) {
+    elim.round(ops);
+    over = 16 * (elim.steps_pr + elim.steps_units + elim.steps_lemmas) > budget || elim.work > budget / 4;
+  }
+  st.work += elim.work;
+  plan.fresh = elim.cells() - static_cast<uint32_t>(plan.hole.size());
+  plan.steps_pr = st.steps_pr = elim.steps_pr;
+  plan.steps_units = st.steps_units = elim.steps_units;
+  // The estimate's averages, over the PR clauses and units: the cells of the holes a step looks
+  // at (the other clauses' share added), and one pigeon clause.
+  st.all_vars = std::max<uint64_t>(1, elim.steps_pr + elim.steps_units);
+  st.degree_sum = elim.degree + 4 * elim.steps_lemmas;
+  st.long_sum = st.all_vars;
+  if (over || !elim.refuted()) st.steps_pr = UINT64_MAX / 4096;
+}
+
+// A sparse pigeonhole (a Hall violator of the graph: st.pigeons pigeons with st.holes holes between
+// them) is refuted in isolation by elimination: a separate solver gets the pigeon clauses and the
+// exclusions within the holes, with the plan's cells as its variables and room for the plan's new
+// ones (above this solver's variables in the proof; they exist in that solver and in the proof
+// only: this solver ends here if the refutation succeeds, and nothing is written if it does not),
+// and runs the plan (counting_certify), checking every step on its clauses. The proof first gets
+// the exclusions found by probing (RUP) and the pigeon clauses without their literals false at the
+// root (the isolated solver's clauses must be the checker's: it deletes a pigeon clause when it
+// widens it), then deletes every other clause, then continues with the isolated refutation.
+bool Solver::counting_isolated_sparse(CountingState& st) {
+  constexpr uint32_t kNone = UINT32_MAX;
+  const uint32_t holes = st.holes, pigeons = st.pigeons;
+  const CountingPlan& plan = st.plan;
+  std::vector<uint32_t> where(num_vars_, kNone);  // variable -> index in st.cell
+  std::vector<uint32_t> id(st.cell.size(), kNone);  // index in st.cell -> the plan's cell
+  std::vector<Lit> to_main;
+  uint32_t cells = 0;
+  for (uint32_t c = 0; c < st.cell.size(); ++c) {
+    const Lit l = st.cell[c];
+    if (l == kNoLit) continue;
+    if (where[var_of(l)] != kNone) {
+      st.failure = "variable in two cells";
+      return false;
+    }
+    where[var_of(l)] = c;
+    id[c] = cells++;
+    // (the isolated proof is copied into this one as encoded: in the input numbering; a cell is
+    // the positive literal of its variable there, whatever its sign here)
+    to_main.push_back(external_lit(l));
+    to_main.push_back(external_lit(negate(l)));
+  }
+  for (uint32_t k = 0; k < plan.fresh; ++k) {  // (beyond the proof writer's map: written as they are)
+    to_main.push_back(make_lit(num_vars_ + k, false));
+    to_main.push_back(make_lit(num_vars_ + k, true));
+  }
+  // In the subsystem: (-a v -b) for structure literals a, b of one hole and different pigeons.
+  auto in_subsystem = [&](Lit a, Lit b) {
+    const uint32_t wa = where[var_of(a)], wb = where[var_of(b)];
+    if (wa == kNone || wb == kNone || st.cell[wa] != a || st.cell[wb] != b) return false;
+    return wa / holes != wb / holes && wa % holes == wb % holes;
+  };
+  auto exclusion = [&](Lit a, Lit b, int* bin) {
+    bin[0] = -static_cast<int>(id[where[var_of(a)]] + 1);
+    bin[1] = -static_cast<int>(id[where[var_of(b)]] + 1);
+  };
+  Options o = opts_;
+  o.counting = 1;
+  o.lucky = 0;
+  o.verbose = 0;
+  o.cardinality = 0;
+  o.renumber = 0;
+  o.linmod = 0;
+  o.xorsub = 0;
+  Solver iso(o);
+  iso.counting_isolated_ = true;
+  iso.counting_plan_ = &plan;
+  iso.start_ = start_;  // (the same clock, time limit and terminate flag: see stop_requested())
+  iso.time_limit_ = time_limit_;
+  iso.terminate_ = terminate_;
+  std::string buffer;
+  {
+    ProofWriter iso_proof([&buffer](const char* d, size_t n) { buffer.append(d, n); },
+                          proof_ ? proof_->binary() : true);
+    iso_proof.set_map(&to_main);
+    if (proof_) iso.set_proof(&iso_proof);
+    iso.reserve(static_cast<int>(to_main.size() / 2));
+    std::vector<int> cl;
+    for (uint32_t i = 0; i < pigeons; ++i) {
+      cl.clear();
+      for (uint32_t c = plan.poff[i]; c < plan.poff[i + 1]; ++c) cl.push_back(static_cast<int>(c) + 1);
+      iso.add_clause(cl.data(), cl.size());
+    }
+    // Its at-most-one clauses: binary clauses of the formula, and virtual exclusions, which the
+    // proof derives by RUP before the auxiliary clauses are deleted.
+    std::vector<Lit> lemmas;  // pairs
+    std::vector<uint64_t> fed;
+    int bin[2];
+    for (const Lit a : st.cell) {
+      if (a == kNoLit) continue;
+      for (const Watch& w : watches_[negate(a)]) {
+        if (!w.binary() || w.redundant_binary()) continue;
+        const Lit b = negate(w.blit);
+        if (a < b && in_subsystem(a, b)) {
+          exclusion(a, b, bin);
+          iso.add_clause(bin, 2);
+          fed.push_back(uint64_t{a} << 32 | b);
+        }
+      }
+    }
+    if (st.virt) {
+      std::sort(fed.begin(), fed.end());
+      for (const Lit a : st.cell) {
+        if (a == kNoLit) continue;
+        for (uint32_t k = st.voff[a]; k < st.voff[a + 1]; ++k) {
+          const Lit b = st.vlit[k];
+          if (!(a < b) || !in_subsystem(a, b)) continue;
+          const uint64_t key = uint64_t{a} << 32 | b;
+          if (std::binary_search(fed.begin(), fed.end(), key)) continue;
+          lemmas.push_back(a);
+          lemmas.push_back(b);
+          exclusion(a, b, bin);
+          iso.add_clause(bin, 2);
+        }
+      }
+    }
+    iso.set_conflict_limit(0);
+    const int res = iso.solve();
+    stop_after(iso);
+    stats_.counting_work += iso.stats().counting_work;
+    st.work += iso.stats().counting_work;  // (for the report)
+    if (res != kUnsat || !iso.stats().counting_found) {
+      st.failure = "the isolated subsystem was not refuted";
+      return false;
+    }
+    iso_proof.flush();
+    // The virtual exclusions as RUP lemmas (checked here; with a proof also written).
+    if (!lemmas.empty() && propagated_ < trail_.size() && !propagate()) {
+      inconsistent_ = true;
+      if (proof_) proof_->add_empty();
+      return true;
+    }
+    for (size_t i = 0; i < lemmas.size(); i += 2) {
+      const Lit pair[2] = {negate(lemmas[i]), negate(lemmas[i + 1])};
+      if (!counting_refutes(pair, 2)) {
+        st.failure = "a virtual exclusion is not RUP";
+        return false;
+      }
+    }
+    if (proof_) {
+      for (size_t i = 0; i < lemmas.size(); i += 2) {
+        const Lit pair[2] = {negate(lemmas[i]), negate(lemmas[i + 1])};
+        proof_->add(pair, 2);
+      }
+      stats_.counting_lemmas += lemmas.size() / 2;
+      // The pigeon clauses as the isolated solver has them: a clause with literals false at the
+      // root is replaced by its cells (implied; the longer clause goes with the rest), a clause of
+      // two literals of the formula stays (one copy of it).
+      std::vector<uint32_t> keep;
+      std::vector<uint64_t> keep_bin;
+      std::vector<Lit> mine;
+      for (uint32_t i = 0; i < pigeons; ++i) {
+        mine.clear();
+        for (uint32_t h = 0; h < holes; ++h) {
+          if (st.cell[size_t{i} * holes + h] != kNoLit) mine.push_back(st.cell[size_t{i} * holes + h]);
+        }
+        if (st.longs[i] == kNone) {
+          keep_bin.push_back(uint64_t{std::min(mine[0], mine[1])} << 32 | std::max(mine[0], mine[1]));
+        } else if (clause(st.longs[i]).size == mine.size()) {
+          keep.push_back(st.longs[i]);
+        } else {
+          proof_->add(mine.data(), mine.size());
+          ++stats_.counting_lemmas;
+        }
+      }
+      // Delete every other clause, then the isolated refutation. The PR checks need the other
+      // clauses on the subsystem's variables gone (the checker then sees the subsystem only, as
+      // the isolated solver did); the rest goes too, since dpr-trim and cake_lpr visit every
+      // clause of the formula for each PR clause.
+      std::sort(keep.begin(), keep.end());
+      std::sort(keep_bin.begin(), keep_bin.end());
+      std::vector<uint8_t> kept(keep_bin.size(), 0);
+      for (const uint32_t ref : clauses_) {
+        const Clause& c = clause(ref);
+        if (c.garbage || std::binary_search(keep.begin(), keep.end(), ref)) continue;
+        proof_->del(c.lits(), c.size);
+      }
+      for (Lit l = 0; l < 2 * num_vars_; ++l) {
+        for (const Watch& w : watches_[l]) {
+          if (!w.binary()) continue;
+          const Lit b = w.blit;
+          if (b < l) continue;  // (deleted from b's list)
+          if (in_subsystem(negate(l), negate(b))) continue;
+          const auto it = std::lower_bound(keep_bin.begin(), keep_bin.end(), uint64_t{l} << 32 | b);
+          if (it != keep_bin.end() && *it == (uint64_t{l} << 32 | b) && !kept[it - keep_bin.begin()]) {
+            kept[it - keep_bin.begin()] = 1;
+            continue;
+          }
+          const Lit pair[2] = {l, b};
+          proof_->del(pair, 2);
+        }
+      }
+      proof_->raw(buffer.data(), buffer.size(), iso_proof.added(), iso_proof.deleted(), iso_proof.pr(),
+                  iso_proof.deleted_bytes());
+    }
+  }
+  stats_.counting_pr += iso.stats().counting_pr;
+  stats_.counting_units += iso.stats().counting_units;
+  stats_.counting_lemmas += iso.stats().counting_lemmas;
+  counting_added_ = true;
+  inconsistent_ = true;
+  return true;
+}
+
 
 // Relativized pigeonhole (rphp_p<n>_r<n>): n pigeons rest at n places (pp[i][u]: at least one
 // place per pigeon; a place hosts at most one pigeon), a place in use (pp[i][u] -> used[u]) maps to
@@ -2060,6 +2796,113 @@ bool Solver::counting_certify(CountingState& st) {
     }
     return true;
   }
+  if (st.kind == kElimination) {
+    // The plan's steps (see Elimination), each checked on the clauses before it is written. The
+    // plan's cells are this solver's variables.
+    const CountingPlan& plan = *counting_plan_;
+    constexpr uint32_t none = UINT32_MAX;
+    Elimination elim(plan.pigeons, plan.holes, plan.poff, plan.hole);
+    // The pigeon clauses: a pigeon of two cells has a binary clause (until it is widened).
+    std::vector<uint32_t> owner(plan.hole.size()), cref(plan.pigeons, none);
+    for (uint32_t p = 0; p < plan.pigeons; ++p) {
+      for (uint32_t c = plan.poff[p]; c < plan.poff[p + 1]; ++c) owner[c] = p;
+    }
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (!c.garbage && !c.redundant && var_of(c.lits()[0]) < owner.size()) cref[owner[var_of(c.lits()[0])]] = ref;
+    }
+    // A clause that is RAT on its first literal: every clause with that literal's negation is
+    // satisfied (the PR check with the literal as the whole witness). Written as a plain lemma.
+    auto rat = [&](const Lit* c, size_t nc) {
+      for (size_t i = 0; i < nc; ++i) {
+        if (vals_[c[i]] > 0) return true;  // satisfied at the root: not needed
+      }
+      for (size_t i = 0; i < nc; ++i) {
+        if (vals_[c[i]] < 0) {
+          st.failure = "clause literal false at the root";
+          return false;
+        }
+      }
+      if (!counting_check_pr(st, c, nc, c, 1)) return false;
+      counting_added_ = true;
+      if (nc == 1) {
+        ++stats_.counting_units;
+        assign(c[0], kNoReason);  // at the root: written to the proof
+        if (!propagate()) {
+          inconsistent_ = true;
+          if (proof_) proof_->add_empty();
+        }
+      } else {
+        ++stats_.counting_lemmas;
+        if (proof_) proof_->add(c, nc);
+        add_binary(c[0], c[1], false);
+      }
+      return true;
+    };
+    std::vector<uint32_t> ops;
+    std::vector<Lit> wide;
+    while (!elim.done()) {
+      if (over()) return false;
+      elim.round(ops);
+      for (size_t at = 0; at < ops.size();) {
+        const uint32_t* const op = ops.data() + at;
+        if (op[0] == Elimination::kExclude) {
+          const Lit c[2] = {make_lit(op[1], true), make_lit(op[2], true)};
+          if (!rat(c, 2)) return false;
+          at += 3;
+        } else if (op[0] == Elimination::kWiden) {
+          // The pigeon clause with the new cells (and without its literals false at the root)
+          // replaces the one in the formula.
+          const uint32_t p = op[1], n = op[2];
+          wide.clear();
+          if (cref[p] != none) {
+            const Clause& c = clause(cref[p]);
+            for (uint32_t k = 0; k < c.size; ++k) {
+              if (!vals_[c.lits()[k]]) wide.push_back(c.lits()[k]);
+            }
+          } else {
+            if (plan.poff[p + 1] - plan.poff[p] != 2) {
+              st.failure = "no clause of a pigeon";
+              return false;
+            }
+            wide.push_back(make_lit(plan.poff[p], false));
+            wide.push_back(make_lit(plan.poff[p] + 1, false));
+          }
+          const size_t narrow = wide.size();
+          for (uint32_t k = 0; k < n; ++k) wide.push_back(make_lit(op[3 + k], false));
+          const size_t before = clauses_.size();
+          if (narrow < 2 || !counting_add(st, wide.data(), wide.size(), nullptr, 0) || clauses_.size() == before) {
+            if (!st.failure) st.failure = "a pigeon clause was not widened";
+            return false;
+          }
+          if (cref[p] != none) {
+            delete_irredundant(cref[p]);
+          } else {
+            delete_binary(wide[0], wide[1]);
+            --binaries_irredundant_;
+          }
+          cref[p] = clauses_.back();
+          at += 3 + n;
+        } else if (op[0] == Elimination::kPr) {
+          const Lit a = make_lit(op[1], false), b = make_lit(op[2], false);
+          const Lit c[2] = {negate(a), negate(b)};
+          const Lit w[4] = {negate(a), make_lit(op[3], false), make_lit(op[4], false), negate(b)};
+          if (!counting_add(st, c, 2, w, 4)) return false;
+          at += 5;
+        } else if (op[0] == Elimination::kUnit) {
+          if (!counting_add_unit(st, make_lit(op[1], true))) return false;
+          at += 2;
+        } else {
+          const Lit u = make_lit(op[1] >> 1, op[1] & 1);
+          if (!rat(&u, 1)) return false;
+          at += 2;
+        }
+        if (inconsistent_) return true;
+      }
+      end_round(false);
+    }
+    return true;
+  }
   if (st.kind == kRphp) {
     // First "pigeon m rests at place m", m = n-1 .. 1: PR clauses (-pp[i][m] v -pp[m][x]) for
     // i, x < m, the witness swaps pigeons i and m; then the RUP units -pp[i][m]. Afterwards root
@@ -2236,7 +3079,18 @@ void Solver::counting() {
   const PassTimer pass_timer(*this, kPassCounting);
   const double t0 = seconds();
   CountingState st;
-  bool found = counting_detect(st);
+  bool found = false;
+  if (counting_plan_) {  // the isolated solver of a sparse pigeonhole: the structure is given
+    found = true;
+    st.kind = kElimination;
+    st.steps_pr = counting_plan_->steps_pr;
+    st.steps_units = counting_plan_->steps_units;
+    st.all_vars = num_vars_;
+    st.vars.resize(num_vars_);
+    std::iota(st.vars.begin(), st.vars.end(), Var{0});
+  } else {
+    found = counting_detect(st);
+  }
   if (!found) {  // the whole formula is not one of those; a clique-colouring formula?
     const uint64_t work = st.work;
     st = CountingState();
@@ -2266,17 +3120,22 @@ void Solver::counting() {
       const uint64_t work2 = st.work;
       st = CountingState();
       st.work = work2;
-      found = counting_detect_sparse(st);
+      found = counting_detect_sparse(st, opts_.countingsparse > 1);
+      if (found) counting_plan(st);
     }
   }
   stats_.counting_work += st.work;
   const uint64_t detect_work = st.work;
   if (!found) return;
   ++stats_.counting_found;
-  char desc[192];
+  char desc[256];
   if (st.sparse) {
-    std::snprintf(desc, sizeof desc, "sparse pigeonhole %u pigeons, %u holes, %u of %u pairs absent (of %u pigeons, %u holes)",
-                  st.pigeons, st.holes, st.missing, st.pigeons * st.holes, st.graph_pigeons, st.graph_holes);
+    std::snprintf(desc, sizeof desc, "sparse pigeonhole %u pigeons, %u holes, %u of %u pairs absent (of %u pigeons, %u holes)%s, %u new variables",
+                  st.pigeons, st.holes, st.missing, st.pigeons * st.holes, st.graph_pigeons, st.graph_holes,
+                  st.virt ? ", exclusions by probing" : "", st.plan.fresh);
+  } else if (st.kind == kElimination) {
+    std::snprintf(desc, sizeof desc, "pigeonhole by elimination, %u pigeons, %u holes", counting_plan_->pigeons,
+                  counting_plan_->holes);
   } else if (st.kind == kPigeonhole) {
     std::snprintf(desc, sizeof desc, "%spigeonhole %u pigeons, %u holes, %u variables per pair%s",
                   st.virt ? "embedded (exclusions by probing) " : st.embedded ? "embedded " : "", st.pigeons, st.holes, st.k,

@@ -1,0 +1,22 @@
+# mutilated chessboards: the 18 instances of the family in the SAT Competition main tracks (2018, 2023, 2024, 2025), all unsatisfiable
+# mchess_15 .. mchess_20: n x n boards, one encoding; mchess<n>-mixed-<p>percent-blocked: mixed at-most-one encodings with blocked clauses added
+# not held out: the two mchess16-mixed instances of unsat26 / tune were development instances of the sparse pigeonhole certificates
+# files: <main>/benchmarks/cache/gbd/files (https://benchmark-database.de/file/<hash>?context=cnf)
+gbd/files/ec84eecb124c63d4757e083dd0e5a9ff-mchess_15.cnf.xz                                          unsat    # family=mutilated-chessboard year=2018,2024
+gbd/files/8704094951693f99fd21403a039c8131-mchess_16.cnf.xz                                          unsat    # family=mutilated-chessboard year=2018,2024
+gbd/files/2c3c28f6d939d157e909c57a265fc908-mchess_17.cnf.xz                                          unsat    # family=mutilated-chessboard year=2018,2024
+gbd/files/822ac2997c9e0f0def5971dabcdb0dd9-mchess_18.cnf.xz                                          unsat    # family=mutilated-chessboard year=2018
+gbd/files/ee90ba05c705de083ca3f3c374c583c5-mchess_19.cnf.xz                                          unsat    # family=mutilated-chessboard year=2018
+gbd/files/45742d067cc851edc1201d8a02586eac-mchess_20.cnf.xz                                          unsat    # family=mutilated-chessboard year=2018,2025
+gbd/files/d7f381cd99ca40ba3324c8cc03a54269-mchess16-mixed-25percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/112b0ac22b2a567cd3badfed3a5497fd-mchess16-mixed-35percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/8d458780fb74c28c01a5fe89990ad521-mchess16-mixed-45percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/644fd765d26bd4a380922ccd0f594c58-mchess18-mixed-25percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/fe8b1ef742724947620a419d0180a640-mchess18-mixed-35percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/41457ee03686b32962c12445524f62a9-mchess18-mixed-45percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/6aacae96461cb65176942b6dc88ea470-mchess20-mixed-25percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/ff867fd35aa52058382a8b0c21cd1f38-mchess20-mixed-35percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/751afd7ddf8f242ed7bd93517ba82149-mchess20-mixed-45percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/fb5d0254bc4b8d258eb84ea1dbcdda13-mchess22-mixed-25percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/cd86fbfd8b7e0d66ec5fe8fe85c014d3-mchess22-mixed-35percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
+gbd/files/87ec32f70c5e3a279e636f7f62e70a19-mchess22-mixed-45percent-blocked.cnf.xz                   unsat    # family=mutilated-chessboard year=2023
