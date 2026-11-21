@@ -250,7 +250,8 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
     """Counting principles for --counting (not in the default mix): pigeonhole (plain, functional,
     clique formulas with k variables per pair), perfect matching of K_n, partition of n points into
     triples, clique-colouring, graph colouring with a planted clique (a pigeonhole inside a larger
-    formula), relativized pigeonhole, pigeonhole on a sparse graph. Sometimes satisfiable (pigeons <= holes, even n, 3 | n, clique <= colours), scrambled
+    formula), relativized pigeonhole (also with second in-use variables), pigeonhole on a sparse graph. Sometimes satisfiable (pigeons <= holes, even n, 3 | n, clique <= colours), with
+    the long clauses cut into clauses of three literals, scrambled
     (renamed variables, flipped polarities), or with one clause added or removed."""
     kind = rng.choice(["php", "fphp", "clique", "matching", "triples", "clqcl", "gcol", "rphp", "sphp"])
     sat = rng.random() < 0.25
@@ -354,6 +355,15 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
                 for k in range(h):
                     clauses.append([-used(u), -used(v), -qv(u, k), -qv(v, k)])
         name, unsat = f"rphp{n}x{r}x{h}", n > h
+        if rng.random() < 0.3:  # a second in-use variable on some places, excluded against other places (a_rphp)
+            for u in rng.sample(range(r), rng.randint(1, r)):
+                nvars += 1
+                for i in range(n):
+                    clauses.append([-pv(i, u), nvars])
+                for v in rng.sample([v for v in range(r) if v != u], rng.randint(1, min(3, r - 1))):
+                    for k in range(h):
+                        clauses.append([-nvars, -used(v), -qv(u, k), -qv(v, k)])
+            name += "+2nd"
     elif kind == "gcol":
         n, m = rng.randint(8, 14), rng.randint(3, 5)
         clique = rng.randint(2, m) if sat else m + 1
@@ -452,6 +462,20 @@ def gen_counting(rng: random.Random, max_vars: int) -> Formula:
         name += "-1"
         if unsat:
             expected = None
+    if rng.random() < 0.2:  # clauses of four or more literals cut into clauses of three, chained by new variables
+        cut: list[list[int]] = []
+        for c in clauses:
+            if len(c) <= 3:
+                cut.append(c)
+                continue
+            nvars += 1
+            cut.append([c[0], c[1], nvars])
+            for l in c[2:-2]:
+                cut.append([-nvars, l, nvars + 1])
+                nvars += 1
+            cut.append([-nvars, c[-2], c[-1]])
+        clauses = cut
+        name += "-split3"
     if rng.random() < 0.5:
         perm = list(range(1, nvars + 1))
         rng.shuffle(perm)

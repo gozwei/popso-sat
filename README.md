@@ -84,15 +84,16 @@ A sample of 168 instances of the SAT Competition 2026 main track (`sets/sc2026.t
 (`sets/fresh2.txt`), with the same setup and machine; every UNSAT answer of 0.4.6, 0.4.7 and
 0.4.8 checked with its proof. 0.4.6 changes no default, so its search is that of 0.4.5. 0.4.7
 and 0.4.8 add pigeonhole certificates on sparse graphs and leave the search unchanged where
-they find none, so only the fresh2 column of 0.4.8 is new. 0.4.9 solves the same instances
-of these sets as 0.4.8.
+they find none. 0.4.9 was run on sc2026 and fresh again and solves the same instances as
+0.4.5; the fresh2 entry is the 0.4.8 run. 0.4.10 and 0.4.11 leave the search unchanged where
+they find no structure.
 
 Solved / PAR-2 in seconds:
 
-| set | popso-sat 0.4.8 | popso-sat 0.4.5 and 0.4.6 | popso-sat 0.4.4 | popso-sat 0.4.0 | Kissat 4.0.4 |
+| set | popso-sat 0.4.9 | popso-sat 0.4.5 and 0.4.6 | popso-sat 0.4.4 | popso-sat 0.4.0 | Kissat 4.0.4 |
 |---|---|---|---|---|---|
-| sc2026 (168) | | 110 / 773.8 | 110 / 772.5 | 98 / 926.4 | 80 / 1152.3 |
-| fresh (78) | | 51 / 785.2 | 48 / 833.5 | | 52 / 818.2 |
+| sc2026 (168) | 110 / 774.1 | 110 / 773.8 | 110 / 772.5 | 98 / 926.4 | 80 / 1152.3 |
+| fresh (78) | 51 / 784.7 | 51 / 785.2 | 48 / 833.5 | | 52 / 818.2 |
 | fresh2 (49) | 32 / 790.0 | 27 / 1011.8 | | | 24 / 1132.1 |
 
 **sc2026:** 0.4.5 solves 36 instances that Kissat does not, most of them with counting,
@@ -125,8 +126,9 @@ in at most 0.03 s each, 0.4.7 solves 21 and Kissat 8. All 38 proofs pass dpr-tri
 cake_lpr. Four of them are listed as satisfiable in the benchmark database; they are not.
 
 **Pigeonhole-type families:** a scan of 115 further instances (`sets/phfam.txt`), 300 s, Intel
-i7-7700K: 0.4.9 solves 81, 0.4.8 solves 65 and Kissat 36. The plan new in 0.4.9 was written
-for instances of this set, so this is not a held-out comparison either.
+i7-7700K: 0.4.11 solves 100, 0.4.9 solves 81, 0.4.8 solves 65 and Kissat 36. The changes of
+0.4.9 and 0.4.11 were written for instances of this set, so this is not a held-out
+comparison either.
 
 Smaller sets of instances from the SAT Competitions 2022 to 2025, 120 s, Apple M4 Pro (0.4.0 and
 0.3.4 run in alternation on a shared machine; Kissat on the idle machine, in the v0.3.4 section of
@@ -183,7 +185,8 @@ per-instance times and plots, and the earlier measurements, are in
   pigeon may use only some of the holes (mutilated chessboards, matchings in bipartite
   graphs): bipartite matching finds a set of pigeons with too few holes, which is refuted by
   elimination on the graph. Clique-colourings and relativized pigeonholes with spare
-  places are reduced to a small pigeonhole with new variables. Such a structure is refuted
+  places are reduced to a small pigeonhole with new variables, also when their long clauses
+  were cut into clauses of three literals. Such a structure is refuted
   with polynomially many PR clauses (symmetry-style steps, each checked by the solver before
   it is written) where resolution needs exponentially many steps. Without a structure the
   search is unchanged.

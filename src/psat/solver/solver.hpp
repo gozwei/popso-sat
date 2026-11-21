@@ -538,6 +538,7 @@ class Solver {
   bool counting_isolated_sparse(CountingState& st);
   void counting_plan(CountingState& st);
   bool counting_extend(CountingState& st, uint32_t base);
+  bool counting_collapse(CountingState& st);
   bool counting_add(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
   bool counting_add_unit(CountingState& st, Lit u);
   bool counting_check_pr(CountingState& st, const Lit* c, size_t nc, const Lit* w, size_t nw);
@@ -923,7 +924,13 @@ class Solver {
   void renumber_apply(const std::vector<Var>& order);
   double renumber_span(const std::vector<Var>* to_new) const;
   Var internal_var(Var input) const { return input < renum_int_.size() ? renum_int_[input] : input; }
-  Lit external_lit(Lit l) const { return l < renum_ext_.size() ? renum_ext_[l] : l; }
+  Lit external_lit(Lit l) const {
+    const Lit e = l < renum_ext_.size() ? renum_ext_[l] : l;
+    return outer_map_ && e < outer_map_->size() ? (*outer_map_)[e] : e;
+  }
+  // A copy of another solver's formula (counting_collapse): its literals in that solver's input
+  // numbering, for proof lines that are not written through this solver's proof writer.
+  const std::vector<Lit>* outer_map_ = nullptr;
   std::vector<Var> renum_int_;
   std::vector<Lit> renum_ext_;
   bool renumber_tried_ = false;

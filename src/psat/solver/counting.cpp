@@ -93,6 +93,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -2245,32 +2246,95 @@ bool Solver::counting_detect_rphp(CountingState& st) {
   if (places != nplaces) return false;
   // A place hosts at most one pigeon; every pigeon literal of a place implies the same literal,
   // the place's "in use".
+  // (a_rphp of the SAT Competition 2018: some places have a second such literal, with further
+  // clauses that exclude it against the in-use literals of other places. The in-use literal is
+  // then the one with a hole clause: a clause with its negation and otherwise only variables
+  // that are neither pigeon variables nor such literals.)
   std::vector<uint32_t> used_place(nl, kNone);
   st.used.assign(nplaces, kNoLit);
+  std::vector<std::vector<Lit>> implied(nplaces);  // per place: implied by each of its pigeon literals
+  std::vector<Lit> mine;
+  bool choice = false;
   for (uint32_t u = 0; u < nplaces; ++u) {
     for (uint32_t i = 0; i < n; ++i) {
       const Lit x = st.pp[size_t{i} * nplaces + u];
       uint32_t excl = 0;
-      Lit implied = kNoLit;
+      mine.clear();
       for (const Watch& w : watches_[negate(x)]) {
         if (!w.binary() || w.redundant_binary()) continue;
         const uint32_t pl = place[negate(w.blit)];
         if (pl != kNone && pl % nplaces == u && pl / nplaces != i) {
           ++excl;
-        } else if (implied == kNoLit || implied == w.blit) {
-          implied = w.blit;
         } else {
-          return false;
+          mine.push_back(w.blit);
         }
       }
-      if (excl < n - 1 || implied == kNoLit) return false;
-      if (st.used[u] == kNoLit) {
-        if (used_place[implied] != kNone || place[implied] != kNone || place[negate(implied)] != kNone) return false;
-        st.used[u] = implied;
-        used_place[implied] = u;
-      } else if (st.used[u] != implied) {
-        return false;
+      st.work += watches_[negate(x)].size() / 4 + 1;
+      if (excl < n - 1) return false;
+      std::sort(mine.begin(), mine.end());
+      mine.erase(std::unique(mine.begin(), mine.end()), mine.end());
+      if (i == 0) {
+        implied[u] = mine;
+      } else {
+        std::vector<Lit> both;
+        std::set_intersection(implied[u].begin(), implied[u].end(), mine.begin(), mine.end(), std::back_inserter(both));
+        if (both.size() != mine.size() || both.size() != implied[u].size()) return false;  // (the same for every pigeon)
       }
+    }
+    if (implied[u].empty()) return false;
+    for (const Lit c : implied[u]) {
+      if (place[c] != kNone || place[negate(c)] != kNone) return false;
+    }
+    choice = choice || implied[u].size() > 1;
+  }
+  if (!choice) {
+    for (uint32_t u = 0; u < nplaces; ++u) {
+      const Lit c = implied[u][0];
+      if (used_place[c] != kNone) return false;
+      st.used[u] = c;
+      used_place[c] = u;
+    }
+  } else {
+    std::vector<uint32_t> cand_place(nl, kNone);  // candidate literal -> its place
+    std::vector<uint8_t> cand_var(nv, 0);
+    for (uint32_t u = 0; u < nplaces; ++u) {
+      for (const Lit c : implied[u]) {
+        if (cand_place[c] != kNone || cand_place[negate(c)] != kNone) return false;
+        cand_place[c] = u;
+        cand_var[var_of(c)] = 1;
+      }
+    }
+    for (const uint32_t ref : clauses_) {
+      const Clause& c = clause(ref);
+      if (c.garbage || c.redundant || c.size < 4) continue;
+      if (++st.work > cap) return false;
+      Lit head = kNoLit;
+      bool ok = true;
+      for (uint32_t k = 0; k < c.size && ok; ++k) {
+        const Lit x = c.lits()[k];
+        if (cand_place[negate(x)] != kNone && head == kNoLit) {
+          head = negate(x);
+        } else {
+          ok = !cand_var[var_of(x)] && place[x] == kNone && place[negate(x)] == kNone;
+        }
+      }
+      st.work += c.size / 4;
+      if (!ok || head == kNoLit) continue;
+      const uint32_t u = cand_place[head];
+      if (st.used[u] != kNoLit && st.used[u] != head) return false;
+      st.used[u] = head;
+      used_place[head] = u;
+    }
+    for (uint32_t u = 0; u < nplaces; ++u) {
+      if (st.used[u] == kNoLit) return false;
+    }
+  }
+  // Variables of pigeon literals and of the other literals implied by them: no hole clause has one.
+  std::vector<uint8_t> not_hole(nv, 0);
+  for (const Lit x : st.pp) not_hole[var_of(x)] = 1;
+  for (uint32_t u = 0; u < nplaces; ++u) {
+    for (const Lit c : implied[u]) {
+      if (c != st.used[u]) not_hole[var_of(c)] = 1;
     }
   }
   // Hole clauses (-used[u] v holes of u) and hole classes from the clauses
@@ -2290,6 +2354,11 @@ bool Solver::counting_detect_rphp(CountingState& st) {
       }
     }
     if (uses != 1 || c.size < 4) continue;
+    if (choice) {  // (the further clauses of a second in-use literal are no hole clauses)
+      bool other = false;
+      for (uint32_t k = 0; k < c.size && !other; ++k) other = not_hole[var_of(c.lits()[k])] != 0;
+      if (other) continue;
+    }
     if (hole_clause[u] != kNone) return false;
     hole_clause[u] = ref;
     if (!holes) holes = c.size - 1;
@@ -2716,6 +2785,154 @@ bool Solver::counting_add_unit(CountingState& st, Lit u) {
     return false;
   }
   return counting_add(st, &u, 1, nullptr, 0);
+}
+
+// Long clauses split into short ones (e_rphp, ae_rphp of the SAT Competition 2018: every clause of
+// a relativized pigeonhole cut into clauses of three literals, chained by auxiliary variables)
+// hide a structure from the detectors. An auxiliary variable of such a chain occurs in two clauses
+// of three or more literals, once with each sign, and nowhere else; resolving the two gives the
+// clause back. If no structure was found and at least a tenth of the variables are of that kind,
+// the detection is tried on a copy of the formula with them eliminated (a separate solver; this
+// one is not touched). Only if the copy is refuted by a counting certificate, the proof gets the
+// eliminations (each resolvent is RUP, then its two parents are deleted) followed by the copy's
+// refutation. Not after units or learned clauses (the copy must be the formula the checker has).
+bool Solver::counting_collapse(CountingState& st) {
+  if (!trail_.empty() || redundant_ || binaries_redundant_ || input_shortened_) return false;
+  const size_t nv = num_vars_, nl = 2 * nv;
+  std::vector<uint32_t> count(nl, 0);
+  uint64_t literals = 0;
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage) continue;
+    for (uint32_t k = 0; k < c.size; ++k) ++count[c.lits()[k]];
+    literals += c.size;
+  }
+  st.work += literals / 4 + clauses_.size();
+  if (literals > 50'000'000) return false;
+  std::vector<uint8_t> aux(nv, 0);
+  uint32_t candidates = 0;
+  for (Var v = 0; v < nv; ++v) {
+    const Lit x = make_lit(v, false);
+    if (count[x] != 1 || count[negate(x)] != 1) continue;
+    bool binary = false;
+    for (const Lit y : {x, negate(x)}) {
+      for (const Watch& w : watches_[y]) binary = binary || w.binary();
+    }
+    if (binary) continue;
+    aux[v] = 1;
+    ++candidates;
+  }
+  st.work += nv;
+  if (candidates < 16 || candidates < nv / 10) return false;
+  // The copy's long clauses, and for each candidate the two clauses it is in.
+  std::vector<std::vector<Lit>> cls;
+  std::vector<uint8_t> dead;
+  std::vector<uint32_t> at(nl, UINT32_MAX);
+  for (const uint32_t ref : clauses_) {
+    const Clause& c = clause(ref);
+    if (c.garbage) continue;
+    const auto idx = static_cast<uint32_t>(cls.size());
+    cls.emplace_back(c.lits(), c.lits() + c.size);
+    for (const Lit x : cls.back()) {
+      if (aux[var_of(x)]) at[x] = idx;
+    }
+  }
+  dead.assign(cls.size(), 0);
+  struct Step {
+    uint32_t pos, neg, res;
+  };
+  std::vector<Step> steps;
+  std::vector<uint8_t> seen(nl, 0);
+  for (Var v = 0; v < nv; ++v) {
+    if (!aux[v]) continue;
+    const Lit x = make_lit(v, false);
+    const uint32_t i = at[x], j = at[negate(x)];
+    if (i == j || cls[i].size() < 3 || cls[j].size() < 3) continue;
+    std::vector<Lit> res;
+    bool ok = true;
+    for (const uint32_t k : {i, j}) {
+      for (const Lit y : cls[k]) {
+        if (var_of(y) == v) continue;
+        if (seen[y] || seen[negate(y)]) ok = false;  // a repeated literal or a tautology: left alone
+        seen[y] = 1;
+        res.push_back(y);
+      }
+    }
+    for (const Lit y : res) seen[y] = 0;
+    st.work += res.size();
+    if (!ok) continue;
+    const auto idx = static_cast<uint32_t>(cls.size());
+    for (const Lit y : res) {
+      if (aux[var_of(y)]) at[y] = idx;
+    }
+    cls.push_back(std::move(res));
+    dead.push_back(0);
+    dead[i] = dead[j] = 1;
+    steps.push_back({i, j, idx});
+  }
+  if (steps.size() < 16 || steps.size() < nv / 10) return false;
+  // The copy: the same variables (its proof lines are written in the input numbering).
+  std::vector<Lit> to_main(nl);
+  for (Lit l = 0; l < nl; ++l) to_main[l] = external_lit(l);
+  Options o = opts_;
+  o.counting = 1;
+  o.countingcollapse = 0;
+  o.lucky = 0;
+  o.verbose = 0;
+  o.cardinality = 0;
+  o.renumber = 0;
+  o.linmod = 0;
+  o.xorsub = 0;
+  Solver iso(o);
+  iso.start_ = start_;  // (the same clock, time limit and terminate flag: see stop_requested())
+  iso.time_limit_ = time_limit_;
+  iso.terminate_ = terminate_;
+  std::string buffer;
+  ProofWriter iso_proof([&buffer](const char* d, size_t n) { buffer.append(d, n); }, proof_ ? proof_->binary() : true);
+  // (the copy's own isolated refutations write their lines through external_lit(): the same map)
+  iso.outer_map_ = &to_main;
+  iso_proof.set_map(&to_main);
+  if (proof_) iso.set_proof(&iso_proof);
+  iso.reserve(static_cast<int>(nv));
+  auto dimacs = [](Lit l) { return is_negative(l) ? -static_cast<int>(var_of(l) + 1) : static_cast<int>(var_of(l) + 1); };
+  std::vector<int> cl;
+  for (size_t k = 0; k < cls.size(); ++k) {
+    if (dead[k]) continue;
+    cl.clear();
+    for (const Lit y : cls[k]) cl.push_back(dimacs(y));
+    iso.add_clause(cl.data(), cl.size());
+    st.work += cl.size();
+  }
+  for (Lit l = 0; l < nl; ++l) {
+    for (const Watch& w : watches_[l]) {
+      if (!w.binary() || w.blit < l) continue;  // (once, from the smaller literal's list)
+      const int bin[2] = {dimacs(l), dimacs(w.blit)};
+      iso.add_clause(bin, 2);
+    }
+  }
+  iso.set_conflict_limit(0);
+  const int res = iso.solve();
+  stop_after(iso);
+  st.work += iso.stats().counting_work;  // (booked with this solver's counting work by the caller)
+  if (res != kUnsat || !iso.stats().counting_found || iso.stats().conflicts) return false;
+  if (proof_) {
+    iso_proof.flush();
+    for (const Step& t : steps) {
+      proof_->add(cls[t.res].data(), cls[t.res].size());
+      proof_->del(cls[t.pos].data(), cls[t.pos].size());
+      proof_->del(cls[t.neg].data(), cls[t.neg].size());
+    }
+    proof_->raw(buffer.data(), buffer.size(), iso_proof.added(), iso_proof.deleted(), iso_proof.pr(),
+                iso_proof.deleted_bytes());
+  }
+  ++stats_.counting_found;
+  stats_.counting_pr += iso.stats().counting_pr;
+  stats_.counting_units += iso.stats().counting_units;
+  stats_.counting_lemmas += iso.stats().counting_lemmas + steps.size();
+  counting_desc_ = iso.counting_desc_ + ", after eliminating " + std::to_string(steps.size()) + " variables with two occurrences";
+  counting_added_ = true;
+  inconsistent_ = true;
+  return true;
 }
 
 // Refutation by extension, for a clique-colouring or a relativized pigeonhole with more places than
@@ -3309,6 +3526,21 @@ void Solver::counting() {
       st.work = work2;
       found = counting_detect_sparse(st, opts_.countingsparse > 1);
       if (found) counting_plan(st);
+    }
+  }
+  if (!found && opts_.countingcollapse && !counting_isolated_) {  // long clauses split into short ones?
+    const uint64_t work = st.work;
+    st = CountingState();
+    st.work = work;
+    if (counting_collapse(st)) {
+      stats_.counting_work += st.work;
+      if (opts_.verbose) {
+        std::printf("c [%.2f s] counting: %s: refuted, %llu PR clauses, %llu units, work %.0fM, %.2f s\n", seconds(),
+                    counting_desc_.c_str(), static_cast<unsigned long long>(stats_.counting_pr),
+                    static_cast<unsigned long long>(stats_.counting_units), static_cast<double>(st.work) / 1e6, seconds() - t0);
+        std::fflush(stdout);
+      }
+      return;
     }
   }
   stats_.counting_work += st.work;

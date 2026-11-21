@@ -8,6 +8,95 @@ runs, where every UNSAT answer of popso-sat was checked with its proof. Otherwis
 are verified separately by the correctness gate ([benchmarks/gate.py](benchmarks/gate.py))
 and the fuzzer. Tables from different machines are never mixed.
 
+## v0.4.11
+
+New in 0.4.11: the relativized pigeonholes of the SAT Competition 2018 are recognised (a second
+in-use literal; long clauses cut into clauses of three literals, `--countingcollapse`; see the
+[CHANGELOG](CHANGELOG.md)). 0.4.10 changed a unit test only. Where no structure is found the
+search is that of 0.4.9: on four check instances it matches exactly after 60,000 conflicts.
+
+### Scan of pigeonhole-type families (Intel i7-7700K, Linux)
+
+The set and setup of the v0.4.9 section: `benchmarks/sets/phfam.txt`, 115 instances, 300 s and
+12 GB per instance, four instances at a time; popso-sat with proofs, Kissat without. The 0.4.9,
+0.4.8 and Kissat columns are the runs of that section. Not a held-out comparison: both changes
+of 0.4.11 were written for instances of this set.
+
+| | popso-sat 0.4.11 | popso-sat 0.4.9 | popso-sat 0.4.8 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| solved of 115 (SAT / UNSAT) | 100 (14 / 86) | 81 (14 / 67) | 65 (14 / 51) | 36 (12 / 24) |
+| PAR-2 (s) | 88.0 | 189.1 | 282.2 | 433.9 |
+| shifted geometric mean (s) | 9.7 | 26.7 | 55.8 | 151.4 |
+| UNSAT proofs verified by dpr-trim in the run | 80 of 86 | 61 of 67 | 42 of 51 | |
+
+Solved per family:
+
+| family | instances | popso-sat 0.4.11 | popso-sat 0.4.9 | popso-sat 0.4.8 | Kissat 4.0.4 |
+|---|---|---|---|---|---|
+| pigeon-hole | 33 | 32 | 14 | 16 | 7 |
+| relativized-pigeon-hole | 16 | 16 | 16 | 9 | 1 |
+| clique-coloring | 13 | 13 | 13 | 1 | 0 |
+| coloring-clique | 10 | 10 | 10 | 10 | 0 |
+| cardinality-constraints | 15 | 11 | 10 | 11 | 12 |
+| sudoku-php | 14 | 14 | 14 | 14 | 14 |
+| sgen, sgen-balanced | 10 | 4 | 4 | 4 | 2 |
+| binary-pigeon-hole | 4 | 0 | 0 | 0 | 0 |
+
+**What this shows:**
+- The 22 relativized pigeonholes of 2018 (a_rphp, e_rphp, ae_rphp; listed in the pigeon-hole
+  family) are all refuted before search, in at most 0.08 s. 0.4.9 solved four of them by
+  search (83 to 271 s) and Kissat six (73 to 232 s).
+- Gained over the 0.4.9 run: 18 of those 22, and squ_any_s09x07_c27_sinx, which is solved at
+  299 s here and was over the limit there (285 to 298 s in other runs: at the limit either
+  way). Lost: none. On the 11 instances that both solve in more than 5 s the median time
+  ratio is 1.007 (0.96 to 1.10).
+- 0.4.11 solves 65 instances that Kissat does not; Kissat solves one that 0.4.11 does not
+  (squ_any_s09x07_c27_bail, 288 s). 14 are solved by neither: the four binary pigeonholes,
+  four sgen instances, three squ_any instances, php14e14, edges-024 and bsat210.
+- The six proofs not checked within the run's limit of 630 s are those of the v0.4.9 section
+  in kind: four relativized pigeonholes with as many places as pigeons (rphp_p60_r60 to
+  p105) and two squ_any instances solved after 283 and 299 s of search.
+
+### Proofs of the relativized pigeonholes of 2018 (Intel i7-7700K, Linux)
+
+Each of the 22 instances was solved with a proof, checked by dpr-trim and then by the verified
+checker cake_lpr, one instance at a time on the idle machine. All 22 are verified: solved in
+at most 0.07 s, proofs of 0.08 to 0.64 MB, dpr-trim 0.2 to 1.1 s, cake_lpr 0.04 to 0.23 s.
+
+For the 15 e_rphp and ae_rphp instances the proof first eliminates the chain variables (2,610
+to 14,148 of them: a resolvent, then its two parents deleted), then defines the new variables
+of the extension (837 to 1,580), and ends with the small pigeonhole (8 PR clauses for three
+holes, 20 for four).
+
+### Cost of the pass (Intel Xeon E5-1650 v2, Linux)
+
+- All 295 instances of sc2026, fresh and fresh2, stopped after the first conflict: the same
+  34 structures as 0.4.9, the copy with eliminated variables is refuted nowhere, and the
+  counting step takes 1% longer summed over all instances (at most 4.1 s on one instance, as
+  before).
+- Tuning subsets at 300 s, four instances at a time: the same 86 of 109 (sc2026) and 42 of 57
+  (fresh) as 0.4.9, no instance gained or lost, summed times on the solved instances within
+  1% (ratios 0.995 and 0.999).
+- The scan set on this machine (300 s, proofs off): 0.4.11 solves 99 and 0.4.9 solves 79;
+  none lost.
+
+### SAT Competition 2026 sample and fresh families with 0.4.9 (Intel i7-7700K, Linux)
+
+The sc2026 and fresh tables of the v0.4.5 section were measured with 0.4.5. 0.4.9 was run on
+both sets again with the setup of that section (1000 s and 12 GB per instance, four instances
+at a time; sc2026 with a proof for every UNSAT answer, dpr-trim with a limit of 3000 s):
+
+| set | popso-sat 0.4.9, solved (SAT / UNSAT) | PAR-2 (s) | popso-sat 0.4.5, solved | PAR-2 (s) |
+|---|---|---|---|---|
+| sc2026 (168) | 110 (45 / 65) | 774.1 | 110 | 773.8 |
+| fresh (78) | 51 (31 / 20) | 784.7 | 51 | 785.2 |
+
+- The same instances are solved on both sets. Median time ratio on the instances solved in
+  more than 5 s: 0.999 (sc2026, 65 instances) and 0.998 (fresh, 43).
+- sc2026: 63 of the 65 proofs were verified within the run; the other two
+  (aes_equiv_encry_3_rounds, post-cbmc-aes-ee-r2: 512 and 232 MB) are the two of the v0.4.5
+  section that need longer than the limit.
+
 ## v0.4.9
 
 New in 0.4.9: clique-colouring formulas and relativized pigeonholes with more places than

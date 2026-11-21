@@ -2136,6 +2136,103 @@ TEST(counting_relativized_pigeonhole) {
   CHECK(res.check.ok && res.check.has_empty);
 }
 
+// a_rphp of the SAT Competition 2018: the first `extra` places of a relativized pigeonhole get a
+// second in-use variable x (implied by the place's pigeon literals), excluded against the in-use
+// literals of the next places hole by hole.
+ClauseList relativized_php_second_in_use(int n, int r, int h, int extra) {
+  auto p = [r](int i, int u) { return i * r + u + 1; };
+  auto used = [n, r](int u) { return n * r + u + 1; };
+  auto q = [n, r, h](int u, int k) { return n * r + r + u * h + k + 1; };
+  ClauseList cl = relativized_php(n, r, h);
+  int next = max_var_of(cl) + 1;
+  for (int u = 0; u < extra; ++u) {
+    const int x = next++;
+    for (int i = 0; i < n; ++i) cl.push_back({-p(i, u), x});
+    for (int v = u + 1; v < r && v <= u + 3; ++v) {
+      for (int k = 0; k < h; ++k) cl.push_back({-x, -used(v), -q(u, k), -q(v, k)});
+    }
+  }
+  return cl;
+}
+
+// Every clause of four or more literals cut into clauses of three, chained by new variables
+// (e_rphp of the SAT Competition 2018).
+ClauseList split3(const ClauseList& f) {
+  int next = max_var_of(f) + 1;
+  ClauseList out;
+  for (const std::vector<int>& c : f) {
+    if (c.size() <= 3) {
+      out.push_back(c);
+      continue;
+    }
+    int t = next++;
+    out.push_back({c[0], c[1], t});
+    for (size_t k = 2; k + 2 < c.size(); ++k) {
+      const int t2 = next++;
+      out.push_back({-t, c[k], t2});
+      t = t2;
+    }
+    out.push_back({-t, c[c.size() - 2], c[c.size() - 1]});
+  }
+  return out;
+}
+
+TEST(counting_relativized_variants) {
+  // A second in-use literal on some places (the one with a hole clause is taken), long clauses cut
+  // into clauses of three literals (the detection runs on a copy with the chaining variables
+  // eliminated; the proof gets the eliminations, then the copy's refutation), and both together.
+  std::mt19937_64 rng(29);
+  for (const auto& [n, r, h] : std::vector<std::tuple<int, int, int>>{{5, 8, 4}, {4, 9, 3}}) {
+    const ClauseList second = relativized_php_second_in_use(n, r, h, 4);
+    for (const ClauseList& f : {second, split3(relativized_php(n, r, h)), split3(second)}) {
+      for (int scrambled = 0; scrambled < 2; ++scrambled) {
+        Options o;
+        o.counting = 1;
+        const CountingRun res = run_counting(scrambled ? scramble(f, rng) : f, o);
+        CHECK_EQ(res.result, kUnsat);
+        CHECK_EQ(res.stats.counting_found, 1u);
+        CHECK_EQ(res.stats.counting_failed, 0u);
+        CHECK_EQ(res.stats.conflicts, 0u);
+        CHECK(res.check.ok && res.check.has_empty);
+        if (!res.check.ok || !res.check.has_empty) std::fprintf(stderr, "  rphp variant %d %d %d: %s\n", n, r, h, res.check.error.c_str());
+      }
+    }
+  }
+  // A pigeonhole inside a larger formula, cut: the copy refutes it in isolation, and those proof
+  // lines must be in the input numbering too (the variables are renumbered with a seed).
+  for (const int seed : {0, 3, 1521549603}) {
+    std::mt19937_64 graph(41);
+    const ClauseList f = split3(graph_colouring(12, 5, 6, 0.3, false, graph));
+    Options o;
+    o.counting = 1;
+    o.seed = seed;
+    const CountingRun res = run_counting(scramble(f, rng), o);
+    CHECK_EQ(res.result, kUnsat);
+    CHECK_EQ(res.stats.counting_found, 1u);
+    CHECK_EQ(res.stats.conflicts, 0u);
+    CHECK(res.check.ok && res.check.has_empty);
+    if (!res.check.ok || !res.check.has_empty) std::fprintf(stderr, "  cut graph colouring, seed %d: %s\n", seed, res.check.error.c_str());
+  }
+  {  // switched off: the cut clauses hide the structure, search refutes the formula
+    Options o;
+    o.counting = 1;
+    o.countingcollapse = 0;
+    const CountingRun res = run_counting(split3(relativized_php(4, 9, 3)), o);
+    CHECK_EQ(res.result, kUnsat);
+    CHECK_EQ(res.stats.counting_found, 0u);
+    CHECK(res.stats.conflicts > 0);
+    CHECK(res.check.ok && res.check.has_empty);
+  }
+  for (const auto& [n, r, h] : std::vector<std::tuple<int, int, int>>{{4, 8, 4}, {3, 9, 3}}) {  // satisfiable
+    Options o;
+    o.counting = 1;
+    const ClauseList f = scramble(split3(relativized_php_second_in_use(n, r, h, 3)), rng);
+    Outcome res = run(max_var_of(f), f, o);
+    CHECK_EQ(res.result, kSat);
+    CHECK(res.model_ok);
+  }
+}
+
 TEST(counting_by_extension) {
   // A clique-colouring or a relativized pigeonhole with more places than pigeons, refuted with new
   // variables ("pigeon i has hole k") and a pigeonhole of holes + 1 pigeons on them: the PR

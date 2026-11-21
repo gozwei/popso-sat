@@ -1,5 +1,58 @@
 # Changelog
 
+## v0.4.11 — 2026-11-21
+
+The relativized pigeonholes of the SAT Competition 2018 (a_rphp, e_rphp, ae_rphp) are now
+recognised. They are relativized pigeonholes with clauses and variables added around them, and
+the detector of 0.4.10 gave up on both additions. Where no structure is found the search is
+the same as in 0.4.10: on four check instances, conflicts, decisions, propagations and ticks
+match exactly after 60,000 conflicts.
+
+On the scan set of 0.4.9 (`sets/phfam.txt`, 115 instances; Intel i7-7700K, Linux, 300 s, four
+instances at a time, popso-sat with proofs):
+
+| | 0.4.11 | 0.4.9 and 0.4.10 | 0.4.8 | Kissat 4.0.4 |
+|---|---|---|---|---|
+| phfam, solved of 115 (SAT / UNSAT) | 100 (14 / 86) | 81 (14 / 67) | 65 (14 / 51) | 36 (12 / 24) |
+| phfam, PAR-2 (s) | 88.0 | 189.1 | 282.2 | 433.9 |
+
+As before this is not a held-out comparison: the two changes were written for the 22 instances
+of this set that they concern. 0.4.9 solved four of the 22, by search. See
+[BENCHMARKS.md](BENCHMARKS.md).
+
+- **A second in-use literal** (a_rphp). In a relativized pigeonhole every pigeon literal of a
+  place implies the place's in-use literal. In these formulas some places have a second such
+  literal, with further clauses that exclude it against other places. The detector now takes
+  the literal that has a hole clause and sets the other one's clauses aside. The refutation
+  is the extension of 0.4.9; the added clauses do not disturb it, since its PR steps are on
+  new variables only.
+- **Long clauses cut into clauses of three literals** (e_rphp, ae_rphp; `--countingcollapse`,
+  on by default). Every clause of the formula is chained through auxiliary variables, which
+  hides the structure: 2,610 of the 2,960 variables of e_rphp035_05 are such variables.
+  - A chain variable occurs in two clauses of three or more literals, once with each sign,
+    and nowhere else; resolving the two gives the clause back.
+  - If no structure is found and at least a tenth of the variables are of that kind, the
+    detection is tried on a copy of the formula with them eliminated. The solver itself is
+    not touched.
+  - Only if the copy is refuted by a counting certificate does the proof get the
+    eliminations (each resolvent is RUP, then its two parents are deleted) and the copy's
+    refutation.
+- All 22 instances are refuted in at most 0.08 s. Each proof (at most 0.64 MB) passes
+  dpr-trim in at most 1.1 s and the verified checker cake_lpr in at most 0.23 s.
+- The fuzzer now also cuts clauses into three and adds second in-use variables. It found a
+  fault during development, before any release: a proof line written in the wrong variable
+  numbering when the copy refuted a sub-structure in isolation (the answer was right, the
+  proof was rejected). The fix has a regression test; 20,000 formulas since show no failure.
+- On the 295 instances of sc2026, fresh and fresh2 the copy is refuted nowhere and the
+  structures found are the same; the counting step takes 1% longer summed over all instances.
+  On the tuning subsets (300 s) 0.4.11 solves 86 of 109 and 42 of 57, the same instances as
+  0.4.10, with summed times within 1%.
+- 0.4.9 was also run on the full sc2026 and fresh sets (Intel i7-7700K, 1000 s): 110 and 51
+  solved, the same instances as 0.4.5, with PAR-2 774.1 and 784.7 s; 63 of the 65 sc2026
+  proofs verified within the run, the same two as before beyond its 3000 s limit.
+- Still unsolved in the scan (15 of 115): the four binary pigeonholes, four sgen instances,
+  four squ_any instances, php14e14, edges-024 and bsat210.
+
 ## v0.4.10 — 2026-11-20
 
 No change to the solver. One case of the unit test added in 0.4.9 ran a search of 300,000
